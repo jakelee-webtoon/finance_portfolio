@@ -149,6 +149,7 @@ export default function CashPage() {
       amount: '',
       owner: 'joint',
       currency: 'KRW',
+      notes: '',
     });
     setIsFormOpen(false);
   };
