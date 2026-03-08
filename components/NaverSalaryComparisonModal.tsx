@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { Salary } from '@/types';
+import { Salary, NaverSalaryStats } from '@/types';
 import { SalaryScope, NaverOrg } from '@/types';
 import { getFilteredStats, getFilteredStatsByYears } from '@/lib/salaryComparison';
 import SalaryStatsTable from './SalaryStatsTable';
