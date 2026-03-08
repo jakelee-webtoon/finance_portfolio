@@ -157,7 +157,7 @@ export function setAssets(assets: Asset[]): void {
   if (useFirebase()) {
     getFirestoreFunctions().then(firestore => {
       if (firestore) {
-        firestore.setAssets(assets).catch((error) => {
+        firestore.setAssets(assets).catch((error: unknown) => {
           // 에러 로깅 (디버깅용)
           console.error('[Store] Failed to save Assets to Firebase:', error);
           // 에러 무시 (이미 localStorage에 저장됨)
@@ -165,7 +165,7 @@ export function setAssets(assets: Asset[]): void {
       } else {
         console.warn('[Store] Firestore functions not available');
       }
-    }).catch((error) => {
+    }).catch((error: unknown) => {
       console.error('[Store] Failed to load Firestore functions:', error);
     });
   }
@@ -188,12 +188,14 @@ export function setIncome(income: Income[]): void {
   if (useFirebase()) {
     getFirestoreFunctions().then(firestore => {
       if (firestore) {
-        firestore.setIncome(income).catch(() => {
+        firestore.setIncome(income).catch((error: unknown) => {
           // 에러 무시 (이미 localStorage에 저장됨)
+          console.error('[Store] Failed to save Income to Firebase:', error);
         });
       }
-    }).catch(() => {
+    }).catch((error: unknown) => {
       // 에러 무시
+      console.error('[Store] Failed to load Firestore functions:', error);
     });
   }
 }
@@ -248,12 +250,14 @@ export function setStockHoldings(holdings: StockHolding[]): void {
   if (useFirebase()) {
     getFirestoreFunctions().then(firestore => {
       if (firestore) {
-        firestore.setStockHoldings(holdings).catch(() => {
+        firestore.setStockHoldings(holdings).catch((error: unknown) => {
           // 에러 무시 (이미 localStorage에 저장됨)
+          console.error('[Store] Failed to save Stock Holdings to Firebase:', error);
         });
       }
-    }).catch(() => {
+    }).catch((error: unknown) => {
       // 에러 무시
+      console.error('[Store] Failed to load Firestore functions:', error);
     });
   }
 }
@@ -275,12 +279,14 @@ export function setApartments(apartments: Apartment[]): void {
   if (useFirebase()) {
     getFirestoreFunctions().then(firestore => {
       if (firestore) {
-        firestore.setApartments(apartments).catch(() => {
+        firestore.setApartments(apartments).catch((error: unknown) => {
           // 에러 무시 (이미 localStorage에 저장됨)
+          console.error('[Store] Failed to save Apartments to Firebase:', error);
         });
       }
-    }).catch(() => {
+    }).catch((error: unknown) => {
       // 에러 무시
+      console.error('[Store] Failed to load Firestore functions:', error);
     });
   }
 }
@@ -302,12 +308,14 @@ export function setSalaries(salaries: Salary[]): void {
   if (useFirebase()) {
     getFirestoreFunctions().then(firestore => {
       if (firestore) {
-        firestore.setSalaries(salaries).catch(() => {
+        firestore.setSalaries(salaries).catch((error: unknown) => {
           // 에러 무시 (이미 localStorage에 저장됨)
+          console.error('[Store] Failed to save Salaries to Firebase:', error);
         });
       }
-    }).catch(() => {
+    }).catch((error: unknown) => {
       // 에러 무시
+      console.error('[Store] Failed to load Firestore functions:', error);
     });
   }
 }
