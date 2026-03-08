@@ -7,12 +7,29 @@ import { db } from './firebase';
 // Mock 데이터인지 확인하는 헬퍼 함수
 const isMockData = (item: any, mockItems: any[]): boolean => {
   return mockItems.some(mock => {
-    // ID로 비교
+    // ID로 비교 (가장 정확)
     if (mock.id && item.id && mock.id === item.id) return true;
-    // 주요 필드로 비교
+    
+    // Assets: name과 amount로 비교
     if (mock.name && item.name && mock.name === item.name) {
       if (mock.amount && item.amount && mock.amount === item.amount) return true;
     }
+    
+    // Apartments: apartmentName과 purchasePrice로 비교
+    if (mock.apartmentName && item.apartmentName && mock.apartmentName === item.apartmentName) {
+      if (mock.purchasePrice && item.purchasePrice && mock.purchasePrice === item.purchasePrice) return true;
+    }
+    
+    // Stock Holdings: symbol과 quantity로 비교
+    if (mock.symbol && item.symbol && mock.symbol === item.symbol) {
+      if (mock.quantity && item.quantity && mock.quantity === item.quantity) return true;
+    }
+    
+    // Income: source와 amount로 비교
+    if (mock.source && item.source && mock.source === item.source) {
+      if (mock.amount && item.amount && mock.amount === item.amount) return true;
+    }
+    
     return false;
   });
 };
@@ -70,13 +87,17 @@ export async function migrateToFirebase(): Promise<{
       const stored = localStorage.getItem('finance-assets');
       if (stored) {
         const assets: Asset[] = JSON.parse(stored);
+        console.log(`[Debug] Assets in localStorage: ${assets.length}개`);
         // Mock 데이터 제외
         const realAssets = assets.filter(asset => !isMockData(asset, mockAssets));
+        console.log(`[Debug] Real Assets (after filtering): ${realAssets.length}개`);
         if (realAssets.length > 0) {
           await firestore.setAssets(realAssets);
           migrated.push(`Assets (${realAssets.length}개, Mock ${assets.length - realAssets.length}개 제외)`);
         } else if (assets.length > 0) {
           migrated.push(`Assets (${assets.length}개 모두 Mock 데이터로 제외됨)`);
+        } else {
+          migrated.push('Assets (localStorage에 데이터 없음)');
         }
       } else {
         migrated.push('Assets (localStorage에 데이터 없음)');
@@ -110,6 +131,7 @@ export async function migrateToFirebase(): Promise<{
       const stored = localStorage.getItem('finance-salaries');
       if (stored) {
         const salaries: Salary[] = JSON.parse(stored);
+        console.log(`[Debug] Salaries in localStorage: ${salaries.length}개`);
         if (salaries.length > 0) {
           await firestore.setSalaries(salaries);
           migrated.push(`Salaries (${salaries.length}개)`);
@@ -130,17 +152,25 @@ export async function migrateToFirebase(): Promise<{
       const stored = localStorage.getItem('finance-apartments');
       if (stored) {
         const apartments: Apartment[] = JSON.parse(stored);
+        console.log(`[Debug] Apartments in localStorage: ${apartments.length}개`);
         // Mock 데이터 제외
         const realApartments = apartments.filter(apt => !isMockData(apt, mockApartments));
+        console.log(`[Debug] Real Apartments (after filtering): ${realApartments.length}개`);
         if (realApartments.length > 0) {
           await firestore.setApartments(realApartments);
           migrated.push(`Apartments (${realApartments.length}개, Mock ${apartments.length - realApartments.length}개 제외)`);
         } else if (apartments.length > 0) {
           migrated.push(`Apartments (${apartments.length}개 모두 Mock 데이터로 제외됨)`);
+        } else {
+          migrated.push('Apartments (localStorage에 데이터 없음)');
         }
+      } else {
+        migrated.push('Apartments (localStorage에 데이터 없음)');
       }
     } catch (error) {
-      errors.push(`Apartments: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      errors.push(`Apartments: ${errorMsg}`);
+      console.error('Apartments migration error:', error);
     }
 
     // 6. Income 마이그레이션 (Mock 데이터 제외)
