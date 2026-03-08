@@ -110,12 +110,14 @@ export async function setDashboardState(state: DashboardState): Promise<void> {
     const userId = getUserId();
     const docRef = doc(db, `users/${userId}/settings`, 'dashboard');
     await setDoc(docRef, state);
+    console.log(`[Firestore] Dashboard State saved to Firebase: users/${userId}/settings/dashboard`);
     
     // localStorage에도 저장 (fallback)
     localStorage.setItem('finance-dashboard-state', JSON.stringify(state));
   } catch (error) {
     // 에러 발생 시 localStorage에만 저장
     localStorage.setItem('finance-dashboard-state', JSON.stringify(state));
+    console.error(`[Firestore] Failed to save Dashboard State:`, error);
     // 에러를 다시 throw하여 마이그레이션 함수에서 감지할 수 있도록
     throw error;
   }
@@ -163,12 +165,14 @@ export async function setAssets(assets: Asset[]): Promise<void> {
       }));
     });
     await Promise.all(batch);
+    console.log(`[Firestore] ${assets.length} Assets saved to Firebase: ${getCollectionPath('assets')}`);
     
     // localStorage에도 저장 (fallback)
     localStorage.setItem('finance-assets', JSON.stringify(assets));
   } catch (error) {
     // 에러 발생 시 localStorage에만 저장
     localStorage.setItem('finance-assets', JSON.stringify(assets));
+    console.error(`[Firestore] Failed to save Assets:`, error);
     // 에러를 다시 throw하여 마이그레이션 함수에서 감지할 수 있도록
     throw error;
   }
@@ -216,12 +220,14 @@ export async function setStockHoldings(holdings: StockHolding[]): Promise<void> 
       }));
     });
     await Promise.all(batch);
+    console.log(`[Firestore] ${holdings.length} Stock Holdings saved to Firebase: ${getCollectionPath('stockHoldings')}`);
     
     // localStorage에도 저장 (fallback)
     localStorage.setItem('finance-stock-holdings', JSON.stringify(holdings));
   } catch (error) {
     // 에러 발생 시 localStorage에만 저장
     localStorage.setItem('finance-stock-holdings', JSON.stringify(holdings));
+    console.error(`[Firestore] Failed to save Stock Holdings:`, error);
     // 에러를 다시 throw하여 마이그레이션 함수에서 감지할 수 있도록
     throw error;
   }
@@ -265,12 +271,14 @@ export async function setSalaries(salaries: Salary[]): Promise<void> {
       batch.push(setDoc(docRef, data));
     });
     await Promise.all(batch);
+    console.log(`[Firestore] ${salaries.length} Salaries saved to Firebase: ${getCollectionPath('salaries')}`);
     
     // localStorage에도 저장 (fallback)
     localStorage.setItem('finance-salaries', JSON.stringify(salaries));
   } catch (error) {
     // 에러 발생 시 localStorage에만 저장
     localStorage.setItem('finance-salaries', JSON.stringify(salaries));
+    console.error(`[Firestore] Failed to save Salaries:`, error);
     // 에러를 다시 throw하여 마이그레이션 함수에서 감지할 수 있도록
     throw error;
   }
@@ -318,12 +326,14 @@ export async function setApartments(apartments: Apartment[]): Promise<void> {
       }));
     });
     await Promise.all(batch);
+    console.log(`[Firestore] ${apartments.length} Apartments saved to Firebase: ${getCollectionPath('apartments')}`);
     
     // localStorage에도 저장 (fallback)
     localStorage.setItem('finance-apartments', JSON.stringify(apartments));
   } catch (error) {
     // 에러 발생 시 localStorage에만 저장
     localStorage.setItem('finance-apartments', JSON.stringify(apartments));
+    console.error(`[Firestore] Failed to save Apartments:`, error);
     // 에러를 다시 throw하여 마이그레이션 함수에서 감지할 수 있도록
     throw error;
   }
@@ -371,12 +381,14 @@ export async function setIncome(income: Income[]): Promise<void> {
       }));
     });
     await Promise.all(batch);
+    console.log(`[Firestore] ${income.length} Income saved to Firebase: ${getCollectionPath('income')}`);
     
     // localStorage에도 저장 (fallback)
     localStorage.setItem('finance-income', JSON.stringify(income));
   } catch (error) {
     // 에러 발생 시 localStorage에만 저장
     localStorage.setItem('finance-income', JSON.stringify(income));
+    console.error(`[Firestore] Failed to save Income:`, error);
     // 에러를 다시 throw하여 마이그레이션 함수에서 감지할 수 있도록
     throw error;
   }
