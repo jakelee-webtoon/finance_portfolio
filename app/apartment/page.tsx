@@ -120,7 +120,7 @@ export default function ApartmentPage() {
     );
     
     const today = new Date().toISOString().split('T')[0];
-    const currentUser = (state?.scope === 'husband' ? 'husband' : state?.scope === 'wife' ? 'wife' : 'husband') || apartment.last_modified_by || 'husband';
+    const currentUser = apartment.last_modified_by || (state?.scope === 'husband' ? 'husband' : state?.scope === 'wife' ? 'wife' : 'husband');
     
     if (existingAssetIndex >= 0) {
       // 기존 자산 업데이트 (이름도 "아파트"로 변경)
