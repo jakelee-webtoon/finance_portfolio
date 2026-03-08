@@ -334,6 +334,7 @@ export default function SalaryPage() {
       amount: '',
       owner: 'joint',
       currency: 'KRW',
+      yearsOfExperience: '',
       notes: '',
     });
   };
