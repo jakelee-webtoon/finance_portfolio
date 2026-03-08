@@ -110,6 +110,32 @@ export interface DashboardState {
   scope: Scope;
 }
 
+// 가계부 항목 타입
+export type LedgerType = 'expense_fixed' | 'expense_variable' | 'income' | 'savings';
+export type LedgerCategory = 
+  // 고정비
+  | 'transportation' | 'management_fee' | 'communication' | 'insurance' | 'ott' | 'interest' | 'other_fixed'
+  // 변동비
+  | 'food' | 'shopping_clothing' | 'shopping_beauty' | 'shopping_other' | 'coffee' | 'books' | 'exhibition' | 'other_variable'
+  // 수입
+  | 'salary' | 'stock_profit' | 'other_income'
+  // 저축
+  | 'pension_insurance' | 'savings' | 'travel_savings' | 'isa' | 'housing_subscription' | 'other_savings';
+
+export interface LedgerEntry extends BaseEntity {
+  id: string;
+  date: string; // YYYY-MM-DD
+  type: LedgerType;
+  category: LedgerCategory;
+  subcategory?: string; // 하위 카테고리 (예: "○○ 적금")
+  amount: number;
+  payment_method: 'cash' | 'card' | 'transfer' | 'other';
+  owner: 'husband' | 'wife' | 'joint';
+  notes?: string;
+  is_fixed: boolean; // 고정비 여부 (다음달 자동 반복용)
+  month: string; // YYYY-MM (검색/필터링용)
+}
+
 // 네이버 연봉 비교 관련 타입
 export type NaverOrg = 'NAVER_HQ' | 'WEBTOON' | 'CLOUD' | 'FINANCIAL' | 'LABS' | 'JET';
 export type SalaryScope = 'TC' | 'BASE';

@@ -15,6 +15,7 @@ export default function Navigation() {
     { href: '/cash', label: '현금' },
     { href: '/income', label: '수입' },
     { href: '/salary', label: '연봉' },
+    { href: '/ledger', label: '가계부' },
   ];
 
   return (

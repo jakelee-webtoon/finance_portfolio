@@ -1,4 +1,4 @@
-import { DashboardState, Asset, Income, Transaction, Portfolio, Liability, StockHolding, Apartment, Salary, Scope } from '@/types';
+import { DashboardState, Asset, Income, Transaction, Portfolio, Liability, StockHolding, Apartment, Salary, Scope, LedgerEntry } from '@/types';
 import { mockAssets, mockIncome, mockTransactions, mockPortfolios, mockLiabilities, mockStockHoldings, mockApartments } from '@/data/mockData';
 
 const STORAGE_KEY = 'finance-dashboard-state';
@@ -117,6 +117,16 @@ export async function syncFromFirebase(): Promise<void> {
       }
     } catch (error) {
       // 에러 무시
+    }
+    
+    // Ledger Entries
+    try {
+      const ledgerEntries = await firestore.getLedgerEntries();
+      // 빈 배열도 저장 (mock 데이터 방지)
+      localStorage.setItem('finance-ledger-entries', JSON.stringify(ledgerEntries));
+    } catch (error) {
+      // 에러 발생 시에도 빈 배열 저장 (mock 데이터 방지)
+      localStorage.setItem('finance-ledger-entries', JSON.stringify([]));
     }
   } catch (error) {
     // 전체 에러 무시 (Firebase 연결 실패 시 localStorage만 사용)
@@ -359,6 +369,35 @@ export function setSalaries(salaries: Salary[]): void {
         firestore.setSalaries(salaries).catch((error: unknown) => {
           // 에러 무시 (이미 localStorage에 저장됨)
           console.error('[Store] Failed to save Salaries to Firebase:', error);
+        });
+      }
+    }).catch((error: unknown) => {
+      // 에러 무시
+      console.error('[Store] Failed to load Firestore functions:', error);
+    });
+  }
+}
+
+// 가계부 항목
+export function getLedgerEntries(): LedgerEntry[] {
+  if (typeof window === 'undefined') return [];
+  const stored = localStorage.getItem('finance-ledger-entries');
+  return stored ? JSON.parse(stored) : [];
+}
+
+export function setLedgerEntries(entries: LedgerEntry[]): void {
+  if (typeof window === 'undefined') return;
+  
+  // localStorage에 저장
+  localStorage.setItem('finance-ledger-entries', JSON.stringify(entries));
+  
+  // Firebase 사용 가능하면 백그라운드에서 Firebase에 저장 (비동기)
+  if (useFirebase()) {
+    getFirestoreFunctions().then(firestore => {
+      if (firestore) {
+        firestore.setLedgerEntries(entries).catch((error: unknown) => {
+          // 에러 무시 (이미 localStorage에 저장됨)
+          console.error('[Store] Failed to save Ledger Entries to Firebase:', error);
         });
       }
     }).catch((error: unknown) => {

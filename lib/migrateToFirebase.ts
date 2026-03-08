@@ -1,5 +1,5 @@
 // localStorage 데이터를 Firebase로 마이그레이션하는 스크립트
-import { DashboardState, Asset, StockHolding, Salary, Apartment, Income, Liability } from '@/types';
+import { DashboardState, Asset, StockHolding, Salary, Apartment, Income, Liability, LedgerEntry } from '@/types';
 import { mockAssets, mockIncome, mockStockHoldings, mockApartments, mockLiabilities } from '@/data/mockData';
 import * as firestore from './firestore';
 import { db } from './firebase';
@@ -209,7 +209,28 @@ export async function migrateToFirebase(): Promise<{
       errors.push(`Liabilities: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
 
-    // 8. Transactions 마이그레이션 (있는 경우)
+    // 8. Ledger Entries 마이그레이션
+    try {
+      const stored = localStorage.getItem('finance-ledger-entries');
+      if (stored) {
+        const ledgerEntries: LedgerEntry[] = JSON.parse(stored);
+        console.log(`[Debug] Ledger Entries in localStorage: ${ledgerEntries.length}개`);
+        if (ledgerEntries.length > 0) {
+          await firestore.setLedgerEntries(ledgerEntries);
+          migrated.push(`Ledger Entries (${ledgerEntries.length}개)`);
+        } else {
+          migrated.push('Ledger Entries (데이터 없음)');
+        }
+      } else {
+        migrated.push('Ledger Entries (localStorage에 데이터 없음)');
+      }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      errors.push(`Ledger Entries: ${errorMsg}`);
+      console.error('Ledger Entries migration error:', error);
+    }
+
+    // 9. Transactions 마이그레이션 (있는 경우)
     try {
       const stored = localStorage.getItem('finance-transactions');
       if (stored) {

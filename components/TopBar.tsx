@@ -1,15 +1,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { usePathname } from 'next/navigation';
 import { DashboardState, Scope } from '@/types';
 import { getDashboardState, setDashboardState } from '@/lib/store';
 import ExchangeRateDisplay from '@/components/ExchangeRateDisplay';
 
 export default function TopBar() {
   const [state, setState] = useState<DashboardState | null>(null);
-  const pathname = usePathname();
-  const isSalaryPage = pathname === '/salary';
 
   useEffect(() => {
     setState(getDashboardState());
@@ -28,8 +25,6 @@ export default function TopBar() {
 
   const handleScopeChange = (scope: Scope) => {
     if (!state) return;
-    // 연봉 페이지에서는 합산 선택 불가
-    if (isSalaryPage && scope === 'combined') return;
     const newState = { ...state, scope };
     setState(newState);
     setDashboardState(newState);
@@ -77,13 +72,10 @@ export default function TopBar() {
             <div className="flex gap-1 bg-gray-100 rounded-md p-1">
               <button
                 onClick={() => handleScopeChange('combined')}
-                disabled={isSalaryPage}
                 className={`px-3 py-1 text-sm rounded transition-colors ${
                   state.scope === 'combined'
                     ? 'bg-blue-500 text-white'
                     : 'text-gray-700 hover:bg-gray-200'
-                } ${
-                  isSalaryPage ? 'opacity-50 cursor-not-allowed' : ''
                 }`}
               >
                 합산

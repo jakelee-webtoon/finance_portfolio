@@ -105,31 +105,31 @@ export default function SalaryPage() {
     }, 0));
   }, [filteredSalaries, exchangeRates]);
 
-  // 최근 소득 (가장 최근 입력된 연간 소득값)
+  // 최근 소득 (가장 최근 연도의 모든 연봉 합계)
   const recentIncome = useMemo(() => {
-    if (filteredSalaries.length === 0) return null;
-    const sorted = [...filteredSalaries].sort((a, b) => {
-      // year 기준 내림차순, 그 다음 as_of_date 기준 내림차순
-      if (a.year !== b.year) {
-        return b.year.localeCompare(a.year);
-      }
-      return b.as_of_date.localeCompare(a.as_of_date);
-    });
-    const latest = sorted[0];
-    if (!exchangeRates) return { amount: latest.amount, currency: latest.currency };
+    if (filteredSalaries.length === 0 || !exchangeRates) return null;
     
-    let krwAmount = latest.amount;
-    if (latest.currency === 'USD') {
-      krwAmount = latest.amount * exchangeRates.USD_TO_KRW;
-    } else if (latest.currency === 'EUR') {
-      krwAmount = latest.amount * exchangeRates.EUR_TO_KRW;
-    }
+    // 가장 최근 연도 찾기
+    const latestYear = [...filteredSalaries]
+      .sort((a, b) => b.year.localeCompare(a.year))[0]?.year;
+    
+    if (!latestYear) return null;
+    
+    // 해당 연도의 모든 연봉 합계 계산
+    const yearSalaries = filteredSalaries.filter(s => s.year === latestYear);
+    const totalAmount = yearSalaries.reduce((sum, salary) => {
+      let krwAmount = salary.amount;
+      if (salary.currency === 'USD') {
+        krwAmount = salary.amount * exchangeRates.USD_TO_KRW;
+      } else if (salary.currency === 'EUR') {
+        krwAmount = salary.amount * exchangeRates.EUR_TO_KRW;
+      }
+      return sum + krwAmount;
+    }, 0);
     
     return {
-      amount: Math.floor(krwAmount),
-      originalAmount: latest.amount,
-      currency: latest.currency,
-      year: latest.year,
+      amount: Math.floor(totalAmount),
+      year: latestYear,
     };
   }, [filteredSalaries, exchangeRates]);
 
@@ -251,23 +251,19 @@ export default function SalaryPage() {
     return currentYearData ? currentYearData.changePercent : null;
   }, [recentIncome, yearlyIncomeData]);
 
-  // 커스텀 라벨 렌더링 함수 - yearlyIncomeData 접근 가능
+  // 커스텀 라벨 렌더링 함수 - 바 상단에 표시
   const renderCustomLabel = (props: any) => {
     if (!props) return null;
     
-    const { x, y, width, index, value, dataKey } = props;
+    const { x, y, width, index } = props;
     
-    // 합산 모드일 때는 합계(amount) 바에만 라벨 표시
-    const isCombined = state?.scope === 'combined';
-    if (isCombined && dataKey !== 'amount') {
-      return null; // 남편/아내 개별 바에는 라벨 표시 안 함
-    }
-    
-    // index를 사용해서 yearlyIncomeData에서 changePercent 가져오기
+    // index를 사용해서 yearlyIncomeData에서 데이터 가져오기
     const dataItem = yearlyIncomeData[index];
-    const changePercent = dataItem ? dataItem.changePercent : null;
+    if (!dataItem) return null;
     
-    const amount = value;
+    const changePercent = dataItem.changePercent;
+    const amount = dataItem.amount; // 항상 전체 합계 사용
+    
     if (!amount || amount === 0) return null;
     
     const numAmount = Number(amount);
@@ -280,24 +276,24 @@ export default function SalaryPage() {
     
     return (
       <g>
-        {/* 금액 라벨: Bold, 흰색 */}
+        {/* 금액 라벨: Bold, 검은색 (맨 위) */}
         <text
           x={labelX}
-          y={y + 20}
+          y={y - 26}
           textAnchor="middle"
-          fill="#FFFFFF"
+          fill="#374151"
           fontSize="14"
           fontWeight="bold"
         >
           {amountLabel}
         </text>
-        {/* 전년 대비 상승율: 금액 바로 밑 */}
+        {/* 전년 대비 상승율: 금액 아래 */}
         {hasChangePercent && (
           <text
             x={labelX}
-            y={y + 36}
+            y={y - 10}
             textAnchor="middle"
-            fill="rgba(255,255,255,0.9)"
+            fill="#6B7280"
             fontSize="11"
             fontWeight="normal"
           >
@@ -522,10 +518,24 @@ export default function SalaryPage() {
                   />
                   <Tooltip
                     formatter={(value: number, name: string) => {
-                      const formatted = new Intl.NumberFormat('ko-KR').format(value) + '원';
-                      if (name === 'husband') return ['남편: ' + formatted, '남편'];
-                      if (name === 'wife') return ['아내: ' + formatted, '아내'];
-                      return [formatted, '합계'];
+                      const formatted = formatAmountLabel(Math.floor(value));
+                      
+                      // 합산 모드에서만 남편/아내 표시
+                      if (state?.scope === 'combined') {
+                        if (name === 'husband') return ['남편: ' + formatted, '남편'];
+                        if (name === 'wife') return ['아내: ' + formatted, '아내'];
+                        return [null, null];
+                      } else {
+                        // 단일 모드
+                        return [formatted, '합계'];
+                      }
+                    }}
+                    itemSorter={(item: any) => {
+                      // Tooltip 순서를 바 차트 순서와 동일하게 (아내가 위, 남편이 아래)
+                      // itemSorter는 낮은 값이 위로 가므로, wife를 0, husband를 1로 반환
+                      if (item.name === 'wife') return 0;
+                      if (item.name === 'husband') return 1;
+                      return 2;
                     }}
                     labelStyle={{ color: '#374151' }}
                   />
@@ -536,8 +546,6 @@ export default function SalaryPage() {
                       <Bar dataKey="wife" stackId="income" fill="#EC4899" radius={[4, 4, 0, 0]} name="아내">
                         {/* 합계 라벨 (맨 위 바에 표시) */}
                         <LabelList 
-                          dataKey="amount"
-                          position="insideTop"
                           content={renderCustomLabel}
                         />
                       </Bar>
@@ -547,8 +555,6 @@ export default function SalaryPage() {
                       {/* 단일 모드: 기존 바 차트 */}
                       <Bar dataKey="amount" fill="#3B82F6" radius={[4, 4, 0, 0]}>
                         <LabelList 
-                          dataKey="amount"
-                          position="insideTop"
                           content={renderCustomLabel}
                         />
                       </Bar>

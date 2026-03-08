@@ -19,7 +19,7 @@ import { db } from './firebase';
 
 // db가 null이면 함수들이 에러를 반환하도록 처리
 // (런타임에만 체크, 빌드 시 에러 방지)
-import { DashboardState, Asset, Income, Transaction, Portfolio, Liability, StockHolding, Apartment, Salary } from '@/types';
+import { DashboardState, Asset, Income, Transaction, Portfolio, Liability, StockHolding, Apartment, Salary, LedgerEntry } from '@/types';
 
 // 사용자 ID 가져오기 (현재는 단일 사용자 가정, 나중에 인증 추가)
 const getUserId = (): string => {
@@ -613,6 +613,94 @@ export async function setLiabilities(liabilities: Liability[]): Promise<void> {
     // 에러 발생 시 localStorage에만 저장
     localStorage.setItem('finance-liabilities', JSON.stringify(liabilities));
     console.error(`[Firestore] Failed to save Liabilities:`, error);
+    // 에러를 다시 throw하여 마이그레이션 함수에서 감지할 수 있도록
+    throw error;
+  }
+}
+
+// 가계부 항목
+export async function getLedgerEntries(): Promise<LedgerEntry[]> {
+  if (typeof window === 'undefined') return [];
+  if (!db) {
+    const stored = localStorage.getItem('finance-ledger-entries');
+    return stored ? JSON.parse(stored) : [];
+  }
+  
+  try {
+    const firestore = db; // Type narrowing
+    const collectionPath = getCollectionPath('ledgerEntries');
+    const q = query(collection(firestore, collectionPath), orderBy('date', 'desc'));
+    const querySnapshot = await getDocs(q);
+    
+    return querySnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+      date: timestampToDate(doc.data().date).toISOString().split('T')[0],
+      as_of_date: timestampToDate(doc.data().as_of_date).toISOString().split('T')[0],
+    } as LedgerEntry));
+  } catch (error) {
+    // Fallback to localStorage
+    const stored = localStorage.getItem('finance-ledger-entries');
+    return stored ? JSON.parse(stored) : [];
+  }
+}
+
+export async function setLedgerEntries(entries: LedgerEntry[]): Promise<void> {
+  if (typeof window === 'undefined') return;
+  if (!db) {
+    localStorage.setItem('finance-ledger-entries', JSON.stringify(entries));
+    return;
+  }
+  
+  try {
+    const firestore = db; // Type narrowing
+    const batch = writeBatch(firestore);
+    const collectionPath = getCollectionPath('ledgerEntries');
+    
+    // 기존 Firestore 데이터 가져오기
+    const existingQuery = query(collection(firestore, collectionPath));
+    const existingSnapshot = await getDocs(existingQuery);
+    const existingIds = new Set(existingSnapshot.docs.map(doc => doc.id));
+    const newIds = new Set(entries.map(entry => entry.id));
+    
+    // 삭제된 항목들을 Firestore에서 제거
+    existingIds.forEach(id => {
+      if (!newIds.has(id)) {
+        const docRef = doc(firestore, collectionPath, id);
+        batch.delete(docRef);
+      }
+    });
+    
+    // 새로운/업데이트된 항목들을 저장
+    entries.forEach(entry => {
+      const docRef = doc(firestore, collectionPath, entry.id);
+      const { id, ...data } = entry;
+      
+      // undefined 필드 제거 (Firestore는 undefined를 허용하지 않음)
+      const cleanData: any = {};
+      Object.keys(data).forEach(key => {
+        const value = (data as any)[key];
+        if (value !== undefined) {
+          cleanData[key] = value;
+        }
+      });
+      
+      batch.set(docRef, {
+        ...cleanData,
+        date: dateToTimestamp(cleanData.date),
+        as_of_date: dateToTimestamp(cleanData.as_of_date),
+      });
+    });
+    
+    await batch.commit();
+    console.log(`[Firestore] ${entries.length} Ledger Entries saved to Firebase (deleted ${existingIds.size - newIds.size}): ${getCollectionPath('ledgerEntries')}`);
+    
+    // localStorage에도 저장 (fallback)
+    localStorage.setItem('finance-ledger-entries', JSON.stringify(entries));
+  } catch (error) {
+    // 에러 발생 시 localStorage에만 저장
+    localStorage.setItem('finance-ledger-entries', JSON.stringify(entries));
+    console.error(`[Firestore] Failed to save Ledger Entries:`, error);
     // 에러를 다시 throw하여 마이그레이션 함수에서 감지할 수 있도록
     throw error;
   }
