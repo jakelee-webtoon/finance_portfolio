@@ -159,9 +159,19 @@ export async function setAssets(assets: Asset[]): Promise<void> {
     assets.forEach(asset => {
       const docRef = doc(firestore, getCollectionPath('assets'), asset.id);
       const { id, ...data } = asset;
+      
+      // undefined 필드 제거 (Firestore는 undefined를 허용하지 않음)
+      const cleanData: any = {};
+      Object.keys(data).forEach(key => {
+        const value = (data as any)[key];
+        if (value !== undefined) {
+          cleanData[key] = value;
+        }
+      });
+      
       batch.push(setDoc(docRef, {
-        ...data,
-        as_of_date: dateToTimestamp(data.as_of_date),
+        ...cleanData,
+        as_of_date: dateToTimestamp(cleanData.as_of_date),
       }));
     });
     await Promise.all(batch);
@@ -214,9 +224,19 @@ export async function setStockHoldings(holdings: StockHolding[]): Promise<void> 
     holdings.forEach(holding => {
       const docRef = doc(firestore, getCollectionPath('stockHoldings'), holding.id);
       const { id, ...data } = holding;
+      
+      // undefined 필드 제거 (Firestore는 undefined를 허용하지 않음)
+      const cleanData: any = {};
+      Object.keys(data).forEach(key => {
+        const value = (data as any)[key];
+        if (value !== undefined) {
+          cleanData[key] = value;
+        }
+      });
+      
       batch.push(setDoc(docRef, {
-        ...data,
-        as_of_date: dateToTimestamp(data.as_of_date),
+        ...cleanData,
+        as_of_date: dateToTimestamp(cleanData.as_of_date),
       }));
     });
     await Promise.all(batch);
@@ -268,7 +288,17 @@ export async function setSalaries(salaries: Salary[]): Promise<void> {
     salaries.forEach(salary => {
       const docRef = doc(firestore, getCollectionPath('salaries'), salary.id);
       const { id, ...data } = salary;
-      batch.push(setDoc(docRef, data));
+      
+      // undefined 필드 제거 (Firestore는 undefined를 허용하지 않음)
+      const cleanData: any = {};
+      Object.keys(data).forEach(key => {
+        const value = (data as any)[key];
+        if (value !== undefined) {
+          cleanData[key] = value;
+        }
+      });
+      
+      batch.push(setDoc(docRef, cleanData));
     });
     await Promise.all(batch);
     console.log(`[Firestore] ${salaries.length} Salaries saved to Firebase: ${getCollectionPath('salaries')}`);
@@ -320,9 +350,19 @@ export async function setApartments(apartments: Apartment[]): Promise<void> {
     apartments.forEach(apartment => {
       const docRef = doc(firestore, getCollectionPath('apartments'), apartment.id);
       const { id, ...data } = apartment;
+      
+      // undefined 필드 제거 (Firestore는 undefined를 허용하지 않음)
+      const cleanData: any = {};
+      Object.keys(data).forEach(key => {
+        const value = (data as any)[key];
+        if (value !== undefined) {
+          cleanData[key] = value;
+        }
+      });
+      
       batch.push(setDoc(docRef, {
-        ...data,
-        as_of_date: dateToTimestamp(data.as_of_date),
+        ...cleanData,
+        as_of_date: dateToTimestamp(cleanData.as_of_date),
       }));
     });
     await Promise.all(batch);
@@ -375,9 +415,19 @@ export async function setIncome(income: Income[]): Promise<void> {
     income.forEach(item => {
       const docRef = doc(firestore, getCollectionPath('income'), item.id);
       const { id, ...data } = item;
+      
+      // undefined 필드 제거 (Firestore는 undefined를 허용하지 않음)
+      const cleanData: any = {};
+      Object.keys(data).forEach(key => {
+        const value = (data as any)[key];
+        if (value !== undefined) {
+          cleanData[key] = value;
+        }
+      });
+      
       batch.push(setDoc(docRef, {
-        ...data,
-        as_of_date: dateToTimestamp(data.as_of_date),
+        ...cleanData,
+        as_of_date: dateToTimestamp(cleanData.as_of_date),
       }));
     });
     await Promise.all(batch);
