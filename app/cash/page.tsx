@@ -5,7 +5,7 @@ import TopBar from '@/components/TopBar';
 import Navigation from '@/components/Navigation';
 import Table, { Column } from '@/components/Table';
 import { Asset, DashboardState } from '@/types';
-import { getDashboardState, getAssets, setAssets } from '@/lib/store';
+import { getDashboardState, getAssets, setAssets, syncFromFirebase } from '@/lib/store';
 import { getExchangeRates } from '@/lib/exchangeRate';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -27,16 +27,24 @@ export default function CashPage() {
 
   useEffect(() => {
     if (isAuthenticated !== true) return;
-    const dashboardState = getDashboardState();
-    setState(dashboardState);
-    const allAssets = getAssets();
-    // 현금 카테고리만 필터링
-    setAssetsState(allAssets.filter((asset) => asset.category === 'cash'));
     
-    // 환율 로드
-    getExchangeRates().then((rates) => {
-      setExchangeRates(rates);
-    });
+    // Firebase에서 데이터 동기화 후 로컬 데이터 로드
+    const loadData = async () => {
+      await syncFromFirebase();
+      
+      const dashboardState = getDashboardState();
+      setState(dashboardState);
+      const allAssets = getAssets();
+      // 현금 카테고리만 필터링
+      setAssetsState(allAssets.filter((asset) => asset.category === 'cash'));
+      
+      // 환율 로드
+      getExchangeRates().then((rates) => {
+        setExchangeRates(rates);
+      });
+    };
+    
+    loadData();
   }, [isAuthenticated]);
 
   // DashboardState 변경 감지 (TopBar에서 변경 시)

@@ -443,3 +443,68 @@ export async function setIncome(income: Income[]): Promise<void> {
     throw error;
   }
 }
+
+// Liabilities
+export async function getLiabilities(): Promise<Liability[]> {
+  if (typeof window === 'undefined') return [];
+  if (!db) {
+    const stored = localStorage.getItem('finance-liabilities');
+    return stored ? JSON.parse(stored) : [];
+  }
+  
+  try {
+    const q = query(collection(db, getCollectionPath('liabilities')), orderBy('as_of_date', 'desc'));
+    const querySnapshot = await getDocs(q);
+    return querySnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+      as_of_date: timestampToDate(doc.data().as_of_date).toISOString().split('T')[0],
+    } as Liability));
+  } catch (error) {
+    // Fallback to localStorage
+    const stored = localStorage.getItem('finance-liabilities');
+    return stored ? JSON.parse(stored) : [];
+  }
+}
+
+export async function setLiabilities(liabilities: Liability[]): Promise<void> {
+  if (typeof window === 'undefined') return;
+  if (!db) {
+    localStorage.setItem('finance-liabilities', JSON.stringify(liabilities));
+    return;
+  }
+  
+  try {
+    const batch: Promise<void>[] = [];
+    const firestore = db; // Type narrowing
+    liabilities.forEach(liability => {
+      const docRef = doc(firestore, getCollectionPath('liabilities'), liability.id);
+      const { id, ...data } = liability;
+      
+      // undefined 필드 제거 (Firestore는 undefined를 허용하지 않음)
+      const cleanData: any = {};
+      Object.keys(data).forEach(key => {
+        const value = (data as any)[key];
+        if (value !== undefined) {
+          cleanData[key] = value;
+        }
+      });
+      
+      batch.push(setDoc(docRef, {
+        ...cleanData,
+        as_of_date: dateToTimestamp(cleanData.as_of_date),
+      }));
+    });
+    await Promise.all(batch);
+    console.log(`[Firestore] ${liabilities.length} Liabilities saved to Firebase: ${getCollectionPath('liabilities')}`);
+    
+    // localStorage에도 저장 (fallback)
+    localStorage.setItem('finance-liabilities', JSON.stringify(liabilities));
+  } catch (error) {
+    // 에러 발생 시 localStorage에만 저장
+    localStorage.setItem('finance-liabilities', JSON.stringify(liabilities));
+    console.error(`[Firestore] Failed to save Liabilities:`, error);
+    // 에러를 다시 throw하여 마이그레이션 함수에서 감지할 수 있도록
+    throw error;
+  }
+}

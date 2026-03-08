@@ -1,6 +1,6 @@
 // localStorage 데이터를 Firebase로 마이그레이션하는 스크립트
-import { DashboardState, Asset, StockHolding, Salary, Apartment, Income } from '@/types';
-import { mockAssets, mockIncome, mockStockHoldings, mockApartments } from '@/data/mockData';
+import { DashboardState, Asset, StockHolding, Salary, Apartment, Income, Liability } from '@/types';
+import { mockAssets, mockIncome, mockStockHoldings, mockApartments, mockLiabilities } from '@/data/mockData';
 import * as firestore from './firestore';
 import { db } from './firebase';
 
@@ -191,7 +191,25 @@ export async function migrateToFirebase(): Promise<{
       errors.push(`Income: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
 
-    // 7. Transactions 마이그레이션 (있는 경우)
+    // 7. Liabilities 마이그레이션 (Mock 데이터 제외)
+    try {
+      const stored = localStorage.getItem('finance-liabilities');
+      if (stored) {
+        const liabilities: Liability[] = JSON.parse(stored);
+        // Mock 데이터 제외
+        const realLiabilities = liabilities.filter(item => !isMockData(item, mockLiabilities));
+        if (realLiabilities.length > 0) {
+          await firestore.setLiabilities(realLiabilities);
+          migrated.push(`Liabilities (${realLiabilities.length}개, Mock ${liabilities.length - realLiabilities.length}개 제외)`);
+        } else if (liabilities.length > 0) {
+          migrated.push(`Liabilities (${liabilities.length}개 모두 Mock 데이터로 제외됨)`);
+        }
+      }
+    } catch (error) {
+      errors.push(`Liabilities: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+
+    // 8. Transactions 마이그레이션 (있는 경우)
     try {
       const stored = localStorage.getItem('finance-transactions');
       if (stored) {

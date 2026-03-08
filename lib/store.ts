@@ -89,6 +89,16 @@ export async function syncFromFirebase(): Promise<void> {
     } catch (error) {
       // 에러 무시
     }
+    
+    // Liabilities
+    try {
+      const liabilities = await firestore.getLiabilities();
+      if (liabilities.length > 0) {
+        localStorage.setItem('finance-liabilities', JSON.stringify(liabilities));
+      }
+    } catch (error) {
+      // 에러 무시
+    }
   } catch (error) {
     // 전체 에러 무시 (Firebase 연결 실패 시 localStorage만 사용)
   }
@@ -227,9 +237,26 @@ export function getLiabilities(): Liability[] {
   return stored ? JSON.parse(stored) : mockLiabilities;
 }
 
-export function setLiabilities(liabilities: Liability[]) {
+export function setLiabilities(liabilities: Liability[]): void {
   if (typeof window === 'undefined') return;
+  
+  // localStorage에 저장
   localStorage.setItem('finance-liabilities', JSON.stringify(liabilities));
+  
+  // Firebase 사용 가능하면 백그라운드에서 Firebase에 저장 (비동기)
+  if (useFirebase()) {
+    getFirestoreFunctions().then(firestore => {
+      if (firestore) {
+        firestore.setLiabilities(liabilities).catch((error: unknown) => {
+          // 에러 무시 (이미 localStorage에 저장됨)
+          console.error('[Store] Failed to save Liabilities to Firebase:', error);
+        });
+      }
+    }).catch((error: unknown) => {
+      // 에러 무시
+      console.error('[Store] Failed to load Firestore functions:', error);
+    });
+  }
 }
 
 // 동기 버전 (기존 코드 호환성 유지 - 기본 export)
