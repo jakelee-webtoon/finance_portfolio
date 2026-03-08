@@ -5,9 +5,10 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import TopBar from '@/components/TopBar';
 import Navigation from '@/components/Navigation';
 import { Salary, DashboardState } from '@/types';
-import { getDashboardState, getSalaries, setSalaries } from '@/lib/store';
+import { getDashboardState, getSalaries, setSalaries, syncFromFirebase } from '@/lib/store';
 import { getExchangeRates } from '@/lib/exchangeRate';
 import { useAuth } from '@/hooks/useAuth';
+import NaverSalaryComparisonModal from '@/components/NaverSalaryComparisonModal';
 
 // 금액 포맷팅 함수 (1억 넘으면 억 단위, 아니면 만원 단위)
 const formatAmountLabel = (amount: number): string => {
@@ -31,24 +32,34 @@ export default function SalaryPage() {
   const [exchangeRates, setExchangeRates] = useState<Record<string, number> | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [isComparisonModalOpen, setIsComparisonModalOpen] = useState(false);
   const [formData, setFormData] = useState({
     year: new Date().getFullYear().toString(),
     amount: '',
     owner: 'joint' as 'husband' | 'wife' | 'joint',
     currency: 'KRW',
+    yearsOfExperience: '',
     notes: '',
   });
 
   useEffect(() => {
     if (isAuthenticated !== true) return;
-    const dashboardState = getDashboardState();
-    setState(dashboardState);
-    setSalariesState(getSalaries());
     
-    // 환율 로드
-    getExchangeRates().then((rates) => {
-      setExchangeRates(rates);
-    });
+    // Firebase에서 데이터 동기화 후 로컬 데이터 로드
+    const loadData = async () => {
+      await syncFromFirebase();
+      
+      const dashboardState = getDashboardState();
+      setState(dashboardState);
+      setSalariesState(getSalaries());
+      
+      // 환율 로드
+      getExchangeRates().then((rates) => {
+        setExchangeRates(rates);
+      });
+    };
+    
+    loadData();
   }, [isAuthenticated]);
 
   // DashboardState 변경 감지 (TopBar에서 변경 시)
@@ -246,6 +257,7 @@ export default function SalaryPage() {
               amount: Number(formData.amount),
               owner: formData.owner,
               currency: formData.currency,
+              yearsOfExperience: formData.yearsOfExperience ? Number(formData.yearsOfExperience) : undefined,
               notes: formData.notes || undefined,
               as_of_date: today,
               last_modified_by: currentUser,
@@ -261,6 +273,7 @@ export default function SalaryPage() {
         amount: '',
         owner: 'joint',
         currency: 'KRW',
+        yearsOfExperience: '',
         notes: '',
       });
     } else {
@@ -274,6 +287,7 @@ export default function SalaryPage() {
         source_type: 'manual',
         as_of_date: today,
         last_modified_by: currentUser,
+        yearsOfExperience: formData.yearsOfExperience ? Number(formData.yearsOfExperience) : undefined,
         notes: formData.notes || undefined,
       };
       const updated = [...salaries, newSalary];
@@ -285,6 +299,7 @@ export default function SalaryPage() {
         amount: '',
         owner: 'joint',
         currency: 'KRW',
+        yearsOfExperience: '',
         notes: '',
       });
     }
@@ -296,6 +311,7 @@ export default function SalaryPage() {
       amount: String(salary.amount),
       owner: salary.owner,
       currency: salary.currency,
+      yearsOfExperience: salary.yearsOfExperience ? String(salary.yearsOfExperience) : '',
       notes: salary.notes || '',
     });
     setEditingId(salary.id);
@@ -358,6 +374,7 @@ export default function SalaryPage() {
                   amount: '',
                   owner: 'joint',
                   currency: 'KRW',
+                  yearsOfExperience: '',
                   notes: '',
                 });
                 setIsFormOpen(true);
@@ -513,6 +530,21 @@ export default function SalaryPage() {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
+                      연차 (년)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="50"
+                      value={formData.yearsOfExperience}
+                      onChange={(e) => setFormData({ ...formData, yearsOfExperience: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="예: 5 (선택사항)"
+                    />
+                    <p className="mt-1 text-xs text-gray-500">네이버 연봉 비교에 사용됩니다</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
                       비고/내용
                     </label>
                     <textarea
@@ -555,6 +587,7 @@ export default function SalaryPage() {
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">연도</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">금액</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">상승율</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">연차</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">소유자</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">비고</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">작업</th>
@@ -563,7 +596,7 @@ export default function SalaryPage() {
                 <tbody className="bg-white divide-y divide-gray-200">
                   {filteredSalaries.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
+                      <td colSpan={7} className="px-4 py-8 text-center text-gray-500">
                         연봉 데이터가 없습니다.
                       </td>
                     </tr>
@@ -609,6 +642,9 @@ export default function SalaryPage() {
                             )}
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                            {salary.yearsOfExperience ? `${salary.yearsOfExperience}년차` : '-'}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
                             {salary.owner === 'husband' ? '남편' : salary.owner === 'wife' ? '아내' : '공동'}
                           </td>
                           <td className="px-4 py-3 text-sm text-gray-500">{salary.notes || '-'}</td>
@@ -636,6 +672,31 @@ export default function SalaryPage() {
               </table>
             </div>
           </div>
+
+          {/* 네이버 연봉 비교 CTA */}
+          <div className="border-t border-gray-200 pt-6 mt-6">
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+              <div className="text-center">
+                <button
+                  onClick={() => setIsComparisonModalOpen(true)}
+                  className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-medium text-lg"
+                >
+                  네이버 연봉 비교
+                </button>
+                <p className="mt-2 text-sm text-gray-500">
+                  조직별 연봉 분포(참고용)와 내 위치를 확인
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* 네이버 연봉 비교 모달 */}
+          <NaverSalaryComparisonModal
+            isOpen={isComparisonModalOpen}
+            onClose={() => setIsComparisonModalOpen(false)}
+            salaries={filteredSalaries}
+            exchangeRates={exchangeRates}
+          />
         </div>
       </div>
     </div>

@@ -100,6 +100,7 @@ export interface Salary extends BaseEntity {
   amount: number; // 연봉 금액
   owner: 'husband' | 'wife' | 'joint';
   currency: string;
+  yearsOfExperience?: number; // 연차 (년)
   notes?: string; // 비고/내용
 }
 
@@ -107,4 +108,24 @@ export interface DashboardState {
   householdName: string;
   baseMonth: string; // YYYY-MM
   scope: Scope;
+}
+
+// 네이버 연봉 비교 관련 타입
+export type NaverOrg = 'NAVER_HQ' | 'WEBTOON' | 'CLOUD' | 'FINANCIAL' | 'LABS' | 'JET';
+export type SalaryScope = 'TC' | 'BASE';
+
+export interface NaverSalaryStats {
+  year: string;
+  org: NaverOrg;
+  scope: SalaryScope;
+  yearsOfExperience?: number; // 연차 (년) - undefined면 전체 통계
+  min: number; // 원 단위
+  p25: number; // 원 단위
+  median: number; // 원 단위
+  avg: number; // 원 단위
+  p75: number; // 원 단위
+  p90?: number; // 원 단위 (상위 10%)
+  p95?: number; // 원 단위 (상위 5%)
+  max: number; // 원 단위
+  n: number; // 샘플 수
 }

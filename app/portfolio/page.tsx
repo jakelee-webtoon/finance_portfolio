@@ -5,7 +5,7 @@ import TopBar from '@/components/TopBar';
 import Navigation from '@/components/Navigation';
 import Table, { Column } from '@/components/Table';
 import { Asset, Liability, DashboardState, Apartment } from '@/types';
-import { getDashboardState, getAssets, setAssets, getLiabilities, setLiabilities, getApartments, setApartments } from '@/lib/store';
+import { getDashboardState, getAssets, setAssets, getLiabilities, setLiabilities, getApartments, setApartments, syncFromFirebase } from '@/lib/store';
 import { getExchangeRates, convertCurrency } from '@/lib/exchangeRate';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -30,12 +30,17 @@ export default function PortfolioPage() {
 
   useEffect(() => {
     if (isAuthenticated !== true) return;
-    const dashboardState = getDashboardState();
-    setState(dashboardState);
-    let assets = getAssets();
     
-    // 기존 아파트 자산명을 "아파트"로 업데이트
-    const apartments = getApartments();
+    // Firebase에서 데이터 동기화 후 로컬 데이터 로드
+    const loadData = async () => {
+      await syncFromFirebase();
+      
+      const dashboardState = getDashboardState();
+      setState(dashboardState);
+      let assets = getAssets();
+      
+      // 기존 아파트 자산명을 "아파트"로 업데이트
+      const apartments = getApartments();
     let hasChanges = false;
     assets = assets.map((asset) => {
       if (asset.category === 'real_estate') {
@@ -72,10 +77,13 @@ export default function PortfolioPage() {
     setAssetsState(assets);
     setLiabilitiesState(getLiabilities());
     
-    // 환율 로드
-    getExchangeRates().then((rates) => {
-      setExchangeRates(rates);
-    });
+      // 환율 로드
+      getExchangeRates().then((rates) => {
+        setExchangeRates(rates);
+      });
+    };
+    
+    loadData();
   }, [isAuthenticated]);
 
   // DashboardState 변경 감지 (TopBar에서 변경 시)

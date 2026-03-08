@@ -9,7 +9,7 @@ export interface StockQuote {
 }
 
 const STOCK_CACHE_KEY = 'stock-quotes-cache';
-const CACHE_DURATION = 5 * 60 * 1000; // 5분
+const CACHE_DURATION = 1 * 60 * 1000; // 1분 (5분에서 1분으로 단축)
 
 interface StockCache {
   quotes: Record<string, StockQuote>;
@@ -57,9 +57,14 @@ async function fetchStockPriceFromYahoo(symbol: string): Promise<number | null> 
   }
 }
 
-export async function getStockPrice(symbol: string): Promise<number | null> {
-  // 캐시 확인
-  if (typeof window !== 'undefined') {
+export async function getStockPrice(symbol: string, forceRefresh: boolean = false): Promise<number | null> {
+  // 강제 새로고침인 경우 캐시 삭제
+  if (forceRefresh && typeof window !== 'undefined') {
+    localStorage.removeItem(`${STOCK_CACHE_KEY}-${symbol}`);
+  }
+  
+  // 캐시 확인 (강제 새로고침이 아닐 때만)
+  if (!forceRefresh && typeof window !== 'undefined') {
     const cached = localStorage.getItem(`${STOCK_CACHE_KEY}-${symbol}`);
     if (cached) {
       try {

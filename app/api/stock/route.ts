@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+// Next.js 캐시 비활성화 - 매번 새로운 데이터 가져오기
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const symbol = searchParams.get('symbol');
@@ -9,13 +13,17 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    // 캐시 방지를 위한 타임스탬프 추가
+    const timestamp = Date.now();
     const response = await fetch(
-      `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=2d`,
+      `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=2d&_t=${timestamp}`,
       {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
           'Accept': 'application/json',
         },
+        cache: 'no-store', // fetch 캐시 비활성화
+        next: { revalidate: 0 }, // Next.js 캐시 비활성화
       }
     );
 

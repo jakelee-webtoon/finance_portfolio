@@ -5,7 +5,7 @@ import TopBar from '@/components/TopBar';
 import Navigation from '@/components/Navigation';
 import Table, { Column } from '@/components/Table';
 import { StockHolding, DashboardState } from '@/types';
-import { getDashboardState, getStockHoldings, setStockHoldings } from '@/lib/store';
+import { getDashboardState, getStockHoldings, setStockHoldings, syncFromFirebase } from '@/lib/store';
 import { getMarketIndices, getStockQuotes, getStockPrice } from '@/lib/stockApi';
 import { getExchangeRates } from '@/lib/exchangeRate';
 import { useAuth } from '@/hooks/useAuth';
@@ -43,14 +43,22 @@ export default function StocksPage() {
 
   useEffect(() => {
     if (isAuthenticated !== true) return;
-    const dashboardState = getDashboardState();
-    setState(dashboardState);
-    setHoldings(getStockHoldings());
     
-    // 환율 로드
-    getExchangeRates().then((rates) => {
-      setExchangeRates(rates);
-    });
+    // Firebase에서 데이터 동기화 후 로컬 데이터 로드
+    const loadData = async () => {
+      await syncFromFirebase();
+      
+      const dashboardState = getDashboardState();
+      setState(dashboardState);
+      setHoldings(getStockHoldings());
+      
+      // 환율 로드
+      getExchangeRates().then((rates) => {
+        setExchangeRates(rates);
+      });
+    };
+    
+    loadData();
   }, [isAuthenticated]);
 
   // DashboardState 변경 감지 (TopBar에서 변경 시)

@@ -6,7 +6,7 @@ import TopBar from '@/components/TopBar';
 import Navigation from '@/components/Navigation';
 import Table, { Column } from '@/components/Table';
 import { Asset, DashboardState, Scope, Liability } from '@/types';
-import { getDashboardState, getAssets, getLiabilities } from '@/lib/store';
+import { getDashboardState, getAssets, getLiabilities, syncFromFirebase } from '@/lib/store';
 import { getExchangeRates } from '@/lib/exchangeRate';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -23,19 +23,29 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (isAuthenticated !== true) return;
-    try {
-      const dashboardState = getDashboardState();
-      setState(dashboardState);
-      setAssets(getAssets());
-      setLiabilities(getLiabilities());
-      
-      // 환율 로드
-      getExchangeRates().then((rates) => {
-        setExchangeRates(rates);
-      });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
-    }
+    
+    // Firebase에서 데이터 동기화 후 로컬 데이터 로드
+    const loadData = async () => {
+      try {
+        // Firebase에서 데이터 가져와서 localStorage에 동기화
+        await syncFromFirebase();
+        
+        // 동기화 후 localStorage에서 데이터 로드
+        const dashboardState = getDashboardState();
+        setState(dashboardState);
+        setAssets(getAssets());
+        setLiabilities(getLiabilities());
+        
+        // 환율 로드
+        getExchangeRates().then((rates) => {
+          setExchangeRates(rates);
+        });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Unknown error');
+      }
+    };
+    
+    loadData();
   }, [isAuthenticated]);
 
   // DashboardState 변경 감지 (TopBar에서 변경 시)

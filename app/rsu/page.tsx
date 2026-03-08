@@ -5,7 +5,7 @@ import TopBar from '@/components/TopBar';
 import Navigation from '@/components/Navigation';
 import Table, { Column } from '@/components/Table';
 import { StockHolding, DashboardState, Asset } from '@/types';
-import { getDashboardState, getStockHoldings, setStockHoldings, getAssets, setAssets } from '@/lib/store';
+import { getDashboardState, getStockHoldings, setStockHoldings, getAssets, setAssets, syncFromFirebase } from '@/lib/store';
 import { getStockPrice } from '@/lib/stockApi';
 import { getExchangeRates } from '@/lib/exchangeRate';
 import { useAuth } from '@/hooks/useAuth';
@@ -37,18 +37,26 @@ export default function RSUPage() {
 
   useEffect(() => {
     if (isAuthenticated !== true) return;
-    const dashboardState = getDashboardState();
-    setState(dashboardState);
-    const allHoldings = getStockHoldings();
-    // RSU와 옵션만 필터링
-    const filtered = allHoldings.filter((h) => h.type === 'rsu' || h.type === 'option');
-    setHoldings(filtered);
-    holdingsRef.current = filtered;
     
-    // 환율 로드
-    getExchangeRates().then((rates) => {
-      setExchangeRates(rates);
-    });
+    // Firebase에서 데이터 동기화 후 로컬 데이터 로드
+    const loadData = async () => {
+      await syncFromFirebase();
+      
+      const dashboardState = getDashboardState();
+      setState(dashboardState);
+      const allHoldings = getStockHoldings();
+      // RSU와 옵션만 필터링
+      const filtered = allHoldings.filter((h) => h.type === 'rsu' || h.type === 'option');
+      setHoldings(filtered);
+      holdingsRef.current = filtered;
+      
+      // 환율 로드
+      getExchangeRates().then((rates) => {
+        setExchangeRates(rates);
+      });
+    };
+    
+    loadData();
   }, [isAuthenticated]);
 
   // holdings가 변경될 때마다 ref 업데이트
@@ -225,13 +233,22 @@ export default function RSUPage() {
     const currentHoldings = holdingsRef.current;
     if (!exchangeRates || currentHoldings.length === 0) return;
 
-    const updatePrices = async () => {
+    const updatePrices = async (forceRefresh: boolean = false) => {
+      // 강제 새로고침인 경우 모든 심볼의 캐시 삭제
+      if (forceRefresh && typeof window !== 'undefined') {
+        currentHoldings.forEach((holding) => {
+          if (holding.symbol) {
+            localStorage.removeItem(`stock-quotes-cache-${holding.symbol}`);
+          }
+        });
+      }
+      
       const updated = await Promise.all(
         currentHoldings.map(async (holding) => {
           if (!holding.symbol) return holding;
           try {
-            const price = await getStockPrice(holding.symbol);
-            if (price !== null) {
+            const price = await getStockPrice(holding.symbol, forceRefresh);
+            if (price !== null && price !== holding.currentPrice) {
               return { ...holding, currentPrice: price };
             }
           } catch (error) {
@@ -240,18 +257,27 @@ export default function RSUPage() {
           return holding;
         })
       );
-      setHoldings(updated);
-      setStockHoldings(updated);
       
-      // 가격 업데이트 후 자산도 동기화 (전체 재계산)
-      // holdings 상태가 업데이트된 후 동기화하도록 다음 렌더 사이클에서 실행
-      setTimeout(() => {
-        syncHoldingsToAsset();
-      }, 100);
+      // 실제로 변경된 것이 있는지 확인
+      const hasChanges = updated.some((holding, index) => 
+        holding.currentPrice !== currentHoldings[index]?.currentPrice
+      );
+      
+      if (hasChanges) {
+        setHoldings(updated);
+        setStockHoldings(updated);
+        
+        // 가격 업데이트 후 자산도 동기화 (전체 재계산)
+        setTimeout(() => {
+          syncHoldingsToAsset();
+        }, 100);
+      }
     };
 
-    updatePrices();
-    const interval = setInterval(updatePrices, 60000); // 1분마다 업데이트
+    // 초기 로드 시 강제 새로고침
+    updatePrices(true);
+    // 이후 1분마다 업데이트 (캐시 사용)
+    const interval = setInterval(() => updatePrices(false), 60000);
     return () => clearInterval(interval);
   }, [exchangeRates, syncHoldingsToAsset]); // holdings.length 제거 (useRef로 최신 값 참조)
 
@@ -420,10 +446,30 @@ export default function RSUPage() {
     }, 0));
   }, [filteredHoldings, exchangeRates]);
 
-  const totalGainLoss = useMemo(() => {
+  // 실현 손익 계산 (vesting 완료된 것들)
+  const realizedGainLoss = useMemo(() => {
     if (!exchangeRates) return { krw: 0, usd: 0, eur: 0 };
     
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
     const totals = filteredHoldings.reduce((acc, holding) => {
+      // vesting 완료 여부 확인
+      let isRealized = false;
+      
+      if (holding.type === 'rsu' && holding.vestingDate) {
+        const vestingDate = new Date(holding.vestingDate);
+        vestingDate.setHours(0, 0, 0, 0);
+        isRealized = vestingDate <= today;
+      } else if (holding.type === 'option' && holding.expiryDate) {
+        const expiryDate = new Date(holding.expiryDate);
+        expiryDate.setHours(0, 0, 0, 0);
+        isRealized = expiryDate <= today;
+      }
+      
+      // 실현되지 않은 것은 제외
+      if (!isRealized) return acc;
+      
       const currentPrice = holding.currentPrice || 0;
       const currency = holding.currency || 'KRW';
       const exchange = holding.exchange || 'KRX';
@@ -434,7 +480,81 @@ export default function RSUPage() {
       let purchaseValue = 0;
       let currentValue = 0;
       
-      // RSU: 전체 수량 사용 (베스팅은 별도로 등록)
+      // RSU: 전체 수량 사용
+      if (holding.type === 'rsu' && holding.totalQuantity !== undefined) {
+        quantity = holding.totalQuantity;
+        purchaseValue = (holding.purchasePrice || 0) * quantity;
+        currentValue = currentPrice * quantity;
+      } else if (holding.type === 'option' && holding.strikePrice !== undefined) {
+        const intrinsicValue = currentPrice - holding.strikePrice;
+        if (intrinsicValue > 0) {
+          quantity = holding.quantity;
+          purchaseValue = holding.strikePrice * quantity;
+          currentValue = intrinsicValue * quantity;
+        }
+      } else {
+        quantity = holding.quantity;
+        purchaseValue = (holding.purchasePrice || 0) * quantity;
+        currentValue = currentPrice * quantity;
+      }
+      
+      const gainLossOriginal = currentValue - purchaseValue;
+      
+      if (isUSD) {
+        acc.usd += gainLossOriginal;
+        acc.krw += gainLossOriginal * exchangeRates.USD_TO_KRW;
+      } else if (isEUR) {
+        acc.eur += gainLossOriginal;
+        acc.krw += gainLossOriginal * exchangeRates.EUR_TO_KRW;
+      } else {
+        acc.krw += gainLossOriginal;
+      }
+      
+      return acc;
+    }, { krw: 0, usd: 0, eur: 0 });
+    
+    return {
+      krw: Math.floor(totals.krw),
+      usd: totals.usd,
+      eur: totals.eur,
+    };
+  }, [filteredHoldings, exchangeRates]);
+
+  // 잔여 손익 계산 (vesting 미완료된 것들)
+  const unrealizedGainLoss = useMemo(() => {
+    if (!exchangeRates) return { krw: 0, usd: 0, eur: 0 };
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const totals = filteredHoldings.reduce((acc, holding) => {
+      // vesting 완료 여부 확인
+      let isRealized = false;
+      
+      if (holding.type === 'rsu' && holding.vestingDate) {
+        const vestingDate = new Date(holding.vestingDate);
+        vestingDate.setHours(0, 0, 0, 0);
+        isRealized = vestingDate <= today;
+      } else if (holding.type === 'option' && holding.expiryDate) {
+        const expiryDate = new Date(holding.expiryDate);
+        expiryDate.setHours(0, 0, 0, 0);
+        isRealized = expiryDate <= today;
+      }
+      
+      // 실현된 것은 제외
+      if (isRealized) return acc;
+      
+      const currentPrice = holding.currentPrice || 0;
+      const currency = holding.currency || 'KRW';
+      const exchange = holding.exchange || 'KRX';
+      const isUSD = currency === 'USD' || exchange === 'NASDAQ' || exchange === 'NYSE';
+      const isEUR = currency === 'EUR';
+      
+      let quantity = 0;
+      let purchaseValue = 0;
+      let currentValue = 0;
+      
+      // RSU: 전체 수량 사용
       if (holding.type === 'rsu' && holding.totalQuantity !== undefined) {
         quantity = holding.totalQuantity;
         purchaseValue = (holding.purchasePrice || 0) * quantity;
@@ -801,58 +921,131 @@ export default function RSUPage() {
         <div className="max-w-7xl mx-auto">
           <div className="flex items-center justify-between mb-6">
             <h1 className="text-2xl font-bold text-gray-900">RSU/옵션</h1>
-            <button
-              onClick={() => {
-                setFormData(getInitialFormData());
-                setIsFormOpen(true);
-              }}
-              className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
-            >
-              + RSU/옵션 추가
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={async () => {
+                  const currentHoldings = holdingsRef.current;
+                  if (!exchangeRates || currentHoldings.length === 0) return;
+                  
+                  // 모든 심볼의 캐시 삭제
+                  if (typeof window !== 'undefined') {
+                    currentHoldings.forEach((holding) => {
+                      if (holding.symbol) {
+                        localStorage.removeItem(`stock-quotes-cache-${holding.symbol}`);
+                      }
+                    });
+                  }
+                  
+                  const updated = await Promise.all(
+                    currentHoldings.map(async (holding) => {
+                      if (!holding.symbol) return holding;
+                      try {
+                        const price = await getStockPrice(holding.symbol, true); // 강제 새로고침
+                        if (price !== null) {
+                          return { ...holding, currentPrice: price };
+                        }
+                      } catch (error) {
+                        // 에러 발생 시 기존 holding 반환
+                      }
+                      return holding;
+                    })
+                  );
+                  setHoldings(updated);
+                  setStockHoldings(updated);
+                  
+                  setTimeout(() => {
+                    syncHoldingsToAsset();
+                  }, 100);
+                }}
+                className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors"
+              >
+                🔄 가격 새로고침
+              </button>
+              <button
+                onClick={() => {
+                  setFormData(getInitialFormData());
+                  setIsFormOpen(true);
+                }}
+                className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+              >
+                + RSU/옵션 추가
+              </button>
+            </div>
           </div>
 
           {/* 통계 카드 */}
-          <div className="space-y-4 mb-6">
-            {/* 첫 번째 줄: 총 평가 금액 / 총 손익 / Vesting 예정 */}
-            <div className="grid grid-cols-12 gap-4">
-              <div className="col-span-12 md:col-span-4 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-                <div className="text-sm text-gray-600 mb-1">총 평가 금액</div>
-                <div className="text-2xl font-bold text-gray-900">
+          <div className="mb-6">
+            {/* 한 줄: 총 평가 금액 / 실현 손익 / 잔여 손익 / Vesting 예정 */}
+            <div className="grid grid-cols-12 gap-3">
+              <div className="col-span-12 md:col-span-3 bg-white rounded-lg shadow-sm border border-gray-200 p-3">
+                <div className="text-xs text-gray-600 mb-1">총 평가 금액</div>
+                <div className="text-xl font-bold text-gray-900">
                   {new Intl.NumberFormat('ko-KR').format(totalValue)}원
                 </div>
+                <div className="text-xs text-gray-500 mt-1">
+                  (실현 {new Intl.NumberFormat('ko-KR').format(realizedGainLoss.krw)}원 + 잔여 {new Intl.NumberFormat('ko-KR').format(unrealizedGainLoss.krw)}원)
+                </div>
               </div>
-              <div className="col-span-12 md:col-span-4 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-                <div className="text-sm text-gray-600 mb-1">총 손익</div>
-                {totalGainLoss.usd !== 0 ? (
+              <div className="col-span-12 md:col-span-3 bg-white rounded-lg shadow-sm border border-gray-200 p-3">
+                <div className="text-xs text-gray-600 mb-1">실현 손익</div>
+                {realizedGainLoss.usd !== 0 ? (
                   <div>
-                    <div className={`text-2xl font-bold ${totalGainLoss.krw >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      {totalGainLoss.krw >= 0 ? '+' : ''}
-                      {new Intl.NumberFormat('ko-KR').format(totalGainLoss.krw)}원
+                    <div className={`text-xl font-bold ${realizedGainLoss.krw >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {realizedGainLoss.krw >= 0 ? '+' : ''}
+                      {new Intl.NumberFormat('ko-KR').format(realizedGainLoss.krw)}원
                     </div>
-                    <div className={`text-sm text-gray-500 ${totalGainLoss.usd >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      (${totalGainLoss.usd >= 0 ? '+' : ''}{new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(totalGainLoss.usd)})
+                    <div className={`text-xs text-gray-500 ${realizedGainLoss.usd >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      (${realizedGainLoss.usd >= 0 ? '+' : ''}{new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(realizedGainLoss.usd)})
                     </div>
                   </div>
-                ) : totalGainLoss.eur !== 0 ? (
+                ) : realizedGainLoss.eur !== 0 ? (
                   <div>
-                    <div className={`text-2xl font-bold ${totalGainLoss.krw >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      {totalGainLoss.krw >= 0 ? '+' : ''}
-                      {new Intl.NumberFormat('ko-KR').format(totalGainLoss.krw)}원
+                    <div className={`text-xl font-bold ${realizedGainLoss.krw >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {realizedGainLoss.krw >= 0 ? '+' : ''}
+                      {new Intl.NumberFormat('ko-KR').format(realizedGainLoss.krw)}원
                     </div>
-                    <div className={`text-sm text-gray-500 ${totalGainLoss.eur >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      (€{totalGainLoss.eur >= 0 ? '+' : ''}{new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(totalGainLoss.eur)})
+                    <div className={`text-xs text-gray-500 ${realizedGainLoss.eur >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      (€{realizedGainLoss.eur >= 0 ? '+' : ''}{new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(realizedGainLoss.eur)})
                     </div>
                   </div>
                 ) : (
-                  <div className={`text-2xl font-bold ${totalGainLoss.krw >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    {totalGainLoss.krw >= 0 ? '+' : ''}
-                    {new Intl.NumberFormat('ko-KR').format(totalGainLoss.krw)}원
+                  <div className={`text-xl font-bold ${realizedGainLoss.krw >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {realizedGainLoss.krw >= 0 ? '+' : ''}
+                    {new Intl.NumberFormat('ko-KR').format(realizedGainLoss.krw)}원
                   </div>
                 )}
               </div>
-              <div className="col-span-12 md:col-span-4 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-                <div className="text-sm text-gray-600 mb-1">Vesting 예정</div>
+              <div className="col-span-12 md:col-span-3 bg-white rounded-lg shadow-sm border border-gray-200 p-3">
+                <div className="text-xs text-gray-600 mb-1">잔여 손익</div>
+                {unrealizedGainLoss.usd !== 0 ? (
+                  <div>
+                    <div className={`text-xl font-bold ${unrealizedGainLoss.krw >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {unrealizedGainLoss.krw >= 0 ? '+' : ''}
+                      {new Intl.NumberFormat('ko-KR').format(unrealizedGainLoss.krw)}원
+                    </div>
+                    <div className={`text-xs text-gray-500 ${unrealizedGainLoss.usd >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      (${unrealizedGainLoss.usd >= 0 ? '+' : ''}{new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(unrealizedGainLoss.usd)})
+                    </div>
+                  </div>
+                ) : unrealizedGainLoss.eur !== 0 ? (
+                  <div>
+                    <div className={`text-xl font-bold ${unrealizedGainLoss.krw >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {unrealizedGainLoss.krw >= 0 ? '+' : ''}
+                      {new Intl.NumberFormat('ko-KR').format(unrealizedGainLoss.krw)}원
+                    </div>
+                    <div className={`text-xs text-gray-500 ${unrealizedGainLoss.eur >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      (€{unrealizedGainLoss.eur >= 0 ? '+' : ''}{new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(unrealizedGainLoss.eur)})
+                    </div>
+                  </div>
+                ) : (
+                  <div className={`text-xl font-bold ${unrealizedGainLoss.krw >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {unrealizedGainLoss.krw >= 0 ? '+' : ''}
+                    {new Intl.NumberFormat('ko-KR').format(unrealizedGainLoss.krw)}원
+                  </div>
+                )}
+              </div>
+              <div className="col-span-12 md:col-span-3 bg-white rounded-lg shadow-sm border border-gray-200 p-3">
+                <div className="text-xs text-gray-600 mb-1">Vesting 예정</div>
                 <div className="space-y-2">
                 {(() => {
                   // 주식명별로 그룹화하여 vesting 기간 계산
@@ -931,9 +1124,9 @@ export default function RSUPage() {
                     );
                   });
                 })()}
+                </div>
               </div>
             </div>
-          </div>
           </div>
 
           {/* 두 번째 줄: 구분선 + 보유 주식 주가 + 환율 */}

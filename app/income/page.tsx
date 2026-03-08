@@ -5,7 +5,7 @@ import TopBar from '@/components/TopBar';
 import Navigation from '@/components/Navigation';
 import Table, { Column } from '@/components/Table';
 import { Income, DashboardState } from '@/types';
-import { getDashboardState, getIncome, setIncome } from '@/lib/store';
+import { getDashboardState, getIncome, setIncome, syncFromFirebase } from '@/lib/store';
 import { useAuth } from '@/hooks/useAuth';
 
 export default function IncomePage() {
@@ -25,9 +25,17 @@ export default function IncomePage() {
 
   useEffect(() => {
     if (isAuthenticated !== true) return;
-    const dashboardState = getDashboardState();
-    setState(dashboardState);
-    setIncomes(getIncome());
+    
+    // Firebase에서 데이터 동기화 후 로컬 데이터 로드
+    const loadData = async () => {
+      await syncFromFirebase();
+      
+      const dashboardState = getDashboardState();
+      setState(dashboardState);
+      setIncomes(getIncome());
+    };
+    
+    loadData();
   }, [isAuthenticated]);
 
   // DashboardState 변경 감지 (TopBar에서 변경 시)

@@ -5,7 +5,7 @@ import TopBar from '@/components/TopBar';
 import Navigation from '@/components/Navigation';
 import Table, { Column } from '@/components/Table';
 import { Apartment, DashboardState, Asset } from '@/types';
-import { getDashboardState, getApartments, setApartments, getAssets, setAssets } from '@/lib/store';
+import { getDashboardState, getApartments, setApartments, getAssets, setAssets, syncFromFirebase } from '@/lib/store';
 import { useAuth } from '@/hooks/useAuth';
 
 export default function ApartmentPage() {
@@ -32,10 +32,18 @@ export default function ApartmentPage() {
 
   useEffect(() => {
     if (isAuthenticated !== true) return;
-    const dashboardState = getDashboardState();
-    setState(dashboardState);
-    const loadedApartments = getApartments();
-    setApartmentsState(loadedApartments);
+    
+    // Firebase에서 데이터 동기화 후 로컬 데이터 로드
+    const loadData = async () => {
+      await syncFromFirebase();
+      
+      const dashboardState = getDashboardState();
+      setState(dashboardState);
+      const loadedApartments = getApartments();
+      setApartmentsState(loadedApartments);
+    };
+    
+    loadData();
   }, [isAuthenticated]);
 
   // DashboardState 변경 감지 (TopBar에서 변경 시)
