@@ -175,7 +175,9 @@ export default function PortfolioPage() {
           last_modified_by: currentUser,
         };
         
-        const updated = assets.map((asset) =>
+        // 전체 자산 목록에서 수정
+        const allAssets = getAssets();
+        const updated = allAssets.map((asset) =>
           asset.id === editingId ? updatedAsset : asset
         );
         setAssetsState(updated);
@@ -200,7 +202,9 @@ export default function PortfolioPage() {
           as_of_date: today,
           last_modified_by: currentUser,
         };
-        const updated = [...assets, newAsset];
+        // 전체 자산 목록에 추가
+        const allAssets = getAssets();
+        const updated = [...allAssets, newAsset];
         setAssetsState(updated);
         setAssets(updated);
         
@@ -212,7 +216,9 @@ export default function PortfolioPage() {
     } else {
       if (editingId) {
         // 수정
-        const updated = liabilities.map((liability) =>
+        // 전체 부채 목록에서 수정
+        const allLiabilities = getLiabilities();
+        const updated = allLiabilities.map((liability) =>
           liability.id === editingId
             ? {
                 ...liability,
@@ -242,7 +248,9 @@ export default function PortfolioPage() {
           as_of_date: today,
           last_modified_by: currentUser,
         };
-        const updated = [...liabilities, newLiability];
+        // 전체 부채 목록에 추가
+        const allLiabilities = getLiabilities();
+        const updated = [...allLiabilities, newLiability];
         setLiabilitiesState(updated);
         setLiabilities(updated);
       }
@@ -287,7 +295,9 @@ export default function PortfolioPage() {
 
   const handleDeleteAsset = (id: string) => {
     if (confirm('정말 삭제하시겠습니까?')) {
-      const updated = assets.filter((asset) => asset.id !== id);
+      // 전체 자산 목록에서 삭제
+      const allAssets = getAssets();
+      const updated = allAssets.filter((asset) => asset.id !== id);
       setAssetsState(updated);
       setAssets(updated);
     }
@@ -295,7 +305,9 @@ export default function PortfolioPage() {
 
   const handleDeleteLiability = (id: string) => {
     if (confirm('정말 삭제하시겠습니까?')) {
-      const updated = liabilities.filter((liability) => liability.id !== id);
+      // 전체 부채 목록에서 삭제
+      const allLiabilities = getLiabilities();
+      const updated = allLiabilities.filter((liability) => liability.id !== id);
       setLiabilitiesState(updated);
       setLiabilities(updated);
     }
