@@ -82,10 +82,12 @@ export default function SalaryPage() {
 
   const filteredSalaries = useMemo(() => {
     if (!state) return [];
-    // 연봉 페이지에서는 합산 옵션 없음 - 남편과 아내만 필터링
-    // scope가 'combined'일 경우 자동으로 남편 또는 아내로 변경
-    const effectiveScope = state.scope === 'combined' ? 'husband' : state.scope;
-    return salaries.filter((salary) => salary.owner === effectiveScope || salary.owner === 'joint');
+    // scope가 'combined'일 경우 전체 (남편+아내+공동) 포함
+    if (state.scope === 'combined') {
+      return salaries; // 전체 연봉 데이터
+    }
+    // 남편 또는 아내만 필터링
+    return salaries.filter((salary) => salary.owner === state.scope || salary.owner === 'joint');
   }, [salaries, state]);
 
   // 생애 총 소득 계산
@@ -135,6 +137,9 @@ export default function SalaryPage() {
   const yearlyIncomeData = useMemo(() => {
     if (!exchangeRates || filteredSalaries.length === 0) return [];
     
+    // 합산 모드인지 확인
+    const isCombined = state?.scope === 'combined';
+    
     // 연도별로 그룹화
     const groupedByYear = filteredSalaries.reduce((acc, salary) => {
       if (!acc[salary.year]) {
@@ -144,44 +149,100 @@ export default function SalaryPage() {
       return acc;
     }, {} as Record<string, Salary[]>);
     
-    // 연도별 총액 계산
-    const yearlyTotals = Object.entries(groupedByYear).map(([year, yearSalaries]) => {
-      const total = yearSalaries.reduce((sum, salary) => {
-        if (salary.currency === 'KRW') {
+    // 합산 모드일 경우 남편/아내로 분리
+    if (isCombined) {
+      const yearlyTotals = Object.entries(groupedByYear).map(([year, yearSalaries]) => {
+        let husbandTotal = 0;
+        let wifeTotal = 0;
+        let total = 0;
+        
+        yearSalaries.forEach((salary) => {
+          let krwAmount = salary.amount;
+          if (salary.currency === 'USD') {
+            krwAmount = salary.amount * exchangeRates.USD_TO_KRW;
+          } else if (salary.currency === 'EUR') {
+            krwAmount = salary.amount * exchangeRates.EUR_TO_KRW;
+          }
+          
+          total += krwAmount;
+          
+          if (salary.owner === 'husband') {
+            husbandTotal += krwAmount;
+          } else if (salary.owner === 'wife') {
+            wifeTotal += krwAmount;
+          } else if (salary.owner === 'joint') {
+            // 공동 소유는 반반으로 분배
+            husbandTotal += krwAmount / 2;
+            wifeTotal += krwAmount / 2;
+          }
+        });
+        
+        return {
+          year,
+          husband: Math.floor(husbandTotal),
+          wife: Math.floor(wifeTotal),
+          amount: Math.floor(total),
+        };
+      });
+      
+      // 연도순으로 정렬
+      const sorted = yearlyTotals.sort((a, b) => a.year.localeCompare(b.year));
+      
+      // 전년비 상승율 계산 (합산 기준)
+      return sorted.map((item, index) => {
+        let changePercent: number | null = null;
+        if (index > 0) {
+          const prevAmount = sorted[index - 1].amount;
+          if (prevAmount > 0) {
+            changePercent = ((item.amount - prevAmount) / prevAmount) * 100;
+          }
+        }
+        
+        return {
+          ...item,
+          changePercent,
+        };
+      });
+    } else {
+      // 단일 모드 (기존 로직)
+      const yearlyTotals = Object.entries(groupedByYear).map(([year, yearSalaries]) => {
+        const total = yearSalaries.reduce((sum, salary) => {
+          if (salary.currency === 'KRW') {
+            return sum + salary.amount;
+          } else if (salary.currency === 'USD') {
+            return sum + salary.amount * exchangeRates.USD_TO_KRW;
+          } else if (salary.currency === 'EUR') {
+            return sum + salary.amount * exchangeRates.EUR_TO_KRW;
+          }
           return sum + salary.amount;
-        } else if (salary.currency === 'USD') {
-          return sum + salary.amount * exchangeRates.USD_TO_KRW;
-        } else if (salary.currency === 'EUR') {
-          return sum + salary.amount * exchangeRates.EUR_TO_KRW;
-        }
-        return sum + salary.amount;
-      }, 0);
+        }, 0);
+        
+        return {
+          year,
+          amount: Math.floor(total),
+        };
+      });
       
-      return {
-        year,
-        amount: Math.floor(total),
-      };
-    });
-    
-    // 연도순으로 정렬
-    const sorted = yearlyTotals.sort((a, b) => a.year.localeCompare(b.year));
-    
-    // 전년비 상승율 계산
-    return sorted.map((item, index) => {
-      let changePercent: number | null = null;
-      if (index > 0) {
-        const prevAmount = sorted[index - 1].amount;
-        if (prevAmount > 0) {
-          changePercent = ((item.amount - prevAmount) / prevAmount) * 100;
-        }
-      }
+      // 연도순으로 정렬
+      const sorted = yearlyTotals.sort((a, b) => a.year.localeCompare(b.year));
       
-      return {
-        ...item,
-        changePercent,
-      };
-    });
-  }, [filteredSalaries, exchangeRates]);
+      // 전년비 상승율 계산
+      return sorted.map((item, index) => {
+        let changePercent: number | null = null;
+        if (index > 0) {
+          const prevAmount = sorted[index - 1].amount;
+          if (prevAmount > 0) {
+            changePercent = ((item.amount - prevAmount) / prevAmount) * 100;
+          }
+        }
+        
+        return {
+          ...item,
+          changePercent,
+        };
+      });
+    }
+  }, [filteredSalaries, exchangeRates, state]);
 
   // 최근 소득의 전년비 상승률 계산
   const recentIncomeChangePercent = useMemo(() => {
@@ -194,7 +255,13 @@ export default function SalaryPage() {
   const renderCustomLabel = (props: any) => {
     if (!props) return null;
     
-    const { x, y, width, index, value } = props;
+    const { x, y, width, index, value, dataKey } = props;
+    
+    // 합산 모드일 때는 합계(amount) 바에만 라벨 표시
+    const isCombined = state?.scope === 'combined';
+    if (isCombined && dataKey !== 'amount') {
+      return null; // 남편/아내 개별 바에는 라벨 표시 안 함
+    }
     
     // index를 사용해서 yearlyIncomeData에서 changePercent 가져오기
     const dataItem = yearlyIncomeData[index];
@@ -454,16 +521,39 @@ export default function SalaryPage() {
                     }}
                   />
                   <Tooltip
-                    formatter={(value: number) => new Intl.NumberFormat('ko-KR').format(value) + '원'}
+                    formatter={(value: number, name: string) => {
+                      const formatted = new Intl.NumberFormat('ko-KR').format(value) + '원';
+                      if (name === 'husband') return ['남편: ' + formatted, '남편'];
+                      if (name === 'wife') return ['아내: ' + formatted, '아내'];
+                      return [formatted, '합계'];
+                    }}
                     labelStyle={{ color: '#374151' }}
                   />
-                  <Bar dataKey="amount" fill="#3B82F6" radius={[4, 4, 0, 0]}>
-                    <LabelList 
-                      dataKey="amount"
-                      position="insideTop"
-                      content={renderCustomLabel}
-                    />
-                  </Bar>
+                  {state?.scope === 'combined' ? (
+                    <>
+                      {/* 합산 모드: 스택 바 차트 */}
+                      <Bar dataKey="husband" stackId="income" fill="#3B82F6" radius={[0, 0, 0, 0]} name="남편" />
+                      <Bar dataKey="wife" stackId="income" fill="#EC4899" radius={[4, 4, 0, 0]} name="아내">
+                        {/* 합계 라벨 (맨 위 바에 표시) */}
+                        <LabelList 
+                          dataKey="amount"
+                          position="insideTop"
+                          content={renderCustomLabel}
+                        />
+                      </Bar>
+                    </>
+                  ) : (
+                    <>
+                      {/* 단일 모드: 기존 바 차트 */}
+                      <Bar dataKey="amount" fill="#3B82F6" radius={[4, 4, 0, 0]}>
+                        <LabelList 
+                          dataKey="amount"
+                          position="insideTop"
+                          content={renderCustomLabel}
+                        />
+                      </Bar>
+                    </>
+                  )}
                 </BarChart>
               </ResponsiveContainer>
             ) : (
