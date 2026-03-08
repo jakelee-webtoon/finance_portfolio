@@ -135,7 +135,7 @@ export default function PortfolioPage() {
     
     if (apartmentIndex >= 0) {
       const today = new Date().toISOString().split('T')[0];
-      const currentUser = state?.scope === 'husband' ? 'husband' : state?.scope === 'wife' ? 'wife' : 'husband';
+      const currentUser: 'husband' | 'wife' = state?.scope === 'husband' ? 'husband' : state?.scope === 'wife' ? 'wife' : 'husband';
       
       // 아파트의 currentPrice 업데이트
       const updatedApartments = apartments.map((apt, index) =>
@@ -158,7 +158,7 @@ export default function PortfolioPage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    const currentUser = state?.scope === 'husband' ? 'husband' : state?.scope === 'wife' ? 'wife' : 'husband';
+    const currentUser: 'husband' | 'wife' = state?.scope === 'husband' ? 'husband' : state?.scope === 'wife' ? 'wife' : 'husband';
     const today = new Date().toISOString().split('T')[0];
 
     if (activeTab === 'assets') {

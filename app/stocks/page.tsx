@@ -137,7 +137,7 @@ export default function StocksPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    const currentUser = state?.scope === 'husband' ? 'husband' : state?.scope === 'wife' ? 'wife' : 'husband';
+    const currentUser: 'husband' | 'wife' = state?.scope === 'husband' ? 'husband' : state?.scope === 'wife' ? 'wife' : 'husband';
     const today = new Date().toISOString().split('T')[0];
 
     // 현재 가격 가져오기

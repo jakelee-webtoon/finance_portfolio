@@ -14,14 +14,26 @@ const firebaseConfig = {
 };
 
 // Firebase 앱 초기화 (중복 초기화 방지)
-let app: FirebaseApp;
-if (getApps().length === 0) {
-  app = initializeApp(firebaseConfig);
-} else {
-  app = getApps()[0];
+// 환경 변수가 없으면 빈 객체로 초기화 (에러 방지)
+let app: FirebaseApp | null = null;
+if (
+  firebaseConfig.apiKey &&
+  firebaseConfig.projectId &&
+  typeof window !== 'undefined'
+) {
+  try {
+    if (getApps().length === 0) {
+      app = initializeApp(firebaseConfig);
+    } else {
+      app = getApps()[0];
+    }
+  } catch (error) {
+    // Firebase 초기화 실패 시 무시 (환경 변수가 없을 때)
+    console.warn('Firebase initialization failed:', error);
+  }
 }
 
-// Firebase 서비스 초기화
-export const auth: Auth = getAuth(app);
-export const db: Firestore = getFirestore(app);
+// Firebase 서비스 초기화 (app이 null이면 에러 발생 가능하므로 타입 가드 필요)
+export const auth: Auth | null = app ? getAuth(app) : null;
+export const db: Firestore | null = app ? getFirestore(app) : null;
 export default app;

@@ -15,6 +15,9 @@ import {
   QuerySnapshot
 } from 'firebase/firestore';
 import { db } from './firebase';
+
+// db가 null이면 함수들이 에러를 반환하도록 처리
+// (런타임에만 체크, 빌드 시 에러 방지)
 import { DashboardState, Asset, Income, Transaction, Portfolio, Liability, StockHolding, Apartment, Salary } from '@/types';
 
 // 사용자 ID 가져오기 (현재는 단일 사용자 가정, 나중에 인증 추가)
@@ -61,6 +64,10 @@ export async function getDashboardState(): Promise<DashboardState> {
     };
   }
 
+  if (!db) {
+    throw new Error('Firebase is not initialized. Please check your environment variables.');
+  }
+
   try {
     const userId = getUserId();
     const docRef = doc(db, `users/${userId}/settings`, 'dashboard');
@@ -94,6 +101,9 @@ export async function getDashboardState(): Promise<DashboardState> {
 
 export async function setDashboardState(state: DashboardState): Promise<void> {
   if (typeof window === 'undefined') return;
+  if (!db) {
+    throw new Error('Firebase is not initialized. Please check your environment variables.');
+  }
   
   try {
     const userId = getUserId();
@@ -111,6 +121,10 @@ export async function setDashboardState(state: DashboardState): Promise<void> {
 // Assets
 export async function getAssets(): Promise<Asset[]> {
   if (typeof window === 'undefined') return [];
+  if (!db) {
+    const stored = localStorage.getItem('finance-assets');
+    return stored ? JSON.parse(stored) : [];
+  }
   
   try {
     const q = query(collection(db, getCollectionPath('assets')), orderBy('as_of_date', 'desc'));
@@ -129,6 +143,10 @@ export async function getAssets(): Promise<Asset[]> {
 
 export async function setAssets(assets: Asset[]): Promise<void> {
   if (typeof window === 'undefined') return;
+  if (!db) {
+    localStorage.setItem('finance-assets', JSON.stringify(assets));
+    return;
+  }
   
   try {
     const batch: Promise<void>[] = [];
@@ -153,6 +171,10 @@ export async function setAssets(assets: Asset[]): Promise<void> {
 // Stock Holdings
 export async function getStockHoldings(): Promise<StockHolding[]> {
   if (typeof window === 'undefined') return [];
+  if (!db) {
+    const stored = localStorage.getItem('finance-stock-holdings');
+    return stored ? JSON.parse(stored) : [];
+  }
   
   try {
     const q = query(collection(db, getCollectionPath('stockHoldings')), orderBy('as_of_date', 'desc'));
@@ -171,6 +193,10 @@ export async function getStockHoldings(): Promise<StockHolding[]> {
 
 export async function setStockHoldings(holdings: StockHolding[]): Promise<void> {
   if (typeof window === 'undefined') return;
+  if (!db) {
+    localStorage.setItem('finance-stock-holdings', JSON.stringify(holdings));
+    return;
+  }
   
   try {
     const batch: Promise<void>[] = [];
@@ -195,6 +221,10 @@ export async function setStockHoldings(holdings: StockHolding[]): Promise<void> 
 // Salaries
 export async function getSalaries(): Promise<Salary[]> {
   if (typeof window === 'undefined') return [];
+  if (!db) {
+    const stored = localStorage.getItem('finance-salaries');
+    return stored ? JSON.parse(stored) : [];
+  }
   
   try {
     const q = query(collection(db, getCollectionPath('salaries')), orderBy('year', 'desc'));
@@ -212,6 +242,10 @@ export async function getSalaries(): Promise<Salary[]> {
 
 export async function setSalaries(salaries: Salary[]): Promise<void> {
   if (typeof window === 'undefined') return;
+  if (!db) {
+    localStorage.setItem('finance-salaries', JSON.stringify(salaries));
+    return;
+  }
   
   try {
     const batch: Promise<void>[] = [];
@@ -233,6 +267,10 @@ export async function setSalaries(salaries: Salary[]): Promise<void> {
 // Apartments
 export async function getApartments(): Promise<Apartment[]> {
   if (typeof window === 'undefined') return [];
+  if (!db) {
+    const stored = localStorage.getItem('finance-apartments');
+    return stored ? JSON.parse(stored) : [];
+  }
   
   try {
     const q = query(collection(db, getCollectionPath('apartments')), orderBy('as_of_date', 'desc'));
@@ -251,6 +289,10 @@ export async function getApartments(): Promise<Apartment[]> {
 
 export async function setApartments(apartments: Apartment[]): Promise<void> {
   if (typeof window === 'undefined') return;
+  if (!db) {
+    localStorage.setItem('finance-apartments', JSON.stringify(apartments));
+    return;
+  }
   
   try {
     const batch: Promise<void>[] = [];
@@ -275,6 +317,10 @@ export async function setApartments(apartments: Apartment[]): Promise<void> {
 // Income
 export async function getIncome(): Promise<Income[]> {
   if (typeof window === 'undefined') return [];
+  if (!db) {
+    const stored = localStorage.getItem('finance-income');
+    return stored ? JSON.parse(stored) : [];
+  }
   
   try {
     const q = query(collection(db, getCollectionPath('income')), orderBy('as_of_date', 'desc'));
@@ -293,6 +339,10 @@ export async function getIncome(): Promise<Income[]> {
 
 export async function setIncome(income: Income[]): Promise<void> {
   if (typeof window === 'undefined') return;
+  if (!db) {
+    localStorage.setItem('finance-income', JSON.stringify(income));
+    return;
+  }
   
   try {
     const batch: Promise<void>[] = [];
