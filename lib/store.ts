@@ -54,9 +54,8 @@ export async function syncFromFirebase(): Promise<void> {
     // Stock Holdings
     try {
       const holdings = await firestore.getStockHoldings();
-      if (holdings.length > 0) {
-        localStorage.setItem('finance-stock-holdings', JSON.stringify(holdings));
-      }
+      // 빈 배열도 저장 (mock 데이터 방지)
+      localStorage.setItem('finance-stock-holdings', JSON.stringify(holdings));
     } catch (error) {
       // 에러 무시
     }
@@ -235,9 +234,12 @@ export function setLiabilities(liabilities: Liability[]) {
 
 // 동기 버전 (기존 코드 호환성 유지 - 기본 export)
 export function getStockHoldings(): StockHolding[] {
-  if (typeof window === 'undefined') return mockStockHoldings;
+  if (typeof window === 'undefined') return [];
   const stored = localStorage.getItem('finance-stock-holdings');
-  return stored ? JSON.parse(stored) : mockStockHoldings;
+  // 빈 배열도 유효한 데이터로 처리 (mock 데이터 반환하지 않음)
+  if (stored === null) return [];
+  const parsed = JSON.parse(stored);
+  return Array.isArray(parsed) ? parsed : [];
 }
 
 export function setStockHoldings(holdings: StockHolding[]): void {
