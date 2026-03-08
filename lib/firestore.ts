@@ -12,7 +12,8 @@ import {
   orderBy,
   Timestamp,
   DocumentData,
-  QuerySnapshot
+  QuerySnapshot,
+  writeBatch
 } from 'firebase/firestore';
 import { db } from './firebase';
 
@@ -154,10 +155,27 @@ export async function setAssets(assets: Asset[]): Promise<void> {
   }
   
   try {
-    const batch: Promise<void>[] = [];
     const firestore = db; // Type narrowing
+    const batch = writeBatch(firestore);
+    const collectionPath = getCollectionPath('assets');
+    
+    // 기존 Firestore 데이터 가져오기
+    const existingQuery = query(collection(firestore, collectionPath));
+    const existingSnapshot = await getDocs(existingQuery);
+    const existingIds = new Set(existingSnapshot.docs.map(doc => doc.id));
+    const newIds = new Set(assets.map(asset => asset.id));
+    
+    // 삭제된 항목들을 Firestore에서 제거
+    existingIds.forEach(id => {
+      if (!newIds.has(id)) {
+        const docRef = doc(firestore, collectionPath, id);
+        batch.delete(docRef);
+      }
+    });
+    
+    // 새로운/업데이트된 항목들을 저장
     assets.forEach(asset => {
-      const docRef = doc(firestore, getCollectionPath('assets'), asset.id);
+      const docRef = doc(firestore, collectionPath, asset.id);
       const { id, ...data } = asset;
       
       // undefined 필드 제거 (Firestore는 undefined를 허용하지 않음)
@@ -169,13 +187,14 @@ export async function setAssets(assets: Asset[]): Promise<void> {
         }
       });
       
-      batch.push(setDoc(docRef, {
+      batch.set(docRef, {
         ...cleanData,
         as_of_date: dateToTimestamp(cleanData.as_of_date),
-      }));
+      });
     });
-    await Promise.all(batch);
-    console.log(`[Firestore] ${assets.length} Assets saved to Firebase: ${getCollectionPath('assets')}`);
+    
+    await batch.commit();
+    console.log(`[Firestore] ${assets.length} Assets saved to Firebase (deleted ${existingIds.size - newIds.size}): ${getCollectionPath('assets')}`);
     
     // localStorage에도 저장 (fallback)
     localStorage.setItem('finance-assets', JSON.stringify(assets));
@@ -219,10 +238,27 @@ export async function setStockHoldings(holdings: StockHolding[]): Promise<void> 
   }
   
   try {
-    const batch: Promise<void>[] = [];
     const firestore = db; // Type narrowing
+    const batch = writeBatch(firestore);
+    const collectionPath = getCollectionPath('stockHoldings');
+    
+    // 기존 Firestore 데이터 가져오기
+    const existingQuery = query(collection(firestore, collectionPath));
+    const existingSnapshot = await getDocs(existingQuery);
+    const existingIds = new Set(existingSnapshot.docs.map(doc => doc.id));
+    const newIds = new Set(holdings.map(holding => holding.id));
+    
+    // 삭제된 항목들을 Firestore에서 제거
+    existingIds.forEach(id => {
+      if (!newIds.has(id)) {
+        const docRef = doc(firestore, collectionPath, id);
+        batch.delete(docRef);
+      }
+    });
+    
+    // 새로운/업데이트된 항목들을 저장
     holdings.forEach(holding => {
-      const docRef = doc(firestore, getCollectionPath('stockHoldings'), holding.id);
+      const docRef = doc(firestore, collectionPath, holding.id);
       const { id, ...data } = holding;
       
       // undefined 필드 제거 (Firestore는 undefined를 허용하지 않음)
@@ -234,13 +270,14 @@ export async function setStockHoldings(holdings: StockHolding[]): Promise<void> 
         }
       });
       
-      batch.push(setDoc(docRef, {
+      batch.set(docRef, {
         ...cleanData,
         as_of_date: dateToTimestamp(cleanData.as_of_date),
-      }));
+      });
     });
-    await Promise.all(batch);
-    console.log(`[Firestore] ${holdings.length} Stock Holdings saved to Firebase: ${getCollectionPath('stockHoldings')}`);
+    
+    await batch.commit();
+    console.log(`[Firestore] ${holdings.length} Stock Holdings saved to Firebase (deleted ${existingIds.size - newIds.size}): ${getCollectionPath('stockHoldings')}`);
     
     // localStorage에도 저장 (fallback)
     localStorage.setItem('finance-stock-holdings', JSON.stringify(holdings));
@@ -283,10 +320,27 @@ export async function setSalaries(salaries: Salary[]): Promise<void> {
   }
   
   try {
-    const batch: Promise<void>[] = [];
     const firestore = db; // Type narrowing
+    const batch = writeBatch(firestore);
+    const collectionPath = getCollectionPath('salaries');
+    
+    // 기존 Firestore 데이터 가져오기
+    const existingQuery = query(collection(firestore, collectionPath));
+    const existingSnapshot = await getDocs(existingQuery);
+    const existingIds = new Set(existingSnapshot.docs.map(doc => doc.id));
+    const newIds = new Set(salaries.map(salary => salary.id));
+    
+    // 삭제된 항목들을 Firestore에서 제거
+    existingIds.forEach(id => {
+      if (!newIds.has(id)) {
+        const docRef = doc(firestore, collectionPath, id);
+        batch.delete(docRef);
+      }
+    });
+    
+    // 새로운/업데이트된 항목들을 저장
     salaries.forEach(salary => {
-      const docRef = doc(firestore, getCollectionPath('salaries'), salary.id);
+      const docRef = doc(firestore, collectionPath, salary.id);
       const { id, ...data } = salary;
       
       // undefined 필드 제거 (Firestore는 undefined를 허용하지 않음)
@@ -298,10 +352,11 @@ export async function setSalaries(salaries: Salary[]): Promise<void> {
         }
       });
       
-      batch.push(setDoc(docRef, cleanData));
+      batch.set(docRef, cleanData);
     });
-    await Promise.all(batch);
-    console.log(`[Firestore] ${salaries.length} Salaries saved to Firebase: ${getCollectionPath('salaries')}`);
+    
+    await batch.commit();
+    console.log(`[Firestore] ${salaries.length} Salaries saved to Firebase (deleted ${existingIds.size - newIds.size}): ${getCollectionPath('salaries')}`);
     
     // localStorage에도 저장 (fallback)
     localStorage.setItem('finance-salaries', JSON.stringify(salaries));
@@ -345,10 +400,27 @@ export async function setApartments(apartments: Apartment[]): Promise<void> {
   }
   
   try {
-    const batch: Promise<void>[] = [];
     const firestore = db; // Type narrowing
+    const batch = writeBatch(firestore);
+    const collectionPath = getCollectionPath('apartments');
+    
+    // 기존 Firestore 데이터 가져오기
+    const existingQuery = query(collection(firestore, collectionPath));
+    const existingSnapshot = await getDocs(existingQuery);
+    const existingIds = new Set(existingSnapshot.docs.map(doc => doc.id));
+    const newIds = new Set(apartments.map(apartment => apartment.id));
+    
+    // 삭제된 항목들을 Firestore에서 제거
+    existingIds.forEach(id => {
+      if (!newIds.has(id)) {
+        const docRef = doc(firestore, collectionPath, id);
+        batch.delete(docRef);
+      }
+    });
+    
+    // 새로운/업데이트된 항목들을 저장
     apartments.forEach(apartment => {
-      const docRef = doc(firestore, getCollectionPath('apartments'), apartment.id);
+      const docRef = doc(firestore, collectionPath, apartment.id);
       const { id, ...data } = apartment;
       
       // undefined 필드 제거 (Firestore는 undefined를 허용하지 않음)
@@ -360,13 +432,14 @@ export async function setApartments(apartments: Apartment[]): Promise<void> {
         }
       });
       
-      batch.push(setDoc(docRef, {
+      batch.set(docRef, {
         ...cleanData,
         as_of_date: dateToTimestamp(cleanData.as_of_date),
-      }));
+      });
     });
-    await Promise.all(batch);
-    console.log(`[Firestore] ${apartments.length} Apartments saved to Firebase: ${getCollectionPath('apartments')}`);
+    
+    await batch.commit();
+    console.log(`[Firestore] ${apartments.length} Apartments saved to Firebase (deleted ${existingIds.size - newIds.size}): ${getCollectionPath('apartments')}`);
     
     // localStorage에도 저장 (fallback)
     localStorage.setItem('finance-apartments', JSON.stringify(apartments));
@@ -410,10 +483,27 @@ export async function setIncome(income: Income[]): Promise<void> {
   }
   
   try {
-    const batch: Promise<void>[] = [];
     const firestore = db; // Type narrowing
+    const batch = writeBatch(firestore);
+    const collectionPath = getCollectionPath('income');
+    
+    // 기존 Firestore 데이터 가져오기
+    const existingQuery = query(collection(firestore, collectionPath));
+    const existingSnapshot = await getDocs(existingQuery);
+    const existingIds = new Set(existingSnapshot.docs.map(doc => doc.id));
+    const newIds = new Set(income.map(item => item.id));
+    
+    // 삭제된 항목들을 Firestore에서 제거
+    existingIds.forEach(id => {
+      if (!newIds.has(id)) {
+        const docRef = doc(firestore, collectionPath, id);
+        batch.delete(docRef);
+      }
+    });
+    
+    // 새로운/업데이트된 항목들을 저장
     income.forEach(item => {
-      const docRef = doc(firestore, getCollectionPath('income'), item.id);
+      const docRef = doc(firestore, collectionPath, item.id);
       const { id, ...data } = item;
       
       // undefined 필드 제거 (Firestore는 undefined를 허용하지 않음)
@@ -425,13 +515,14 @@ export async function setIncome(income: Income[]): Promise<void> {
         }
       });
       
-      batch.push(setDoc(docRef, {
+      batch.set(docRef, {
         ...cleanData,
         as_of_date: dateToTimestamp(cleanData.as_of_date),
-      }));
+      });
     });
-    await Promise.all(batch);
-    console.log(`[Firestore] ${income.length} Income saved to Firebase: ${getCollectionPath('income')}`);
+    
+    await batch.commit();
+    console.log(`[Firestore] ${income.length} Income saved to Firebase (deleted ${existingIds.size - newIds.size}): ${getCollectionPath('income')}`);
     
     // localStorage에도 저장 (fallback)
     localStorage.setItem('finance-income', JSON.stringify(income));
@@ -475,10 +566,27 @@ export async function setLiabilities(liabilities: Liability[]): Promise<void> {
   }
   
   try {
-    const batch: Promise<void>[] = [];
     const firestore = db; // Type narrowing
+    const batch = writeBatch(firestore);
+    const collectionPath = getCollectionPath('liabilities');
+    
+    // 기존 Firestore 데이터 가져오기
+    const existingQuery = query(collection(firestore, collectionPath));
+    const existingSnapshot = await getDocs(existingQuery);
+    const existingIds = new Set(existingSnapshot.docs.map(doc => doc.id));
+    const newIds = new Set(liabilities.map(liability => liability.id));
+    
+    // 삭제된 항목들을 Firestore에서 제거
+    existingIds.forEach(id => {
+      if (!newIds.has(id)) {
+        const docRef = doc(firestore, collectionPath, id);
+        batch.delete(docRef);
+      }
+    });
+    
+    // 새로운/업데이트된 항목들을 저장
     liabilities.forEach(liability => {
-      const docRef = doc(firestore, getCollectionPath('liabilities'), liability.id);
+      const docRef = doc(firestore, collectionPath, liability.id);
       const { id, ...data } = liability;
       
       // undefined 필드 제거 (Firestore는 undefined를 허용하지 않음)
@@ -490,13 +598,14 @@ export async function setLiabilities(liabilities: Liability[]): Promise<void> {
         }
       });
       
-      batch.push(setDoc(docRef, {
+      batch.set(docRef, {
         ...cleanData,
         as_of_date: dateToTimestamp(cleanData.as_of_date),
-      }));
+      });
     });
-    await Promise.all(batch);
-    console.log(`[Firestore] ${liabilities.length} Liabilities saved to Firebase: ${getCollectionPath('liabilities')}`);
+    
+    await batch.commit();
+    console.log(`[Firestore] ${liabilities.length} Liabilities saved to Firebase (deleted ${existingIds.size - newIds.size}): ${getCollectionPath('liabilities')}`);
     
     // localStorage에도 저장 (fallback)
     localStorage.setItem('finance-liabilities', JSON.stringify(liabilities));
