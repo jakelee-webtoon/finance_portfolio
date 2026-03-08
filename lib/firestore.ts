@@ -150,8 +150,9 @@ export async function setAssets(assets: Asset[]): Promise<void> {
   
   try {
     const batch: Promise<void>[] = [];
+    const firestore = db; // Type narrowing
     assets.forEach(asset => {
-      const docRef = doc(db, getCollectionPath('assets'), asset.id);
+      const docRef = doc(firestore, getCollectionPath('assets'), asset.id);
       const { id, ...data } = asset;
       batch.push(setDoc(docRef, {
         ...data,
@@ -200,8 +201,9 @@ export async function setStockHoldings(holdings: StockHolding[]): Promise<void> 
   
   try {
     const batch: Promise<void>[] = [];
+    const firestore = db; // Type narrowing
     holdings.forEach(holding => {
-      const docRef = doc(db, getCollectionPath('stockHoldings'), holding.id);
+      const docRef = doc(firestore, getCollectionPath('stockHoldings'), holding.id);
       const { id, ...data } = holding;
       batch.push(setDoc(docRef, {
         ...data,
@@ -249,8 +251,9 @@ export async function setSalaries(salaries: Salary[]): Promise<void> {
   
   try {
     const batch: Promise<void>[] = [];
+    const firestore = db; // Type narrowing
     salaries.forEach(salary => {
-      const docRef = doc(db, getCollectionPath('salaries'), salary.id);
+      const docRef = doc(firestore, getCollectionPath('salaries'), salary.id);
       const { id, ...data } = salary;
       batch.push(setDoc(docRef, data));
     });
@@ -296,8 +299,9 @@ export async function setApartments(apartments: Apartment[]): Promise<void> {
   
   try {
     const batch: Promise<void>[] = [];
+    const firestore = db; // Type narrowing
     apartments.forEach(apartment => {
-      const docRef = doc(db, getCollectionPath('apartments'), apartment.id);
+      const docRef = doc(firestore, getCollectionPath('apartments'), apartment.id);
       const { id, ...data } = apartment;
       batch.push(setDoc(docRef, {
         ...data,
@@ -346,8 +350,9 @@ export async function setIncome(income: Income[]): Promise<void> {
   
   try {
     const batch: Promise<void>[] = [];
+    const firestore = db; // Type narrowing
     income.forEach(item => {
-      const docRef = doc(db, getCollectionPath('income'), item.id);
+      const docRef = doc(firestore, getCollectionPath('income'), item.id);
       const { id, ...data } = item;
       batch.push(setDoc(docRef, {
         ...data,
