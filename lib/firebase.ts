@@ -19,15 +19,27 @@ if (typeof window !== 'undefined') {
   try {
     if (getApps().length === 0) {
       app = initializeApp(firebaseConfig);
+      console.log('[Firebase] Initialized successfully');
     } else {
       app = getApps()[0];
+      console.log('[Firebase] Using existing app instance');
     }
   } catch (error) {
-    console.warn('Firebase initialization failed:', error);
+    console.error('[Firebase] Initialization failed:', error);
   }
 }
 
 // Firebase 서비스 초기화 (app이 null이면 에러 발생 가능하므로 타입 가드 필요)
 export const auth: Auth | null = app ? getAuth(app) : null;
 export const db: Firestore | null = app ? getFirestore(app) : null;
+
+// 디버깅용 로그
+if (typeof window !== 'undefined') {
+  if (db) {
+    console.log('[Firebase] Firestore database initialized');
+  } else {
+    console.warn('[Firebase] Firestore database is null');
+  }
+}
+
 export default app;

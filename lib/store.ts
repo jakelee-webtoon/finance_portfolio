@@ -3,13 +3,11 @@ import { mockAssets, mockIncome, mockTransactions, mockPortfolios, mockLiabiliti
 
 const STORAGE_KEY = 'finance-dashboard-state';
 
-// Firebase 사용 여부 확인 (환경 변수가 설정되어 있으면 Firebase 사용)
+// Firebase 사용 여부 확인 (하드코딩된 경우 항상 true)
 const useFirebase = (): boolean => {
   if (typeof window === 'undefined') return false;
-  return !!(
-    process.env.NEXT_PUBLIC_FIREBASE_API_KEY &&
-    process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID
-  );
+  // 하드코딩된 경우 항상 Firebase 사용
+  return true;
 };
 
 // Firebase 함수들을 동적으로 import (환경 변수가 없을 때 에러 방지)
@@ -159,12 +157,16 @@ export function setAssets(assets: Asset[]): void {
   if (useFirebase()) {
     getFirestoreFunctions().then(firestore => {
       if (firestore) {
-        firestore.setAssets(assets).catch(() => {
+        firestore.setAssets(assets).catch((error) => {
+          // 에러 로깅 (디버깅용)
+          console.error('[Store] Failed to save Assets to Firebase:', error);
           // 에러 무시 (이미 localStorage에 저장됨)
         });
+      } else {
+        console.warn('[Store] Firestore functions not available');
       }
-    }).catch(() => {
-      // 에러 무시
+    }).catch((error) => {
+      console.error('[Store] Failed to load Firestore functions:', error);
     });
   }
 }
