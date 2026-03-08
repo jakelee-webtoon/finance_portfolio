@@ -163,9 +163,16 @@ export default function PortfolioPage() {
 
     if (activeTab === 'assets') {
       if (editingId) {
-        // 수정
+        // 수정 - 전체 자산 목록에서 찾기
+        const allAssets = getAssets();
+        const existingAsset = allAssets.find(asset => asset.id === editingId);
+        if (!existingAsset) {
+          console.error('Asset not found:', editingId);
+          return;
+        }
+        
         const updatedAsset = {
-          ...assets.find(asset => asset.id === editingId)!,
+          ...existingAsset,
           name: formData.name,
           amount: Number(formData.amount),
           owner: formData.owner,
@@ -176,7 +183,6 @@ export default function PortfolioPage() {
         };
         
         // 전체 자산 목록에서 수정
-        const allAssets = getAssets();
         const updated = allAssets.map((asset) =>
           asset.id === editingId ? updatedAsset : asset
         );
