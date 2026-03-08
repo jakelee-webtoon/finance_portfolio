@@ -8,6 +8,26 @@ export interface StockQuote {
   changePercent: number;
 }
 
+// 심볼로 거래소와 통화 자동 감지
+export function detectExchangeAndCurrency(symbol: string): { 
+  exchange: 'KRX' | 'NASDAQ' | 'NYSE' | 'other'; 
+  currency: string;
+} {
+  // 한국 주식 (6자리 숫자)
+  if (/^\d{6}$/.test(symbol)) {
+    return { exchange: 'KRX', currency: 'KRW' };
+  }
+  
+  // 일반적으로 3-4글자 대문자 심볼은 NASDAQ
+  // (정확한 거래소 구분은 API 필요하지만 간단히 NASDAQ으로 가정)
+  if (/^[A-Z]{1,5}$/.test(symbol)) {
+    return { exchange: 'NASDAQ', currency: 'USD' };
+  }
+  
+  // 기본값
+  return { exchange: 'other', currency: 'KRW' };
+}
+
 const STOCK_CACHE_KEY = 'stock-quotes-cache';
 const CACHE_DURATION = 1 * 60 * 1000; // 1분 (5분에서 1분으로 단축)
 

@@ -6,7 +6,7 @@ import Navigation from '@/components/Navigation';
 import Table, { Column } from '@/components/Table';
 import { StockHolding, DashboardState, Asset } from '@/types';
 import { getDashboardState, getStockHoldings, setStockHoldings, getAssets, setAssets, syncFromFirebase } from '@/lib/store';
-import { getStockPrice } from '@/lib/stockApi';
+import { getStockPrice, detectExchangeAndCurrency } from '@/lib/stockApi';
 import { getExchangeRates } from '@/lib/exchangeRate';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -296,6 +296,18 @@ export default function RSUPage() {
     const currentUser: 'husband' | 'wife' = state?.scope === 'husband' ? 'husband' : state?.scope === 'wife' ? 'wife' : 'husband';
     const today = new Date().toISOString().split('T')[0];
 
+    // 심볼로 거래소/통화 자동 감지
+    let detectedExchange = formData.exchange;
+    let detectedCurrency = formData.currency;
+    if (formData.symbol) {
+      const detected = detectExchangeAndCurrency(formData.symbol);
+      // 사용자가 기본값(KRW/KRX)을 변경하지 않았다면 자동 감지 값 사용
+      if (formData.currency === 'KRW' && formData.exchange === 'KRX') {
+        detectedExchange = detected.exchange;
+        detectedCurrency = detected.currency;
+      }
+    }
+
     // 현재 가격 가져오기
     let currentPrice: number | undefined = undefined;
     if (formData.symbol) {
@@ -315,6 +327,8 @@ export default function RSUPage() {
           ? {
               ...holding,
               ...formData,
+              exchange: detectedExchange,
+              currency: detectedCurrency,
               quantity: holding.quantity || 0,
               purchasePrice: holding.purchasePrice || 0,
               currentPrice: currentPrice !== undefined ? currentPrice : holding.currentPrice,
@@ -340,6 +354,8 @@ export default function RSUPage() {
       const newHolding: StockHolding = {
         id: `stock-${Date.now()}`,
         ...formData,
+        exchange: detectedExchange,
+        currency: detectedCurrency,
         quantity: 0,
         purchasePrice: 0,
         currentPrice,
