@@ -809,11 +809,19 @@ export default function PortfolioPage() {
                 {activeTab === 'assets' ? '자산 목록' : '부채 목록'}
               </h2>
             </div>
-            <Table
-              data={activeTab === 'assets' ? filteredAssets : filteredLiabilities}
-              columns={activeTab === 'assets' ? assetColumns : liabilityColumns}
-              searchable
-            />
+            {activeTab === 'assets' ? (
+              <Table
+                data={filteredAssets}
+                columns={assetColumns}
+                searchable
+              />
+            ) : (
+              <Table
+                data={filteredLiabilities}
+                columns={liabilityColumns}
+                searchable
+              />
+            )}
           </div>
         </div>
       </div>
