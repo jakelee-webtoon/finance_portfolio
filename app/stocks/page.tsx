@@ -154,22 +154,33 @@ export default function StocksPage() {
     }
 
     if (editingId) {
-      // 수정
-      const updated = holdings.map((holding) =>
-        holding.id === editingId
-          ? {
-              ...holding,
-              ...formData,
-              quantity: Number(formData.quantity),
-              purchasePrice: Number(formData.purchasePrice),
-              currentPrice: currentPrice !== undefined ? currentPrice : holding.currentPrice,
-              as_of_date: today,
-              last_modified_by: currentUser,
-            }
-          : holding
+      // 수정 - 전체 주식 목록에서 찾기
+      const allHoldings = getStockHoldings();
+      const existingHolding = allHoldings.find(holding => holding.id === editingId);
+      if (!existingHolding) {
+        console.error('Stock holding not found:', editingId);
+        return;
+      }
+      
+      const updatedHolding = {
+        ...existingHolding,
+        ...formData,
+        quantity: Number(formData.quantity),
+        purchasePrice: Number(formData.purchasePrice),
+        currentPrice: currentPrice !== undefined ? currentPrice : existingHolding.currentPrice,
+        as_of_date: today,
+        last_modified_by: currentUser,
+      };
+      
+      // 전체 목록 업데이트
+      const updatedAllHoldings = allHoldings.map((holding) =>
+        holding.id === editingId ? updatedHolding : holding
       );
-      setHoldings(updated);
-      setStockHoldings(updated);
+      setStockHoldings(updatedAllHoldings);
+      
+      // 일반 주식만 필터링하여 로컬 상태 업데이트
+      const stockHoldings = updatedAllHoldings.filter((h) => !h.type || h.type === 'stock');
+      setHoldings(stockHoldings);
       setEditingId(null);
     } else {
       // 추가
@@ -183,9 +194,14 @@ export default function StocksPage() {
         as_of_date: today,
         last_modified_by: currentUser,
       };
-      const updated = [...holdings, newHolding];
-      setHoldings(updated);
-      setStockHoldings(updated);
+      // 전체 주식 목록에 추가
+      const allHoldings = getStockHoldings();
+      const updatedAllHoldings = [...allHoldings, newHolding];
+      setStockHoldings(updatedAllHoldings);
+      
+      // 일반 주식만 필터링하여 로컬 상태 업데이트
+      const stockHoldings = updatedAllHoldings.filter((h) => !h.type || h.type === 'stock');
+      setHoldings(stockHoldings);
     }
 
     // 폼 초기화
@@ -214,9 +230,15 @@ export default function StocksPage() {
 
   const handleDelete = (id: string) => {
     if (confirm('정말 삭제하시겠습니까?')) {
-      const updated = holdings.filter((holding) => holding.id !== id);
+      // 전체 주식 목록에서 삭제
+      const allHoldings = getStockHoldings();
+      // 일반 주식만 필터링 (RSU/옵션은 별도 페이지)
+      const stockHoldings = allHoldings.filter((h) => !h.type || h.type === 'stock');
+      const updated = stockHoldings.filter((holding) => holding.id !== id);
       setHoldings(updated);
-      setStockHoldings(updated);
+      // 전체 목록에서도 삭제
+      const updatedAllHoldings = allHoldings.filter((holding) => holding.id !== id);
+      setStockHoldings(updatedAllHoldings);
     }
   };
 

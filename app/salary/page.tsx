@@ -248,21 +248,29 @@ export default function SalaryPage() {
     const today = new Date().toISOString().split('T')[0];
 
     if (editingId) {
-      // 수정
-      const updated = salaries.map((salary) =>
-        salary.id === editingId
-          ? {
-              ...salary,
-              year: formData.year,
-              amount: Number(formData.amount),
-              owner: formData.owner,
-              currency: formData.currency,
-              yearsOfExperience: formData.yearsOfExperience ? Number(formData.yearsOfExperience) : undefined,
-              notes: formData.notes || undefined,
-              as_of_date: today,
-              last_modified_by: currentUser,
-            }
-          : salary
+      // 수정 - 전체 연봉 목록에서 찾기
+      const allSalaries = getSalaries();
+      const existingSalary = allSalaries.find(salary => salary.id === editingId);
+      if (!existingSalary) {
+        console.error('Salary not found:', editingId);
+        return;
+      }
+      
+      const updatedSalary = {
+        ...existingSalary,
+        year: formData.year,
+        amount: Number(formData.amount),
+        owner: formData.owner,
+        currency: formData.currency,
+        yearsOfExperience: formData.yearsOfExperience ? Number(formData.yearsOfExperience) : undefined,
+        notes: formData.notes || undefined,
+        as_of_date: today,
+        last_modified_by: currentUser,
+      };
+      
+      // 전체 목록 업데이트
+      const updated = allSalaries.map((salary) =>
+        salary.id === editingId ? updatedSalary : salary
       );
       setSalariesState(updated);
       setSalaries(updated);
@@ -290,7 +298,9 @@ export default function SalaryPage() {
         yearsOfExperience: formData.yearsOfExperience ? Number(formData.yearsOfExperience) : undefined,
         notes: formData.notes || undefined,
       };
-      const updated = [...salaries, newSalary];
+      // 전체 연봉 목록에 추가
+      const allSalaries = getSalaries();
+      const updated = [...allSalaries, newSalary];
       setSalariesState(updated);
       setSalaries(updated);
       setIsFormOpen(false);
@@ -320,7 +330,9 @@ export default function SalaryPage() {
 
   const handleDelete = (id: string) => {
     if (confirm('정말 삭제하시겠습니까?')) {
-      const updated = salaries.filter((salary) => salary.id !== id);
+      // 전체 연봉 목록에서 삭제
+      const allSalaries = getSalaries();
+      const updated = allSalaries.filter((salary) => salary.id !== id);
       setSalariesState(updated);
       setSalaries(updated);
     }

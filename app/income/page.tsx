@@ -70,7 +70,9 @@ export default function IncomePage() {
 
     if (editingId) {
       // 수정
-      const updated = incomes.map((income) =>
+      // 전체 수입 목록에서 수정
+      const allIncomes = getIncome();
+      const updated = allIncomes.map((income) =>
         income.id === editingId
           ? {
               ...income,
@@ -94,7 +96,9 @@ export default function IncomePage() {
         as_of_date: today,
         last_modified_by: currentUser,
       };
-      const updated = [...incomes, newIncome];
+      // 전체 수입 목록에 추가
+      const allIncomes = getIncome();
+      const updated = [...allIncomes, newIncome];
       setIncomes(updated);
       setIncome(updated);
     }
@@ -126,7 +130,9 @@ export default function IncomePage() {
 
   const handleDelete = (id: string) => {
     if (confirm('정말 삭제하시겠습니까?')) {
-      const updated = incomes.filter((income) => income.id !== id);
+      // 전체 수입 목록에서 삭제
+      const allIncomes = getIncome();
+      const updated = allIncomes.filter((income) => income.id !== id);
       setIncomes(updated);
       setIncome(updated);
     }

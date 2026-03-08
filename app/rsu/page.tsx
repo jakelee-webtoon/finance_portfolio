@@ -322,27 +322,39 @@ export default function RSUPage() {
     }
 
     if (editingId) {
-      const updated = holdings.map((holding) =>
-        holding.id === editingId
-          ? {
-              ...holding,
-              ...formData,
-              exchange: detectedExchange,
-              currency: detectedCurrency,
-              quantity: holding.quantity || 0,
-              purchasePrice: holding.purchasePrice || 0,
-              currentPrice: currentPrice !== undefined ? currentPrice : holding.currentPrice,
-              totalQuantity: formData.totalQuantity ? Number(formData.totalQuantity) : undefined,
-              vestingDate: formData.vestingDate || undefined,
-              strikePrice: formData.strikePrice ? Number(formData.strikePrice) : undefined,
-              expiryDate: formData.expiryDate || undefined,
-              as_of_date: today,
-              last_modified_by: currentUser,
-            }
-          : holding
+      // 수정 - 전체 주식 목록에서 찾기
+      const allHoldings = getStockHoldings();
+      const existingHolding = allHoldings.find(holding => holding.id === editingId);
+      if (!existingHolding) {
+        console.error('Stock holding not found:', editingId);
+        return;
+      }
+      
+      const updatedHolding = {
+        ...existingHolding,
+        ...formData,
+        exchange: detectedExchange,
+        currency: detectedCurrency,
+        quantity: existingHolding.quantity || 0,
+        purchasePrice: existingHolding.purchasePrice || 0,
+        currentPrice: currentPrice !== undefined ? currentPrice : existingHolding.currentPrice,
+        totalQuantity: formData.totalQuantity ? Number(formData.totalQuantity) : undefined,
+        vestingDate: formData.vestingDate || undefined,
+        strikePrice: formData.strikePrice ? Number(formData.strikePrice) : undefined,
+        expiryDate: formData.expiryDate || undefined,
+        as_of_date: today,
+        last_modified_by: currentUser,
+      };
+      
+      // 전체 목록 업데이트
+      const updatedAllHoldings = allHoldings.map((holding) =>
+        holding.id === editingId ? updatedHolding : holding
       );
-      setHoldings(updated);
-      setStockHoldings(updated);
+      setStockHoldings(updatedAllHoldings);
+      
+      // RSU/옵션만 필터링하여 로컬 상태 업데이트
+      const rsuHoldings = updatedAllHoldings.filter((h) => h.type === 'rsu' || h.type === 'option');
+      setHoldings(rsuHoldings);
       setEditingId(null);
       
       // 포트폴리오 자산도 동기화 (전체 재계산)
@@ -367,9 +379,14 @@ export default function RSUPage() {
         as_of_date: today,
         last_modified_by: currentUser,
       };
-      const updated = [...holdings, newHolding];
-      setHoldings(updated);
-      setStockHoldings(updated);
+      // 전체 주식 목록에 추가
+      const allHoldings = getStockHoldings();
+      const updatedAllHoldings = [...allHoldings, newHolding];
+      setStockHoldings(updatedAllHoldings);
+      
+      // RSU/옵션만 필터링하여 로컬 상태 업데이트
+      const rsuHoldings = updatedAllHoldings.filter((h) => h.type === 'rsu' || h.type === 'option');
+      setHoldings(rsuHoldings);
       
       // 포트폴리오 자산도 동기화 (전체 재계산)
       // holdings 상태가 업데이트된 후 동기화하도록 다음 렌더 사이클에서 실행
@@ -401,9 +418,16 @@ export default function RSUPage() {
 
   const handleDelete = (id: string) => {
     if (confirm('정말 삭제하시겠습니까?')) {
-      const updated = holdings.filter((holding) => holding.id !== id);
-      setHoldings(updated);
-      setStockHoldings(updated);
+      // 전체 주식 목록에서 삭제
+      const allHoldings = getStockHoldings();
+      // RSU/옵션만 필터링
+      const rsuHoldings = allHoldings.filter((h) => h.type === 'rsu' || h.type === 'option');
+      const updatedRsuHoldings = rsuHoldings.filter((holding) => holding.id !== id);
+      setHoldings(updatedRsuHoldings);
+      
+      // 전체 목록에서도 삭제
+      const updatedAllHoldings = allHoldings.filter((holding) => holding.id !== id);
+      setStockHoldings(updatedAllHoldings);
       
       // 포트폴리오 자산도 동기화 (전체 재계산)
       // holdings 상태가 업데이트된 후 동기화하도록 다음 렌더 사이클에서 실행

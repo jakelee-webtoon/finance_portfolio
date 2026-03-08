@@ -176,7 +176,9 @@ export default function ApartmentPage() {
         last_modified_by: currentUser,
       };
       
-      const updated = apartments.map((apt) =>
+      // 전체 아파트 목록에서 수정
+      const allApartments = getApartments();
+      const updated = allApartments.map((apt) =>
         apt.id === editingId ? updatedApartment : apt
       );
       setApartmentsState(updated);
@@ -200,7 +202,9 @@ export default function ApartmentPage() {
         as_of_date: today,
         last_modified_by: currentUser,
       };
-      const updated = [...apartments, newApartment];
+      // 전체 아파트 목록에 추가
+      const allApartments = getApartments();
+      const updated = [...allApartments, newApartment];
       setApartmentsState(updated);
       setApartments(updated);
       
@@ -249,8 +253,10 @@ export default function ApartmentPage() {
 
   const handleDelete = (id: string) => {
     if (confirm('정말 삭제하시겠습니까?')) {
-      const apartment = apartments.find((apt) => apt.id === id);
-      const updated = apartments.filter((apt) => apt.id !== id);
+      // 전체 아파트 목록에서 삭제
+      const allApartments = getApartments();
+      const apartment = allApartments.find((apt) => apt.id === id);
+      const updated = allApartments.filter((apt) => apt.id !== id);
       setApartmentsState(updated);
       setApartments(updated);
       
