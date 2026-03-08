@@ -54,10 +54,29 @@ export async function syncFromFirebase(): Promise<void> {
     // Stock Holdings
     try {
       const holdings = await firestore.getStockHoldings();
+      // Mock 데이터 필터링 (ID, 심볼, 이름, 수량으로 체크)
+      const realHoldings = holdings.filter(holding => {
+        // Mock 데이터 ID 체크
+        if (holding.id === 'stock-1' || holding.id === 'stock-2' || holding.id === 'stock-3') {
+          return false;
+        }
+        // Mock 데이터 심볼+이름+수량 조합 체크
+        if (holding.symbol === '005930' && holding.name === '삼성전자' && holding.quantity === 50 && holding.purchasePrice === 60000) {
+          return false;
+        }
+        if (holding.symbol === '035720' && holding.name === '카카오' && holding.quantity === 20 && holding.purchasePrice === 75000) {
+          return false;
+        }
+        if (holding.symbol === 'AAPL' && holding.name === 'Apple Inc.' && holding.quantity === 10 && holding.purchasePrice === 150) {
+          return false;
+        }
+        return true;
+      });
       // 빈 배열도 저장 (mock 데이터 방지)
-      localStorage.setItem('finance-stock-holdings', JSON.stringify(holdings));
+      localStorage.setItem('finance-stock-holdings', JSON.stringify(realHoldings));
     } catch (error) {
-      // 에러 무시
+      // 에러 발생 시에도 빈 배열 저장 (mock 데이터 방지)
+      localStorage.setItem('finance-stock-holdings', JSON.stringify([]));
     }
     
     // Salaries
