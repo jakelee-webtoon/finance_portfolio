@@ -2,6 +2,7 @@
 import { DashboardState, Asset, StockHolding, Salary, Apartment, Income } from '@/types';
 import { mockAssets, mockIncome, mockStockHoldings, mockApartments } from '@/data/mockData';
 import * as firestore from './firestore';
+import { db } from './firebase';
 
 // Mock 데이터인지 확인하는 헬퍼 함수
 const isMockData = (item: any, mockItems: any[]): boolean => {
@@ -39,6 +40,15 @@ export async function migrateToFirebase(): Promise<{
       return { success: false, migrated: [], errors: ['Firebase 설정이 없습니다. .env.local 파일을 확인하세요'] };
     }
 
+    // Firebase db 인스턴스 확인
+    if (!db) {
+      return { 
+        success: false, 
+        migrated: [], 
+        errors: ['Firebase가 초기화되지 않았습니다. 환경 변수를 확인하고 개발 서버를 재시작하세요.'] 
+      };
+    }
+
     // 1. Dashboard State 마이그레이션
     try {
       const stored = localStorage.getItem('finance-dashboard-state');
@@ -46,9 +56,13 @@ export async function migrateToFirebase(): Promise<{
         const dashboardState: DashboardState = JSON.parse(stored);
         await firestore.setDashboardState(dashboardState);
         migrated.push('Dashboard State');
+      } else {
+        migrated.push('Dashboard State (localStorage에 데이터 없음)');
       }
     } catch (error) {
-      errors.push(`Dashboard State: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      errors.push(`Dashboard State: ${errorMsg}`);
+      console.error('Dashboard State migration error:', error);
     }
 
     // 2. Assets 마이그레이션 (Mock 데이터 제외)
@@ -64,9 +78,13 @@ export async function migrateToFirebase(): Promise<{
         } else if (assets.length > 0) {
           migrated.push(`Assets (${assets.length}개 모두 Mock 데이터로 제외됨)`);
         }
+      } else {
+        migrated.push('Assets (localStorage에 데이터 없음)');
       }
     } catch (error) {
-      errors.push(`Assets: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      errors.push(`Assets: ${errorMsg}`);
+      console.error('Assets migration error:', error);
     }
 
     // 3. Stock Holdings 마이그레이션 (Mock 데이터 제외)
@@ -95,10 +113,16 @@ export async function migrateToFirebase(): Promise<{
         if (salaries.length > 0) {
           await firestore.setSalaries(salaries);
           migrated.push(`Salaries (${salaries.length}개)`);
+        } else {
+          migrated.push('Salaries (데이터 없음)');
         }
+      } else {
+        migrated.push('Salaries (localStorage에 데이터 없음)');
       }
     } catch (error) {
-      errors.push(`Salaries: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      errors.push(`Salaries: ${errorMsg}`);
+      console.error('Salaries migration error:', error);
     }
 
     // 5. Apartments 마이그레이션 (Mock 데이터 제외)

@@ -102,6 +102,7 @@ export async function getDashboardState(): Promise<DashboardState> {
 export async function setDashboardState(state: DashboardState): Promise<void> {
   if (typeof window === 'undefined') return;
   if (!db) {
+    localStorage.setItem('finance-dashboard-state', JSON.stringify(state));
     throw new Error('Firebase is not initialized. Please check your environment variables.');
   }
   
@@ -115,6 +116,8 @@ export async function setDashboardState(state: DashboardState): Promise<void> {
   } catch (error) {
     // 에러 발생 시 localStorage에만 저장
     localStorage.setItem('finance-dashboard-state', JSON.stringify(state));
+    // 에러를 다시 throw하여 마이그레이션 함수에서 감지할 수 있도록
+    throw error;
   }
 }
 
@@ -166,6 +169,8 @@ export async function setAssets(assets: Asset[]): Promise<void> {
   } catch (error) {
     // 에러 발생 시 localStorage에만 저장
     localStorage.setItem('finance-assets', JSON.stringify(assets));
+    // 에러를 다시 throw하여 마이그레이션 함수에서 감지할 수 있도록
+    throw error;
   }
 }
 
@@ -217,6 +222,8 @@ export async function setStockHoldings(holdings: StockHolding[]): Promise<void> 
   } catch (error) {
     // 에러 발생 시 localStorage에만 저장
     localStorage.setItem('finance-stock-holdings', JSON.stringify(holdings));
+    // 에러를 다시 throw하여 마이그레이션 함수에서 감지할 수 있도록
+    throw error;
   }
 }
 
@@ -264,6 +271,8 @@ export async function setSalaries(salaries: Salary[]): Promise<void> {
   } catch (error) {
     // 에러 발생 시 localStorage에만 저장
     localStorage.setItem('finance-salaries', JSON.stringify(salaries));
+    // 에러를 다시 throw하여 마이그레이션 함수에서 감지할 수 있도록
+    throw error;
   }
 }
 
@@ -315,6 +324,8 @@ export async function setApartments(apartments: Apartment[]): Promise<void> {
   } catch (error) {
     // 에러 발생 시 localStorage에만 저장
     localStorage.setItem('finance-apartments', JSON.stringify(apartments));
+    // 에러를 다시 throw하여 마이그레이션 함수에서 감지할 수 있도록
+    throw error;
   }
 }
 
@@ -366,5 +377,7 @@ export async function setIncome(income: Income[]): Promise<void> {
   } catch (error) {
     // 에러 발생 시 localStorage에만 저장
     localStorage.setItem('finance-income', JSON.stringify(income));
+    // 에러를 다시 throw하여 마이그레이션 함수에서 감지할 수 있도록
+    throw error;
   }
 }
