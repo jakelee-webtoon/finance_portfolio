@@ -55,7 +55,7 @@ export async function syncFromFirebase(): Promise<void> {
     try {
       const holdings = await firestore.getStockHoldings();
       // Mock 데이터 필터링 (ID, 심볼, 이름, 수량으로 체크)
-      const realHoldings = holdings.filter(holding => {
+      const realHoldings = holdings.filter((holding: StockHolding) => {
         // Mock 데이터 ID 체크
         if (holding.id === 'stock-1' || holding.id === 'stock-2' || holding.id === 'stock-3') {
           return false;
