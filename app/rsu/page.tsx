@@ -243,7 +243,11 @@ export default function RSUPage() {
         });
       }
       
-      const updated = await Promise.all(
+      // 전체 holdings 가져오기 (일반 주식 포함)
+      const allHoldings = getStockHoldings();
+      
+      // RSU/옵션만 업데이트
+      const updatedRsuHoldings = await Promise.all(
         currentHoldings.map(async (holding) => {
           if (!holding.symbol) return holding;
           try {
@@ -259,13 +263,21 @@ export default function RSUPage() {
       );
       
       // 실제로 변경된 것이 있는지 확인
-      const hasChanges = updated.some((holding, index) => 
+      const hasChanges = updatedRsuHoldings.some((holding, index) => 
         holding.currentPrice !== currentHoldings[index]?.currentPrice
       );
       
       if (hasChanges) {
-        setHoldings(updated);
-        setStockHoldings(updated);
+        // 전체 holdings에서 RSU/옵션만 업데이트
+        const updatedAllHoldings = allHoldings.map(holding => {
+          const updatedRsu = updatedRsuHoldings.find(rsu => rsu.id === holding.id);
+          return updatedRsu || holding;
+        });
+        
+        // 로컬 상태 업데이트 (RSU/옵션만)
+        setHoldings(updatedRsuHoldings);
+        // 전체 holdings 저장 (일반 주식 포함)
+        setStockHoldings(updatedAllHoldings);
         
         // 가격 업데이트 후 자산도 동기화 (전체 재계산)
         setTimeout(() => {
