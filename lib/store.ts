@@ -73,25 +73,44 @@ export async function syncFromFirebase(): Promise<void> {
         return true;
       });
 
-      // 로컬이 더 최신이면 Firestore 결과로 덮어쓰지 않음 (리마운트/재동기화 시 과거 값으로 덮어치는 것 방지)
+      // 로컬 데이터가 있으면 더 스마트하게 병합
       const localRaw = localStorage.getItem('finance-stock-holdings');
       if (localRaw) {
         try {
           const localHoldings: StockHolding[] = JSON.parse(localRaw);
-          const localMaxDate = localHoldings.reduce((max: string, h: StockHolding) => {
-            const d = h.as_of_date || '';
-            return d > max ? d : max;
-          }, '');
-          const remoteMaxDate = realHoldings.reduce((max: string, h: StockHolding) => {
-            const d = h.as_of_date || '';
-            return d > max ? d : max;
-          }, '');
-          if (localMaxDate > remoteMaxDate) {
-            console.log(`[syncFromFirebase] Skip overwriting stock holdings (local newer: ${localMaxDate} > ${remoteMaxDate})`);
-            // Salaries 등 다른 컬렉션은 계속 동기화되도록 try 블록은 유지
-          } else {
-            localStorage.setItem('finance-stock-holdings', JSON.stringify(realHoldings));
+          
+          // 각 항목별로 더 최신인 것을 선택하는 병합 전략
+          const mergedHoldings: StockHolding[] = [];
+          const processedIds = new Set<string>();
+          
+          // 로컬 데이터 우선 처리
+          for (const local of localHoldings) {
+            const remote = realHoldings.find((r: StockHolding) => r.id === local.id);
+            if (remote) {
+              // 둘 다 있으면 as_of_date 비교 (같은 날이면 로컬 우선 - 방금 변경했을 가능성)
+              const localDate = local.as_of_date || '';
+              const remoteDate = remote.as_of_date || '';
+              if (localDate >= remoteDate) {
+                mergedHoldings.push(local);
+              } else {
+                mergedHoldings.push(remote);
+              }
+            } else {
+              // 로컬에만 있으면 로컬 유지
+              mergedHoldings.push(local);
+            }
+            processedIds.add(local.id);
           }
+          
+          // 리모트에만 있는 항목 추가
+          for (const remote of realHoldings) {
+            if (!processedIds.has(remote.id)) {
+              mergedHoldings.push(remote);
+            }
+          }
+          
+          localStorage.setItem('finance-stock-holdings', JSON.stringify(mergedHoldings));
+          console.log(`[syncFromFirebase] Merged stock holdings: local=${localHoldings.length}, remote=${realHoldings.length}, merged=${mergedHoldings.length}`);
         } catch {
           localStorage.setItem('finance-stock-holdings', JSON.stringify(realHoldings));
         }
@@ -100,16 +119,10 @@ export async function syncFromFirebase(): Promise<void> {
       }
     } catch (error) {
       console.error('[syncFromFirebase] Failed to sync stock holdings:', error);
-      // 에러 발생 시 기존 localStorage 데이터 유지 (빈 배열로 덮어쓰지 않음)
-      // Firebase에서 가져오기 실패해도 기존 데이터는 보존
+      // 에러 발생 시 기존 localStorage 데이터 유지
       const existing = localStorage.getItem('finance-stock-holdings');
       if (!existing) {
-        // localStorage에 데이터가 없을 때만 빈 배열 저장
         localStorage.setItem('finance-stock-holdings', JSON.stringify([]));
-      } else {
-        const existingData = JSON.parse(existing);
-        const existingRsu = existingData.filter((h: StockHolding) => h.type === 'rsu' || h.type === 'option');
-        console.log(`[syncFromFirebase] Keeping existing localStorage data - Total: ${existingData.length}개, RSU/Options: ${existingRsu.length}개`);
       }
     }
     

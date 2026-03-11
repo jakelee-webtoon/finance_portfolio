@@ -19,8 +19,8 @@ export default function RSUPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [noteValue, setNoteValue] = useState('');
-  const holdingsRef = useRef<StockHolding[]>([]);
-  const initialLoadDoneRef = useRef(false);
+  const [isInitialLoaded, setIsInitialLoaded] = useState(false);
+  const priceUpdateIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const getInitialFormData = useCallback(() => ({
     symbol: '',
@@ -37,14 +37,9 @@ export default function RSUPage() {
   
   const [formData, setFormData] = useState(getInitialFormData());
 
+  // 초기 로드 (한 번만 실행)
   useEffect(() => {
-    if (isAuthenticated !== true) {
-      initialLoadDoneRef.current = false;
-      return;
-    }
-    // 마운트 시 한 번만 초기 로드 (리마운트/effect 재실행 시 반복 호출 방지)
-    if (initialLoadDoneRef.current) return;
-    initialLoadDoneRef.current = true;
+    if (isAuthenticated !== true || isInitialLoaded) return;
 
     const loadData = async () => {
       await syncFromFirebase();
@@ -53,34 +48,22 @@ export default function RSUPage() {
       const allHoldings = getStockHoldings();
       const filtered = allHoldings.filter((h) => h.type === 'rsu' || h.type === 'option');
       setHoldings(filtered);
-      holdingsRef.current = filtered;
-      getExchangeRates().then((rates) => {
-        setExchangeRates(rates);
-      });
+      const rates = await getExchangeRates();
+      setExchangeRates(rates);
+      setIsInitialLoaded(true);
     };
     loadData();
-  }, [isAuthenticated]);
+  }, [isAuthenticated, isInitialLoaded]);
 
-  // holdings가 변경될 때마다 ref 업데이트
-  useEffect(() => {
-    holdingsRef.current = holdings;
-  }, [holdings]);
-
-  // DashboardState 변경 감지 (TopBar에서 변경 시)
+  // DashboardState 변경 감지 (TopBar에서 scope 변경 시)
   useEffect(() => {
     const handleStateChange = () => {
       const newState = getDashboardState();
       setState(newState);
     };
-
-    // 커스텀 이벤트 리스너 (같은 페이지)
     window.addEventListener('dashboardStateChanged', handleStateChange);
-    // storage 이벤트 리스너 (다른 탭/페이지)
-    window.addEventListener('storage', handleStateChange);
-
     return () => {
       window.removeEventListener('dashboardStateChanged', handleStateChange);
-      window.removeEventListener('storage', handleStateChange);
     };
   }, []);
 
@@ -104,10 +87,9 @@ export default function RSUPage() {
   }, [holdings, state]);
 
   // RSU/옵션을 포트폴리오 자산으로 동기화 (주식명별로 그룹화)
-  // overrideHoldings를 넘기면 holdingsRef 대신 직접 사용 (타이밍 레이스 방지)
-  const syncHoldingsToAsset = useCallback((overrideHoldings?: StockHolding[]) => {
-    const currentHoldings = overrideHoldings ?? holdingsRef.current;
-    if (!exchangeRates || currentHoldings.length === 0) return;
+  const syncHoldingsToAsset = useCallback((holdingsToSync: StockHolding[]) => {
+    if (!exchangeRates || holdingsToSync.length === 0) return;
+    const currentHoldings = holdingsToSync;
     
     const assets = getAssets();
     const today = new Date().toISOString().split('T')[0];
@@ -241,75 +223,77 @@ export default function RSUPage() {
     });
     
     setAssets(updatedAssets);
-  }, [exchangeRates, state]); // holdings 의존성 제거 (useRef로 최신 값 참조)
+  }, [exchangeRates, state]);
 
-  // 현재 가격 주기적으로 업데이트
+  // 가격 업데이트 함수 (interval에서 호출, 수동 새로고침에서도 사용)
+  const updatePrices = useCallback(async (forceRefresh: boolean = false) => {
+    // 매번 최신 holdings를 localStorage에서 가져옴 (다른 변경사항 반영)
+    const allHoldings = getStockHoldings();
+    const currentRsuHoldings = allHoldings.filter((h) => h.type === 'rsu' || h.type === 'option');
+    if (currentRsuHoldings.length === 0) return;
+
+    // 강제 새로고침인 경우 모든 심볼의 캐시 삭제
+    if (forceRefresh && typeof window !== 'undefined') {
+      currentRsuHoldings.forEach((holding) => {
+        if (holding.symbol) {
+          localStorage.removeItem(`stock-quotes-cache-${holding.symbol}`);
+        }
+      });
+    }
+
+    // RSU/옵션만 가격 업데이트 (기존 필드 모두 보존)
+    const updatedRsuHoldings = await Promise.all(
+      currentRsuHoldings.map(async (holding) => {
+        if (!holding.symbol) return holding;
+        try {
+          const price = await getStockPrice(holding.symbol, forceRefresh);
+          if (price !== null && price !== holding.currentPrice) {
+            return { ...holding, currentPrice: price };
+          }
+        } catch {
+          // 에러 발생 시 기존 holding 반환
+        }
+        return holding;
+      })
+    );
+
+    // 가격만 변경된 경우에만 저장
+    const hasChanges = updatedRsuHoldings.some((holding, index) =>
+      holding.currentPrice !== currentRsuHoldings[index]?.currentPrice
+    );
+
+    if (hasChanges) {
+      const updatedAllHoldings = allHoldings.map((holding) => {
+        const updatedRsu = updatedRsuHoldings.find((rsu) => rsu.id === holding.id);
+        return updatedRsu || holding;
+      });
+      setHoldings(updatedRsuHoldings);
+      await setStockHoldings(updatedAllHoldings);
+    }
+  }, []);
+
+  // 가격 업데이트 interval 설정 (초기 로드 완료 후 한 번만)
   useEffect(() => {
-    if (!exchangeRates) return;
+    if (!isInitialLoaded || !exchangeRates) return;
+    
+    // 이미 interval이 있으면 중복 생성 방지
+    if (priceUpdateIntervalRef.current) return;
 
-    const updatePrices = async (forceRefresh: boolean = false) => {
-      // 매번 최신 holdings를 가져옴 (비고/실현 상태 등 다른 변경사항 반영)
-      const allHoldings = getStockHoldings();
-      const currentRsuHoldings = allHoldings.filter((h) => h.type === 'rsu' || h.type === 'option');
-      if (currentRsuHoldings.length === 0) return;
+    // 초기 가격 업데이트
+    updatePrices(true);
+    
+    // 1분마다 가격 업데이트
+    priceUpdateIntervalRef.current = setInterval(() => {
+      updatePrices(false);
+    }, 60000);
 
-      // 강제 새로고침인 경우 모든 심볼의 캐시 삭제
-      if (forceRefresh && typeof window !== 'undefined') {
-        currentRsuHoldings.forEach((holding) => {
-          if (holding.symbol) {
-            localStorage.removeItem(`stock-quotes-cache-${holding.symbol}`);
-          }
-        });
-      }
-
-      // RSU/옵션만 가격 업데이트 (기존 필드 모두 보존)
-      const updatedRsuHoldings = await Promise.all(
-        currentRsuHoldings.map(async (holding) => {
-          if (!holding.symbol) return holding;
-          try {
-            const price = await getStockPrice(holding.symbol, forceRefresh);
-            if (price !== null && price !== holding.currentPrice) {
-              return { ...holding, currentPrice: price };
-            }
-          } catch {
-            // 에러 발생 시 기존 holding 반환
-          }
-          return holding;
-        })
-      );
-
-      // 가격만 변경된 경우에만 저장 (다른 필드는 건드리지 않음)
-      const hasChanges = updatedRsuHoldings.some((holding, index) =>
-        holding.currentPrice !== currentRsuHoldings[index]?.currentPrice
-      );
-
-      if (hasChanges) {
-        const updatedAllHoldings = allHoldings.map((holding) => {
-          const updatedRsu = updatedRsuHoldings.find((rsu) => rsu.id === holding.id);
-          return updatedRsu || holding;
-        });
-        setHoldings(updatedRsuHoldings);
-        holdingsRef.current = updatedRsuHoldings;
-        syncHoldingsToAsset(updatedRsuHoldings);
-        await setStockHoldings(updatedAllHoldings);
+    return () => {
+      if (priceUpdateIntervalRef.current) {
+        clearInterval(priceUpdateIntervalRef.current);
+        priceUpdateIntervalRef.current = null;
       }
     };
-
-    // 초기 로드 시 강제 새로고침
-    updatePrices(true);
-    // 이후 1분마다 업데이트 (캐시 사용)
-    const interval = setInterval(() => updatePrices(false), 60000);
-    return () => clearInterval(interval);
-  }, [exchangeRates, syncHoldingsToAsset]);
-
-  // 초기 로드 시 기존 RSU/옵션을 자산으로 동기화
-  useEffect(() => {
-    // 최신 holdings 참조 사용
-    const currentHoldings = holdingsRef.current;
-    if (!exchangeRates || currentHoldings.length === 0) return;
-    
-    syncHoldingsToAsset();
-  }, [exchangeRates, syncHoldingsToAsset]); // holdings 의존성 제거 (useRef로 최신 값 참조)
+  }, [isInitialLoaded, exchangeRates, updatePrices]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -904,7 +888,6 @@ export default function RSUPage() {
                     return updated || h;
                   });
                   setHoldings(updatedRsuHoldings);
-                  holdingsRef.current = updatedRsuHoldings;
                   syncHoldingsToAsset(updatedRsuHoldings);
                   await setStockHoldings(updatedAllHoldings);
                 }}

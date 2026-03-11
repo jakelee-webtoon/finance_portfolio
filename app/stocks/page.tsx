@@ -40,11 +40,12 @@ export default function StocksPage() {
   }), []);
   
   const [formData, setFormData] = useState(getInitialFormData());
+  const [isInitialLoaded, setIsInitialLoaded] = useState(false);
 
+  // 초기 로드 (한 번만)
   useEffect(() => {
-    if (isAuthenticated !== true) return;
+    if (isAuthenticated !== true || isInitialLoaded) return;
     
-    // Firebase에서 데이터 동기화 후 로컬 데이터 로드
     const loadData = async () => {
       await syncFromFirebase();
       
@@ -52,30 +53,23 @@ export default function StocksPage() {
       setState(dashboardState);
       setHoldings(getStockHoldings());
       
-      // 환율 로드
-      getExchangeRates().then((rates) => {
-        setExchangeRates(rates);
-      });
+      const rates = await getExchangeRates();
+      setExchangeRates(rates);
+      setIsInitialLoaded(true);
     };
     
     loadData();
-  }, [isAuthenticated]);
+  }, [isAuthenticated, isInitialLoaded]);
 
-  // DashboardState 변경 감지 (TopBar에서 변경 시)
+  // DashboardState 변경 감지 (TopBar에서 scope 변경 시)
   useEffect(() => {
     const handleStateChange = () => {
       const newState = getDashboardState();
       setState(newState);
     };
-
-    // 커스텀 이벤트 리스너 (같은 페이지)
     window.addEventListener('dashboardStateChanged', handleStateChange);
-    // storage 이벤트 리스너 (다른 탭/페이지)
-    window.addEventListener('storage', handleStateChange);
-
     return () => {
       window.removeEventListener('dashboardStateChanged', handleStateChange);
-      window.removeEventListener('storage', handleStateChange);
     };
   }, []);
 
@@ -106,23 +100,47 @@ export default function StocksPage() {
     });
   };
 
-  // 주식 가격 업데이트
+  // 주식 가격 업데이트 (초기 로드 완료 후 한 번만)
   useEffect(() => {
-    if (holdings.length > 0 && exchangeRates) {
-      const symbols = holdings.map((h) => h.symbol);
-      getStockQuotes(symbols).then(async (quotes) => {
-        const updated = holdings.map((holding) => {
+    if (!isInitialLoaded || !exchangeRates) return;
+    
+    const updatePrices = async () => {
+      // 매번 최신 holdings를 localStorage에서 가져옴
+      const currentHoldings = getStockHoldings();
+      const stockHoldings = currentHoldings.filter(h => !h.type || h.type === 'stock');
+      if (stockHoldings.length === 0) return;
+      
+      const symbols = stockHoldings.map((h) => h.symbol);
+      try {
+        const quotes = await getStockQuotes(symbols);
+        const updatedStockHoldings = stockHoldings.map((holding) => {
           const quote = quotes[holding.symbol];
-          if (quote) {
+          if (quote && quote.price !== holding.currentPrice) {
             return { ...holding, currentPrice: quote.price };
           }
           return holding;
         });
-        setHoldings(updated);
-        await setStockHoldings(updated);
-      });
-    }
-  }, [holdings.length, exchangeRates]);
+        
+        // 가격 변경이 있을 때만 저장
+        const hasChanges = updatedStockHoldings.some((h, i) => 
+          h.currentPrice !== stockHoldings[i]?.currentPrice
+        );
+        
+        if (hasChanges) {
+          const updatedAllHoldings = currentHoldings.map((h) => {
+            const updated = updatedStockHoldings.find((s) => s.id === h.id);
+            return updated || h;
+          });
+          setHoldings(updatedAllHoldings);
+          await setStockHoldings(updatedAllHoldings);
+        }
+      } catch {
+        // 에러 무시
+      }
+    };
+    
+    updatePrices();
+  }, [isInitialLoaded, exchangeRates]);
 
   const filteredHoldings = useMemo(() => {
     if (!state) return [];
