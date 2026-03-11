@@ -216,14 +216,30 @@ export async function getStockHoldings(): Promise<StockHolding[]> {
   }
   
   try {
-    const q = query(collection(db, getCollectionPath('stockHoldings')), orderBy('as_of_date', 'desc'));
+    // orderBy 없이 모든 데이터 가져오기 (as_of_date가 없는 데이터도 포함)
+    const q = query(collection(db, getCollectionPath('stockHoldings')));
     const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-      as_of_date: timestampToDate(doc.data().as_of_date).toISOString().split('T')[0],
-    } as StockHolding));
+    const holdings = querySnapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        ...data,
+        as_of_date: data.as_of_date ? timestampToDate(data.as_of_date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+      } as StockHolding;
+    });
+    
+    // as_of_date 기준으로 정렬 (클라이언트 사이드)
+    holdings.sort((a, b) => {
+      const dateA = new Date(a.as_of_date).getTime();
+      const dateB = new Date(b.as_of_date).getTime();
+      return dateB - dateA; // 내림차순
+    });
+    
+    console.log(`[Firestore] getStockHoldings: ${holdings.length}개 (RSU/Options: ${holdings.filter(h => h.type === 'rsu' || h.type === 'option').length}개)`);
+    
+    return holdings;
   } catch (error) {
+    console.error('[Firestore] Failed to get stock holdings:', error);
     // Fallback to localStorage
     const stored = localStorage.getItem('finance-stock-holdings');
     return stored ? JSON.parse(stored) : [];

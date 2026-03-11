@@ -110,7 +110,7 @@ export default function StocksPage() {
   useEffect(() => {
     if (holdings.length > 0 && exchangeRates) {
       const symbols = holdings.map((h) => h.symbol);
-      getStockQuotes(symbols).then((quotes) => {
+      getStockQuotes(symbols).then(async (quotes) => {
         const updated = holdings.map((holding) => {
           const quote = quotes[holding.symbol];
           if (quote) {
@@ -119,7 +119,7 @@ export default function StocksPage() {
           return holding;
         });
         setHoldings(updated);
-        setStockHoldings(updated);
+        await setStockHoldings(updated);
       });
     }
   }, [holdings.length, exchangeRates]);
@@ -172,18 +172,14 @@ export default function StocksPage() {
         last_modified_by: currentUser,
       };
       
-      // 전체 목록 업데이트
       const updatedAllHoldings = allHoldings.map((holding) =>
         holding.id === editingId ? updatedHolding : holding
       );
-      setStockHoldings(updatedAllHoldings);
-      
-      // 일반 주식만 필터링하여 로컬 상태 업데이트
       const stockHoldings = updatedAllHoldings.filter((h) => !h.type || h.type === 'stock');
       setHoldings(stockHoldings);
       setEditingId(null);
+      await setStockHoldings(updatedAllHoldings);
     } else {
-      // 추가
       const newHolding: StockHolding = {
         id: `stock-${Date.now()}`,
         ...formData,
@@ -194,14 +190,11 @@ export default function StocksPage() {
         as_of_date: today,
         last_modified_by: currentUser,
       };
-      // 전체 주식 목록에 추가
       const allHoldings = getStockHoldings();
       const updatedAllHoldings = [...allHoldings, newHolding];
-      setStockHoldings(updatedAllHoldings);
-      
-      // 일반 주식만 필터링하여 로컬 상태 업데이트
       const stockHoldings = updatedAllHoldings.filter((h) => !h.type || h.type === 'stock');
       setHoldings(stockHoldings);
+      await setStockHoldings(updatedAllHoldings);
     }
 
     // 폼 초기화
@@ -228,18 +221,13 @@ export default function StocksPage() {
     setIsFormOpen(true);
   };
 
-  const handleDelete = (id: string) => {
-    if (confirm('정말 삭제하시겠습니까?')) {
-      // 전체 주식 목록에서 삭제
-      const allHoldings = getStockHoldings();
-      // 일반 주식만 필터링 (RSU/옵션은 별도 페이지)
-      const stockHoldings = allHoldings.filter((h) => !h.type || h.type === 'stock');
-      const updated = stockHoldings.filter((holding) => holding.id !== id);
-      setHoldings(updated);
-      // 전체 목록에서도 삭제
-      const updatedAllHoldings = allHoldings.filter((holding) => holding.id !== id);
-      setStockHoldings(updatedAllHoldings);
-    }
+  const handleDelete = async (id: string) => {
+    if (!confirm('정말 삭제하시겠습니까?')) return;
+    const allHoldings = getStockHoldings();
+    const updatedAllHoldings = allHoldings.filter((holding) => holding.id !== id);
+    const stockHoldings = updatedAllHoldings.filter((h) => !h.type || h.type === 'stock');
+    setHoldings(stockHoldings);
+    await setStockHoldings(updatedAllHoldings);
   };
 
   const handleCancel = () => {

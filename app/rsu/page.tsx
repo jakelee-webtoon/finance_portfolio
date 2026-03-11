@@ -17,15 +17,17 @@ export default function RSUPage() {
   const [exchangeRates, setExchangeRates] = useState<Record<string, number> | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  // 최신 holdings 참조를 위한 ref
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [noteValue, setNoteValue] = useState('');
   const holdingsRef = useRef<StockHolding[]>([]);
-  
+  const initialLoadDoneRef = useRef(false);
+
   const getInitialFormData = useCallback(() => ({
     symbol: '',
     name: '',
     owner: 'joint' as 'husband' | 'wife' | 'joint',
-    currency: 'KRW',
-    exchange: 'KRX' as 'KRX' | 'NASDAQ' | 'NYSE' | 'other',
+    currency: 'USD',
+    exchange: 'NASDAQ' as 'KRX' | 'NASDAQ' | 'NYSE' | 'other',
     type: 'rsu' as 'stock' | 'rsu' | 'option',
     totalQuantity: '',
     vestingDate: '',
@@ -36,26 +38,26 @@ export default function RSUPage() {
   const [formData, setFormData] = useState(getInitialFormData());
 
   useEffect(() => {
-    if (isAuthenticated !== true) return;
-    
-    // Firebase에서 데이터 동기화 후 로컬 데이터 로드
+    if (isAuthenticated !== true) {
+      initialLoadDoneRef.current = false;
+      return;
+    }
+    // 마운트 시 한 번만 초기 로드 (리마운트/effect 재실행 시 반복 호출 방지)
+    if (initialLoadDoneRef.current) return;
+    initialLoadDoneRef.current = true;
+
     const loadData = async () => {
       await syncFromFirebase();
-      
       const dashboardState = getDashboardState();
       setState(dashboardState);
       const allHoldings = getStockHoldings();
-      // RSU와 옵션만 필터링
       const filtered = allHoldings.filter((h) => h.type === 'rsu' || h.type === 'option');
       setHoldings(filtered);
       holdingsRef.current = filtered;
-      
-      // 환율 로드
       getExchangeRates().then((rates) => {
         setExchangeRates(rates);
       });
     };
-    
     loadData();
   }, [isAuthenticated]);
 
@@ -86,14 +88,25 @@ export default function RSUPage() {
     if (!state) return [];
     let filtered = holdings.filter((h) => h.type === 'rsu' || h.type === 'option');
     
-    if (state.scope === 'combined') return filtered;
-    return filtered.filter((holding) => holding.owner === state.scope || holding.owner === 'joint');
+    if (state.scope !== 'combined') {
+      filtered = filtered.filter((holding) => holding.owner === state.scope || holding.owner === 'joint');
+    }
+
+    // vesting 날짜 기준 최신순 정렬 (날짜 없는 항목은 맨 뒤)
+    return [...filtered].sort((a, b) => {
+      const dateA = a.vestingDate || a.expiryDate || '';
+      const dateB = b.vestingDate || b.expiryDate || '';
+      if (!dateA && !dateB) return 0;
+      if (!dateA) return 1;
+      if (!dateB) return -1;
+      return dateB.localeCompare(dateA);
+    });
   }, [holdings, state]);
 
   // RSU/옵션을 포트폴리오 자산으로 동기화 (주식명별로 그룹화)
-  const syncHoldingsToAsset = useCallback(() => {
-    // 최신 holdings 참조 사용
-    const currentHoldings = holdingsRef.current;
+  // overrideHoldings를 넘기면 holdingsRef 대신 직접 사용 (타이밍 레이스 방지)
+  const syncHoldingsToAsset = useCallback((overrideHoldings?: StockHolding[]) => {
+    const currentHoldings = overrideHoldings ?? holdingsRef.current;
     if (!exchangeRates || currentHoldings.length === 0) return;
     
     const assets = getAssets();
@@ -124,6 +137,9 @@ export default function RSUPage() {
       let exchange = 'KRX';
       
       stockHoldings.forEach((holding) => {
+        // 실현된 RSU는 자산에 포함하지 않음
+        if (holding.isRealized) return;
+
         const currentPrice = holding.currentPrice || 0;
         if (!currentPrice) return;
         
@@ -268,21 +284,13 @@ export default function RSUPage() {
       );
       
       if (hasChanges) {
-        // 전체 holdings에서 RSU/옵션만 업데이트
         const updatedAllHoldings = allHoldings.map(holding => {
           const updatedRsu = updatedRsuHoldings.find(rsu => rsu.id === holding.id);
           return updatedRsu || holding;
         });
-        
-        // 로컬 상태 업데이트 (RSU/옵션만)
         setHoldings(updatedRsuHoldings);
-        // 전체 holdings 저장 (일반 주식 포함)
-        setStockHoldings(updatedAllHoldings);
-        
-        // 가격 업데이트 후 자산도 동기화 (전체 재계산)
-        setTimeout(() => {
-          syncHoldingsToAsset();
-        }, 100);
+        syncHoldingsToAsset(updatedRsuHoldings);
+        await setStockHoldings(updatedAllHoldings);
       }
     };
 
@@ -358,22 +366,14 @@ export default function RSUPage() {
         last_modified_by: currentUser,
       };
       
-      // 전체 목록 업데이트
       const updatedAllHoldings = allHoldings.map((holding) =>
         holding.id === editingId ? updatedHolding : holding
       );
-      setStockHoldings(updatedAllHoldings);
-      
-      // RSU/옵션만 필터링하여 로컬 상태 업데이트
       const rsuHoldings = updatedAllHoldings.filter((h) => h.type === 'rsu' || h.type === 'option');
       setHoldings(rsuHoldings);
       setEditingId(null);
-      
-      // 포트폴리오 자산도 동기화 (전체 재계산)
-      // holdings 상태가 업데이트된 후 동기화하도록 다음 렌더 사이클에서 실행
-      setTimeout(() => {
-        syncHoldingsToAsset();
-      }, 100);
+      syncHoldingsToAsset(rsuHoldings);
+      await setStockHoldings(updatedAllHoldings);
     } else {
       const newHolding: StockHolding = {
         id: `stock-${Date.now()}`,
@@ -391,20 +391,12 @@ export default function RSUPage() {
         as_of_date: today,
         last_modified_by: currentUser,
       };
-      // 전체 주식 목록에 추가
       const allHoldings = getStockHoldings();
       const updatedAllHoldings = [...allHoldings, newHolding];
-      setStockHoldings(updatedAllHoldings);
-      
-      // RSU/옵션만 필터링하여 로컬 상태 업데이트
       const rsuHoldings = updatedAllHoldings.filter((h) => h.type === 'rsu' || h.type === 'option');
       setHoldings(rsuHoldings);
-      
-      // 포트폴리오 자산도 동기화 (전체 재계산)
-      // holdings 상태가 업데이트된 후 동기화하도록 다음 렌더 사이클에서 실행
-      setTimeout(() => {
-        syncHoldingsToAsset();
-      }, 100);
+      syncHoldingsToAsset(rsuHoldings);
+      await setStockHoldings(updatedAllHoldings);
     }
 
     setFormData(getInitialFormData());
@@ -428,25 +420,14 @@ export default function RSUPage() {
     setIsFormOpen(true);
   };
 
-  const handleDelete = (id: string) => {
-    if (confirm('정말 삭제하시겠습니까?')) {
-      // 전체 주식 목록에서 삭제
-      const allHoldings = getStockHoldings();
-      // RSU/옵션만 필터링
-      const rsuHoldings = allHoldings.filter((h) => h.type === 'rsu' || h.type === 'option');
-      const updatedRsuHoldings = rsuHoldings.filter((holding) => holding.id !== id);
-      setHoldings(updatedRsuHoldings);
-      
-      // 전체 목록에서도 삭제
-      const updatedAllHoldings = allHoldings.filter((holding) => holding.id !== id);
-      setStockHoldings(updatedAllHoldings);
-      
-      // 포트폴리오 자산도 동기화 (전체 재계산)
-      // holdings 상태가 업데이트된 후 동기화하도록 다음 렌더 사이클에서 실행
-      setTimeout(() => {
-        syncHoldingsToAsset();
-      }, 100);
-    }
+  const handleDelete = async (id: string) => {
+    if (!confirm('정말 삭제하시겠습니까?')) return;
+    const allHoldings = getStockHoldings();
+    const updatedAllHoldings = allHoldings.filter((holding) => holding.id !== id);
+    const updatedRsuHoldings = updatedAllHoldings.filter((h) => h.type === 'rsu' || h.type === 'option');
+    setHoldings(updatedRsuHoldings);
+    syncHoldingsToAsset(updatedRsuHoldings);
+    await setStockHoldings(updatedAllHoldings);
   };
 
   const handleCancel = () => {
@@ -455,196 +436,168 @@ export default function RSUPage() {
     setFormData(getInitialFormData());
   };
 
-  const totalValue = useMemo(() => {
-    if (!exchangeRates) return 0;
-    return Math.floor(filteredHoldings.reduce((sum, holding) => {
-      const currentPrice = holding.currentPrice || 0;
-      if (!currentPrice) return sum; // 현재 가격이 없으면 제외
-      
-      let quantity = 0;
-      let value = 0;
-      
-      // RSU: 전체 수량 사용 (베스팅은 별도로 등록)
-      if (holding.type === 'rsu' && holding.totalQuantity !== undefined) {
-        quantity = holding.totalQuantity;
-        value = currentPrice * quantity;
-      } else if (holding.type === 'option' && holding.strikePrice !== undefined) {
-        const intrinsicValue = currentPrice - holding.strikePrice;
-        if (intrinsicValue > 0) {
-          quantity = holding.quantity;
-          value = intrinsicValue * quantity;
-        } else {
-          return sum; // 내재가치가 없으면 제외
-        }
-      } else {
-        // 일반 주식 (혹시 모를 경우)
-        quantity = holding.quantity;
-        value = currentPrice * quantity;
-      }
-      
-      // 환율 변환
-      const currency = holding.currency || 'KRW';
-      const exchange = holding.exchange || 'KRX';
-      const isUSD = currency === 'USD' || exchange === 'NASDAQ' || exchange === 'NYSE';
-      const isEUR = currency === 'EUR';
-      
-      if (isUSD && exchangeRates) {
-        value = value * exchangeRates.USD_TO_KRW;
-      } else if (isEUR && exchangeRates) {
-        value = value * exchangeRates.EUR_TO_KRW;
-      }
-      
-      return sum + value;
-    }, 0));
-  }, [filteredHoldings, exchangeRates]);
 
-  // 실현 손익 계산 (vesting 완료된 것들)
+  const handleToggleRealized = useCallback(async (id: string) => {
+    const today = new Date().toISOString().split('T')[0];
+    const currentUser: 'husband' | 'wife' = state?.scope === 'wife' ? 'wife' : 'husband';
+
+    const allHoldings = getStockHoldings();
+    const updatedAllHoldings = allHoldings.map((holding) => {
+      if (holding.id !== id) return holding;
+      const nextRealized = !holding.isRealized;
+      const updated = {
+        ...holding,
+        as_of_date: today,
+        last_modified_by: currentUser,
+      } as StockHolding;
+      if (nextRealized) {
+        updated.isRealized = true;
+      } else {
+        delete updated.isRealized;
+      }
+      return updated;
+    });
+
+    const rsuHoldings = updatedAllHoldings.filter((h) => h.type === 'rsu' || h.type === 'option');
+    setHoldings(rsuHoldings);
+    syncHoldingsToAsset(rsuHoldings);
+
+    await setStockHoldings(updatedAllHoldings);
+  }, [syncHoldingsToAsset, state]);
+
+  const handleSaveNote = useCallback(async (id: string, note: string) => {
+    const today = new Date().toISOString().split('T')[0];
+    const currentUser: 'husband' | 'wife' = state?.scope === 'wife' ? 'wife' : 'husband';
+
+    const allHoldings = getStockHoldings();
+    const updatedAllHoldings = allHoldings.map((holding) => {
+      if (holding.id !== id) return holding;
+      const updated = {
+        ...holding,
+        as_of_date: today,
+        last_modified_by: currentUser,
+      } as StockHolding;
+      if (note.trim()) {
+        updated.notes = note.trim();
+      } else {
+        delete updated.notes;
+      }
+      return updated;
+    });
+
+    const rsuHoldings = updatedAllHoldings.filter((h) => h.type === 'rsu' || h.type === 'option');
+    setHoldings(rsuHoldings);
+    setEditingNoteId(null);
+    await setStockHoldings(updatedAllHoldings);
+  }, [state]);
+
+  // 공통 holding 가치 계산 헬퍼
+  const calcHoldingValue = useCallback((holding: StockHolding, rates: Record<string, number>) => {
+    const currentPrice = holding.currentPrice || 0;
+    if (!currentPrice) return { krw: 0, usd: 0, eur: 0 };
+
+    const currency = holding.currency || 'KRW';
+    const exchange = holding.exchange || 'KRX';
+    const isUSD = currency === 'USD' || exchange === 'NASDAQ' || exchange === 'NYSE';
+    const isEUR = currency === 'EUR';
+
+    let quantity = 0;
+    let valueOriginal = 0;
+
+    if (holding.type === 'rsu' && holding.totalQuantity !== undefined) {
+      quantity = holding.totalQuantity;
+      valueOriginal = currentPrice * quantity;
+    } else if (holding.type === 'option' && holding.strikePrice !== undefined) {
+      const intrinsicValue = currentPrice - holding.strikePrice;
+      if (intrinsicValue <= 0) return { krw: 0, usd: 0, eur: 0 };
+      quantity = holding.quantity;
+      valueOriginal = intrinsicValue * quantity;
+    } else {
+      quantity = holding.quantity;
+      valueOriginal = currentPrice * quantity;
+    }
+
+    if (isUSD) return { krw: valueOriginal * rates.USD_TO_KRW, usd: valueOriginal, eur: 0 };
+    if (isEUR) return { krw: valueOriginal * rates.EUR_TO_KRW, usd: 0, eur: valueOriginal };
+    return { krw: valueOriginal, usd: 0, eur: 0 };
+  }, []);
+
+  // 누적 RSU 금액 (실현 + 미실현 전체)
+  const cumulativeValue = useMemo(() => {
+    if (!exchangeRates) return { krw: 0, usd: 0, eur: 0 };
+    const totals = filteredHoldings.reduce((acc, holding) => {
+      const val = calcHoldingValue(holding, exchangeRates);
+      acc.krw += val.krw;
+      acc.usd += val.usd;
+      acc.eur += val.eur;
+      return acc;
+    }, { krw: 0, usd: 0, eur: 0 });
+    return { krw: Math.floor(totals.krw), usd: totals.usd, eur: totals.eur };
+  }, [filteredHoldings, exchangeRates, calcHoldingValue]);
+
+  // 현재 평가 금액 (미실현만)
+  const currentUnrealizedValue = useMemo(() => {
+    if (!exchangeRates) return { krw: 0, usd: 0, eur: 0 };
+    const totals = filteredHoldings
+      .filter((h) => !h.isRealized)
+      .reduce((acc, holding) => {
+        const val = calcHoldingValue(holding, exchangeRates);
+        acc.krw += val.krw;
+        acc.usd += val.usd;
+        acc.eur += val.eur;
+        return acc;
+      }, { krw: 0, usd: 0, eur: 0 });
+    return { krw: Math.floor(totals.krw), usd: totals.usd, eur: totals.eur };
+  }, [filteredHoldings, exchangeRates, calcHoldingValue]);
+
+  // 실현 손익: Vesting 완료된 RSU 중 미실현(아직 현금화 안 한 것)의 합계
   const realizedGainLoss = useMemo(() => {
     if (!exchangeRates) return { krw: 0, usd: 0, eur: 0 };
-    
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
-    const totals = filteredHoldings.reduce((acc, holding) => {
-      // vesting 완료 여부 확인
-      let isRealized = false;
-      
-      if (holding.type === 'rsu' && holding.vestingDate) {
-        const vestingDate = new Date(holding.vestingDate);
-        vestingDate.setHours(0, 0, 0, 0);
-        isRealized = vestingDate <= today;
-      } else if (holding.type === 'option' && holding.expiryDate) {
-        const expiryDate = new Date(holding.expiryDate);
-        expiryDate.setHours(0, 0, 0, 0);
-        isRealized = expiryDate <= today;
-      }
-      
-      // 실현되지 않은 것은 제외
-      if (!isRealized) return acc;
-      
-      const currentPrice = holding.currentPrice || 0;
-      const currency = holding.currency || 'KRW';
-      const exchange = holding.exchange || 'KRX';
-      const isUSD = currency === 'USD' || exchange === 'NASDAQ' || exchange === 'NYSE';
-      const isEUR = currency === 'EUR';
-      
-      let quantity = 0;
-      let purchaseValue = 0;
-      let currentValue = 0;
-      
-      // RSU: 전체 수량 사용
-      if (holding.type === 'rsu' && holding.totalQuantity !== undefined) {
-        quantity = holding.totalQuantity;
-        purchaseValue = (holding.purchasePrice || 0) * quantity;
-        currentValue = currentPrice * quantity;
-      } else if (holding.type === 'option' && holding.strikePrice !== undefined) {
-        const intrinsicValue = currentPrice - holding.strikePrice;
-        if (intrinsicValue > 0) {
-          quantity = holding.quantity;
-          purchaseValue = holding.strikePrice * quantity;
-          currentValue = intrinsicValue * quantity;
-        }
-      } else {
-        quantity = holding.quantity;
-        purchaseValue = (holding.purchasePrice || 0) * quantity;
-        currentValue = currentPrice * quantity;
-      }
-      
-      const gainLossOriginal = currentValue - purchaseValue;
-      
-      if (isUSD) {
-        acc.usd += gainLossOriginal;
-        acc.krw += gainLossOriginal * exchangeRates.USD_TO_KRW;
-      } else if (isEUR) {
-        acc.eur += gainLossOriginal;
-        acc.krw += gainLossOriginal * exchangeRates.EUR_TO_KRW;
-      } else {
-        acc.krw += gainLossOriginal;
-      }
-      
-      return acc;
-    }, { krw: 0, usd: 0, eur: 0 });
-    
-    return {
-      krw: Math.floor(totals.krw),
-      usd: totals.usd,
-      eur: totals.eur,
-    };
-  }, [filteredHoldings, exchangeRates]);
+    const today = new Date().toISOString().split('T')[0];
+    const totals = filteredHoldings
+      .filter((h) => {
+        if (h.isRealized) return false;
+        return h.type === 'rsu' && !!h.vestingDate && h.vestingDate <= today;
+      })
+      .reduce((acc, holding) => {
+        const val = calcHoldingValue(holding, exchangeRates);
+        acc.krw += val.krw;
+        acc.usd += val.usd;
+        acc.eur += val.eur;
+        return acc;
+      }, { krw: 0, usd: 0, eur: 0 });
+    return { krw: Math.floor(totals.krw), usd: totals.usd, eur: totals.eur };
+  }, [filteredHoldings, exchangeRates, calcHoldingValue]);
 
-  // 잔여 손익 계산 (vesting 미완료된 것들)
+  // 현금화한 금액 (isRealized === true) — 누적 RSU 카드 breakdown용
+  const cashedOutValue = useMemo(() => {
+    if (!exchangeRates) return { krw: 0, usd: 0, eur: 0 };
+    const totals = filteredHoldings
+      .filter((h) => h.isRealized === true)
+      .reduce((acc, holding) => {
+        const val = calcHoldingValue(holding, exchangeRates);
+        acc.krw += val.krw;
+        acc.usd += val.usd;
+        acc.eur += val.eur;
+        return acc;
+      }, { krw: 0, usd: 0, eur: 0 });
+    return { krw: Math.floor(totals.krw), usd: totals.usd, eur: totals.eur };
+  }, [filteredHoldings, exchangeRates, calcHoldingValue]);
+
+  // 잔여 손익 (isRealized !== true)
   const unrealizedGainLoss = useMemo(() => {
     if (!exchangeRates) return { krw: 0, usd: 0, eur: 0 };
-    
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
-    const totals = filteredHoldings.reduce((acc, holding) => {
-      // vesting 완료 여부 확인
-      let isRealized = false;
-      
-      if (holding.type === 'rsu' && holding.vestingDate) {
-        const vestingDate = new Date(holding.vestingDate);
-        vestingDate.setHours(0, 0, 0, 0);
-        isRealized = vestingDate <= today;
-      } else if (holding.type === 'option' && holding.expiryDate) {
-        const expiryDate = new Date(holding.expiryDate);
-        expiryDate.setHours(0, 0, 0, 0);
-        isRealized = expiryDate <= today;
-      }
-      
-      // 실현된 것은 제외
-      if (isRealized) return acc;
-      
-      const currentPrice = holding.currentPrice || 0;
-      const currency = holding.currency || 'KRW';
-      const exchange = holding.exchange || 'KRX';
-      const isUSD = currency === 'USD' || exchange === 'NASDAQ' || exchange === 'NYSE';
-      const isEUR = currency === 'EUR';
-      
-      let quantity = 0;
-      let purchaseValue = 0;
-      let currentValue = 0;
-      
-      // RSU: 전체 수량 사용
-      if (holding.type === 'rsu' && holding.totalQuantity !== undefined) {
-        quantity = holding.totalQuantity;
-        purchaseValue = (holding.purchasePrice || 0) * quantity;
-        currentValue = currentPrice * quantity;
-      } else if (holding.type === 'option' && holding.strikePrice !== undefined) {
-        const intrinsicValue = currentPrice - holding.strikePrice;
-        if (intrinsicValue > 0) {
-          quantity = holding.quantity;
-          purchaseValue = holding.strikePrice * quantity;
-          currentValue = intrinsicValue * quantity;
-        }
-      } else {
-        quantity = holding.quantity;
-        purchaseValue = (holding.purchasePrice || 0) * quantity;
-        currentValue = currentPrice * quantity;
-      }
-      
-      const gainLossOriginal = currentValue - purchaseValue;
-      
-      if (isUSD) {
-        acc.usd += gainLossOriginal;
-        acc.krw += gainLossOriginal * exchangeRates.USD_TO_KRW;
-      } else if (isEUR) {
-        acc.eur += gainLossOriginal;
-        acc.krw += gainLossOriginal * exchangeRates.EUR_TO_KRW;
-      } else {
-        acc.krw += gainLossOriginal;
-      }
-      
-      return acc;
-    }, { krw: 0, usd: 0, eur: 0 });
-    
-    return {
-      krw: Math.floor(totals.krw),
-      usd: totals.usd,
-      eur: totals.eur,
-    };
-  }, [filteredHoldings, exchangeRates]);
+    const totals = filteredHoldings
+      .filter((h) => !h.isRealized)
+      .reduce((acc, holding) => {
+        const val = calcHoldingValue(holding, exchangeRates);
+        acc.krw += val.krw;
+        acc.usd += val.usd;
+        acc.eur += val.eur;
+        return acc;
+      }, { krw: 0, usd: 0, eur: 0 });
+    return { krw: Math.floor(totals.krw), usd: totals.usd, eur: totals.eur };
+  }, [filteredHoldings, exchangeRates, calcHoldingValue]);
 
   const holdingColumns: Column<StockHolding>[] = useMemo(() => [
     { key: 'symbol', label: '심볼', sortable: true },
@@ -680,25 +633,6 @@ export default function RSUPage() {
           );
         }
         return new Intl.NumberFormat('ko-KR').format(value) + '주';
-      },
-    },
-    {
-      key: 'purchasePrice',
-      label: '매수 가격',
-      sortable: true,
-      render: (value, row) => {
-        // RSU는 매수 가격이 없을 수 있음
-        if (row.type === 'rsu' && (!value || value === 0)) {
-          return '-';
-        }
-        const currency = row.currency || 'KRW';
-        if (currency === 'USD') {
-          return `$${new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)}`;
-        } else if (currency === 'EUR') {
-          return `€${new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)}`;
-        } else {
-          return `${new Intl.NumberFormat('ko-KR').format(value)}원`;
-        }
       },
     },
     {
@@ -807,103 +741,52 @@ export default function RSUPage() {
       },
     },
     {
-      key: 'gainLoss',
-      label: '손익',
-      sortable: false,
+      key: 'vestingDate',
+      label: 'Vesting 일자',
+      sortable: true,
       render: (_, row) => {
-        if (!exchangeRates) return '-';
-        
-        const currentPrice = row.currentPrice || row.purchasePrice;
-        const currency = row.currency || 'KRW';
-        const exchange = row.exchange || 'KRX';
-        const isUSD = currency === 'USD' || exchange === 'NASDAQ' || exchange === 'NYSE';
-        const isEUR = currency === 'EUR';
-        
-        let quantity = 0;
-        let purchaseValue = 0;
-        let currentValue = 0;
-        
-        // RSU: 전체 수량 사용
-        if (row.type === 'rsu' && row.totalQuantity !== undefined) {
-          quantity = row.totalQuantity;
-          purchaseValue = (row.purchasePrice || 0) * quantity;
-          currentValue = currentPrice * quantity;
-        } else if (row.type === 'option' && row.strikePrice !== undefined) {
-          const intrinsicValue = currentPrice - row.strikePrice;
-          if (intrinsicValue <= 0) {
-            return <span className="text-gray-400">-</span>;
-          }
-          quantity = row.quantity;
-          purchaseValue = row.strikePrice * quantity;
-          currentValue = intrinsicValue * quantity;
-        } else {
-          quantity = row.quantity;
-          purchaseValue = (row.purchasePrice || 0) * quantity;
-          currentValue = currentPrice * quantity;
+        const date = row.type === 'rsu' ? row.vestingDate : row.expiryDate;
+        if (!date) return <span className="text-gray-400">-</span>;
+        const d = new Date(date);
+        const str = `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
+        return <span className="text-gray-800">{str}</span>;
+      },
+    },
+    {
+      key: 'notes',
+      label: '비고',
+      sortable: false,
+      render: (value, row) => {
+        const isEditing = editingNoteId === row.id;
+        if (isEditing) {
+          return (
+            <input
+              autoFocus
+              type="text"
+              value={noteValue}
+              onChange={(e) => setNoteValue(e.target.value)}
+              onBlur={() => handleSaveNote(row.id, noteValue)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleSaveNote(row.id, noteValue);
+                if (e.key === 'Escape') setEditingNoteId(null);
+              }}
+              className="w-full min-w-[120px] px-2 py-1 text-sm border border-blue-400 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+              placeholder="비고 입력..."
+            />
+          );
         }
-        
-        const gainLossOriginal = currentValue - purchaseValue;
-        
-        let gainLossKRW = gainLossOriginal;
-        if (isUSD && exchangeRates) {
-          gainLossKRW = gainLossOriginal * exchangeRates.USD_TO_KRW;
-        } else if (isEUR && exchangeRates) {
-          gainLossKRW = gainLossOriginal * exchangeRates.EUR_TO_KRW;
-        }
-        
-        let percent = 0;
-        if (purchaseValue > 0) {
-          percent = ((currentValue - purchaseValue) / purchaseValue) * 100;
-        } else if (purchaseValue === 0 && currentValue > 0) {
-          percent = Infinity;
-        }
-        
-        const isInfinity = percent === Infinity;
-        
         return (
-          <div>
-            {isUSD ? (
-              <>
-                <div className={`font-semibold ${gainLossKRW >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {gainLossKRW >= 0 ? '+' : ''}
-                  {new Intl.NumberFormat('ko-KR').format(Math.floor(gainLossKRW))}원
-                </div>
-                <div className={`text-xs text-gray-500`}>
-                  (${gainLossOriginal >= 0 ? '+' : ''}{new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(gainLossOriginal)})
-                </div>
-                {!isInfinity && (
-                  <div className={`text-xs ${gainLossOriginal >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    ({percent >= 0 ? '+' : ''}{percent.toFixed(2)}%)
-                  </div>
-                )}
-              </>
-            ) : isEUR ? (
-              <>
-                <div className={`font-semibold ${gainLossKRW >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {gainLossKRW >= 0 ? '+' : ''}
-                  {new Intl.NumberFormat('ko-KR').format(Math.floor(gainLossKRW))}원
-                </div>
-                <div className={`text-xs text-gray-500`}>
-                  (€{gainLossOriginal >= 0 ? '+' : ''}{new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(gainLossOriginal)})
-                </div>
-                {!isInfinity && (
-                  <div className={`text-xs ${gainLossOriginal >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    ({percent >= 0 ? '+' : ''}{percent.toFixed(2)}%)
-                  </div>
-                )}
-              </>
+          <div
+            onClick={() => {
+              setEditingNoteId(row.id);
+              setNoteValue(row.notes || '');
+            }}
+            className="min-w-[100px] px-2 py-1 text-sm text-gray-700 rounded cursor-pointer hover:bg-gray-100 transition-colors"
+          >
+            {row.notes ? (
+              <span>{row.notes}</span>
             ) : (
-              <>
-                <div className={`font-semibold ${gainLossKRW >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {gainLossKRW >= 0 ? '+' : ''}
-                  {new Intl.NumberFormat('ko-KR').format(Math.floor(gainLossKRW))}원
-                </div>
-                {!isInfinity && (
-                  <div className={`text-xs ${gainLossKRW >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    ({percent >= 0 ? '+' : ''}{percent.toFixed(2)}%)
-                  </div>
-                )}
-              </>
+              <span className="text-gray-300 select-none">클릭하여 입력</span>
             )}
           </div>
         );
@@ -928,6 +811,16 @@ export default function RSUPage() {
       render: (_, row) => (
         <div className="flex gap-2">
           <button
+            onClick={() => handleToggleRealized(row.id)}
+            className={`px-3 py-1 text-sm rounded transition-colors ${
+              row.isRealized
+                ? 'bg-gray-500 text-white hover:bg-gray-600'
+                : 'text-green-600 border border-green-600 hover:bg-green-50'
+            }`}
+          >
+            {row.isRealized ? '실현됨' : '미실현'}
+          </button>
+          <button
             onClick={() => handleEdit(row)}
             className="px-3 py-1 text-sm text-blue-600 border border-blue-600 rounded hover:bg-blue-50 transition-colors"
           >
@@ -942,7 +835,7 @@ export default function RSUPage() {
         </div>
       ),
     },
-  ], [exchangeRates, filteredHoldings]);
+  ], [exchangeRates, filteredHoldings, handleToggleRealized, editingNoteId, noteValue, handleSaveNote]);
 
   if (isAuthenticated !== true) {
     return (
@@ -988,12 +881,13 @@ export default function RSUPage() {
                     });
                   }
                   
-                  const updated = await Promise.all(
+                  const updatedRsuHoldings = await Promise.all(
                     currentHoldings.map(async (holding) => {
                       if (!holding.symbol) return holding;
                       try {
-                        const price = await getStockPrice(holding.symbol, true); // 강제 새로고침
+                        const price = await getStockPrice(holding.symbol, true);
                         if (price !== null) {
+                          // isRealized, notes 등 기존 필드 보존
                           return { ...holding, currentPrice: price };
                         }
                       } catch (error) {
@@ -1002,12 +896,15 @@ export default function RSUPage() {
                       return holding;
                     })
                   );
-                  setHoldings(updated);
-                  setStockHoldings(updated);
-                  
-                  setTimeout(() => {
-                    syncHoldingsToAsset();
-                  }, 100);
+                  // 전체 holdings에서 RSU/옵션만 교체 (일반 주식 보존)
+                  const allHoldings = getStockHoldings();
+                  const updatedAllHoldings = allHoldings.map(h => {
+                    const updated = updatedRsuHoldings.find(r => r.id === h.id);
+                    return updated || h;
+                  });
+                  setHoldings(updatedRsuHoldings);
+                  syncHoldingsToAsset(updatedRsuHoldings);
+                  await setStockHoldings(updatedAllHoldings);
                 }}
                 className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors"
               >
@@ -1027,156 +924,135 @@ export default function RSUPage() {
 
           {/* 통계 카드 */}
           <div className="mb-6">
-            {/* 한 줄: 총 평가 금액 / 실현 손익 / 잔여 손익 / Vesting 예정 */}
             <div className="grid grid-cols-12 gap-3">
-              <div className="col-span-12 md:col-span-3 bg-white rounded-lg shadow-sm border border-gray-200 p-3">
-                <div className="text-xs text-gray-600 mb-1">총 평가 금액</div>
-                <div className="text-xl font-bold text-gray-900">
-                  {new Intl.NumberFormat('ko-KR').format(totalValue)}원
+              {/* 카드 1: 현재 평가 금액 (미실현) */}
+              <div className="col-span-12 md:col-span-3 bg-blue-50 border border-blue-100 rounded-lg shadow-sm p-4">
+                <div className="text-xs text-blue-500 font-medium mb-1">현재 평가 금액</div>
+                <div className="text-2xl font-bold text-blue-900">
+                  {new Intl.NumberFormat('ko-KR').format(currentUnrealizedValue.krw)}원
                 </div>
-                <div className="text-xs text-gray-500 mt-1">
-                  (실현 {new Intl.NumberFormat('ko-KR').format(realizedGainLoss.krw)}원 + 잔여 {new Intl.NumberFormat('ko-KR').format(unrealizedGainLoss.krw)}원)
-                </div>
-              </div>
-              <div className="col-span-12 md:col-span-3 bg-white rounded-lg shadow-sm border border-gray-200 p-3">
-                <div className="text-xs text-gray-600 mb-1">실현 손익</div>
-                {realizedGainLoss.usd !== 0 ? (
-                  <div>
-                    <div className={`text-xl font-bold ${realizedGainLoss.krw >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      {realizedGainLoss.krw >= 0 ? '+' : ''}
-                      {new Intl.NumberFormat('ko-KR').format(realizedGainLoss.krw)}원
-                    </div>
-                    <div className={`text-xs text-gray-500 ${realizedGainLoss.usd >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      (${realizedGainLoss.usd >= 0 ? '+' : ''}{new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(realizedGainLoss.usd)})
-                    </div>
-                  </div>
-                ) : realizedGainLoss.eur !== 0 ? (
-                  <div>
-                    <div className={`text-xl font-bold ${realizedGainLoss.krw >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      {realizedGainLoss.krw >= 0 ? '+' : ''}
-                      {new Intl.NumberFormat('ko-KR').format(realizedGainLoss.krw)}원
-                    </div>
-                    <div className={`text-xs text-gray-500 ${realizedGainLoss.eur >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      (€{realizedGainLoss.eur >= 0 ? '+' : ''}{new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(realizedGainLoss.eur)})
-                    </div>
-                  </div>
-                ) : (
-                  <div className={`text-xl font-bold ${realizedGainLoss.krw >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    {realizedGainLoss.krw >= 0 ? '+' : ''}
-                    {new Intl.NumberFormat('ko-KR').format(realizedGainLoss.krw)}원
+                {currentUnrealizedValue.usd !== 0 && (
+                  <div className="text-sm text-blue-400 mt-1">
+                    (${new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(currentUnrealizedValue.usd)})
                   </div>
                 )}
-              </div>
-              <div className="col-span-12 md:col-span-3 bg-white rounded-lg shadow-sm border border-gray-200 p-3">
-                <div className="text-xs text-gray-600 mb-1">잔여 손익</div>
-                {unrealizedGainLoss.usd !== 0 ? (
-                  <div>
-                    <div className={`text-xl font-bold ${unrealizedGainLoss.krw >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      {unrealizedGainLoss.krw >= 0 ? '+' : ''}
-                      {new Intl.NumberFormat('ko-KR').format(unrealizedGainLoss.krw)}원
-                    </div>
-                    <div className={`text-xs text-gray-500 ${unrealizedGainLoss.usd >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      (${unrealizedGainLoss.usd >= 0 ? '+' : ''}{new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(unrealizedGainLoss.usd)})
-                    </div>
-                  </div>
-                ) : unrealizedGainLoss.eur !== 0 ? (
-                  <div>
-                    <div className={`text-xl font-bold ${unrealizedGainLoss.krw >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      {unrealizedGainLoss.krw >= 0 ? '+' : ''}
-                      {new Intl.NumberFormat('ko-KR').format(unrealizedGainLoss.krw)}원
-                    </div>
-                    <div className={`text-xs text-gray-500 ${unrealizedGainLoss.eur >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      (€{unrealizedGainLoss.eur >= 0 ? '+' : ''}{new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(unrealizedGainLoss.eur)})
-                    </div>
-                  </div>
-                ) : (
-                  <div className={`text-xl font-bold ${unrealizedGainLoss.krw >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    {unrealizedGainLoss.krw >= 0 ? '+' : ''}
-                    {new Intl.NumberFormat('ko-KR').format(unrealizedGainLoss.krw)}원
+                {currentUnrealizedValue.eur !== 0 && (
+                  <div className="text-sm text-blue-400 mt-1">
+                    (€{new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(currentUnrealizedValue.eur)})
                   </div>
                 )}
+                <div className="text-xs text-blue-400 mt-2">미실현 RSU 기준</div>
               </div>
-              <div className="col-span-12 md:col-span-3 bg-white rounded-lg shadow-sm border border-gray-200 p-3">
-                <div className="text-xs text-gray-600 mb-1">Vesting 예정</div>
-                <div className="space-y-2">
-                {(() => {
-                  // 주식명별로 그룹화하여 vesting 기간 계산
-                  const groupedByStock = filteredHoldings.reduce((acc, holding) => {
-                    if (holding.type === 'rsu' && holding.vestingDate) {
-                      const key = holding.name;
-                      if (!acc[key]) {
-                        acc[key] = [];
-                      }
-                      acc[key].push(holding);
-                    }
-                    return acc;
-                  }, {} as Record<string, StockHolding[]>);
 
-                  const vestingInfo = Object.entries(groupedByStock).map(([stockName, holdings]) => {
-                    // 모든 vesting 날짜 찾기
-                    const vestingDates = holdings
-                      .map(h => h.vestingDate)
-                      .filter((date): date is string => !!date)
-                      .sort();
-                    
-                    if (vestingDates.length === 0) return null;
-                    
-                    const today = new Date();
-                    today.setHours(0, 0, 0, 0);
-                    
-                    const vestingInfoList = vestingDates.map(date => {
-                      const vestingDate = new Date(date);
+              {/* 카드 2: 실현 손익 */}
+              <div className="col-span-12 md:col-span-3 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+                <div className="text-xs text-gray-500 mb-1">실현 손익</div>
+                <div className={`text-2xl font-bold ${realizedGainLoss.krw >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  {realizedGainLoss.krw >= 0 ? '+' : ''}
+                  {new Intl.NumberFormat('ko-KR').format(realizedGainLoss.krw)}원
+                </div>
+                {realizedGainLoss.usd !== 0 && (
+                  <div className={`text-sm mt-1 ${realizedGainLoss.usd >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                    (${realizedGainLoss.usd >= 0 ? '+' : ''}{new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(realizedGainLoss.usd)})
+                  </div>
+                )}
+                {realizedGainLoss.eur !== 0 && (
+                  <div className={`text-sm mt-1 ${realizedGainLoss.eur >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                    (€{realizedGainLoss.eur >= 0 ? '+' : ''}{new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(realizedGainLoss.eur)})
+                  </div>
+                )}
+                <div className="text-xs text-gray-400 mt-2">Vesting 완료 + 미실현 합계</div>
+              </div>
+
+              {/* 카드 3: 누적 RSU 금액 */}
+              <div className="col-span-12 md:col-span-3 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+                <div className="text-xs text-gray-500 mb-1">누적 RSU 금액</div>
+                <div className="text-2xl font-bold text-gray-900">
+                  {new Intl.NumberFormat('ko-KR').format(cumulativeValue.krw)}원
+                </div>
+                {cumulativeValue.usd !== 0 && (
+                  <div className="text-sm text-gray-500 mt-1">
+                    (${new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(cumulativeValue.usd)})
+                  </div>
+                )}
+                {cumulativeValue.eur !== 0 && (
+                  <div className="text-sm text-gray-500 mt-1">
+                    (€{new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(cumulativeValue.eur)})
+                  </div>
+                )}
+                <div className="text-xs text-gray-400 mt-2">
+                  실현(현금화) {new Intl.NumberFormat('ko-KR').format(cashedOutValue.krw)}원 + 미실현 {new Intl.NumberFormat('ko-KR').format(unrealizedGainLoss.krw)}원
+                </div>
+              </div>
+
+              {/* 카드 4: Vesting 일정 */}
+              <div className="col-span-12 md:col-span-3 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+                <div className="text-xs text-gray-500 mb-2">Vesting 일정</div>
+                {(() => {
+                  const todayDate = new Date();
+                  todayDate.setHours(0, 0, 0, 0);
+
+                  const allVestingRows = filteredHoldings
+                    .filter((h) => h.type === 'rsu' && h.vestingDate)
+                    .map((h) => {
+                      const vestingDate = new Date(h.vestingDate!);
                       vestingDate.setHours(0, 0, 0, 0);
-                      const diffTime = vestingDate.getTime() - today.getTime();
-                      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                      
-                      // 날짜 형식: YYYY.MM.DD
+                      const diffDays = Math.ceil((vestingDate.getTime() - todayDate.getTime()) / (1000 * 60 * 60 * 24));
                       const year = vestingDate.getFullYear();
                       const month = String(vestingDate.getMonth() + 1).padStart(2, '0');
                       const day = String(vestingDate.getDate()).padStart(2, '0');
-                      const dateStr = `${year}.${month}.${day}`;
-                      
-                      return {
-                        date: dateStr,
-                        daysRemaining: diffDays,
-                      };
-                    });
-                    
-                    return {
-                      stockName,
-                      vestingInfoList,
-                    };
-                  }).filter((info): info is { stockName: string; vestingInfoList: { date: string; daysRemaining: number }[] } => info !== null);
+                      return { holding: h, dateStr: `${year}.${month}.${day}`, daysRemaining: diffDays };
+                    })
+                    .sort((a, b) => b.holding.vestingDate!.localeCompare(a.holding.vestingDate!));
 
-                  if (vestingInfo.length === 0) {
-                    return <div className="text-sm text-gray-500">Vesting 정보 없음</div>;
+                  if (allVestingRows.length === 0) {
+                    return <div className="text-sm text-gray-400">Vesting 정보 없음</div>;
                   }
 
-                  return vestingInfo.map((info) => {
-                    return (
-                      <div key={info.stockName} className="text-sm">
-                        <div className="font-semibold text-gray-900 mb-1">{info.stockName}</div>
-                        <div className="space-y-1">
-                          {info.vestingInfoList.map((vesting, index) => {
-                            const isPast = vesting.daysRemaining < 0;
-                            const daysText = isPast 
-                              ? `만료됨 (${Math.abs(vesting.daysRemaining)}일 전)`
-                              : vesting.daysRemaining === 0
-                              ? '오늘'
-                              : `${vesting.daysRemaining}일남음`;
-                            
-                            return (
-                              <div key={index} className={`text-xs ${isPast ? 'text-gray-500' : 'text-blue-600'}`}>
-                                {vesting.date} ({daysText})
-                              </div>
-                            );
-                          })}
+                  const grouped = allVestingRows.reduce((acc, row) => {
+                    const key = row.holding.name;
+                    if (!acc[key]) acc[key] = [];
+                    acc[key].push(row);
+                    return acc;
+                  }, {} as Record<string, typeof allVestingRows>);
+
+                  return (
+                    <div className="space-y-3">
+                      {Object.entries(grouped).map(([stockName, rows]) => (
+                        <div key={stockName}>
+                          <div className="text-xs font-semibold text-gray-600 mb-1">{stockName}</div>
+                          <div className="space-y-1">
+                            {rows.map((row, idx) => {
+                              const isCompleted = row.daysRemaining < 0;
+                              const isToday = row.daysRemaining === 0;
+                              const daysText = isCompleted
+                                ? 'Vesting 완료'
+                                : isToday
+                                ? '오늘'
+                                : `${row.daysRemaining}일 남음`;
+                              return (
+                                <div key={idx} className="flex items-center gap-2 text-sm">
+                                  <span className={isCompleted ? 'text-gray-400' : 'text-gray-800'}>
+                                    {row.dateStr}
+                                  </span>
+                                  <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+                                    isCompleted
+                                      ? 'bg-gray-100 text-gray-400'
+                                      : isToday
+                                      ? 'bg-green-100 text-green-700'
+                                      : 'bg-blue-50 text-blue-600'
+                                  }`}>
+                                    {daysText}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
-                      </div>
-                    );
-                  });
+                      ))}
+                    </div>
+                  );
                 })()}
-                </div>
               </div>
             </div>
           </div>

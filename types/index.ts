@@ -71,6 +71,8 @@ export interface StockHolding extends BaseEntity {
   vestedQuantity?: number; // 베스팅된 수량 (RSU)
   totalQuantity?: number; // 전체 수량 (RSU)
   vestingDate?: string; // 베스팅 예정일 (YYYY-MM-DD)
+  isRealized?: boolean; // 실현 여부 (수동 설정)
+  notes?: string; // 비고
   // 옵션 관련 필드
   strikePrice?: number; // 행사 가격 (옵션)
   expiryDate?: string; // 만료일 (YYYY-MM-DD) (옵션)

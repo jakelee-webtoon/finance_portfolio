@@ -54,13 +54,13 @@ export async function syncFromFirebase(): Promise<void> {
     // Stock Holdings
     try {
       const holdings = await firestore.getStockHoldings();
+      console.log(`[syncFromFirebase] Fetched ${holdings.length} stock holdings from Firebase`);
+      
       // Mock 데이터 필터링 (ID, 심볼, 이름, 수량으로 체크)
       const realHoldings = holdings.filter((holding: StockHolding) => {
-        // Mock 데이터 ID 체크
         if (holding.id === 'stock-1' || holding.id === 'stock-2' || holding.id === 'stock-3') {
           return false;
         }
-        // Mock 데이터 심볼+이름+수량 조합 체크
         if (holding.symbol === '005930' && holding.name === '삼성전자' && holding.quantity === 50 && holding.purchasePrice === 60000) {
           return false;
         }
@@ -72,11 +72,45 @@ export async function syncFromFirebase(): Promise<void> {
         }
         return true;
       });
-      // 빈 배열도 저장 (mock 데이터 방지)
-      localStorage.setItem('finance-stock-holdings', JSON.stringify(realHoldings));
+
+      // 로컬이 더 최신이면 Firestore 결과로 덮어쓰지 않음 (리마운트/재동기화 시 과거 값으로 덮어치는 것 방지)
+      const localRaw = localStorage.getItem('finance-stock-holdings');
+      if (localRaw) {
+        try {
+          const localHoldings: StockHolding[] = JSON.parse(localRaw);
+          const localMaxDate = localHoldings.reduce((max, h) => {
+            const d = h.as_of_date || '';
+            return d > max ? d : max;
+          }, '');
+          const remoteMaxDate = realHoldings.reduce((max, h) => {
+            const d = h.as_of_date || '';
+            return d > max ? d : max;
+          }, '');
+          if (localMaxDate > remoteMaxDate) {
+            console.log(`[syncFromFirebase] Skip overwriting stock holdings (local newer: ${localMaxDate} > ${remoteMaxDate})`);
+            // Salaries 등 다른 컬렉션은 계속 동기화되도록 try 블록은 유지
+          } else {
+            localStorage.setItem('finance-stock-holdings', JSON.stringify(realHoldings));
+          }
+        } catch {
+          localStorage.setItem('finance-stock-holdings', JSON.stringify(realHoldings));
+        }
+      } else {
+        localStorage.setItem('finance-stock-holdings', JSON.stringify(realHoldings));
+      }
     } catch (error) {
-      // 에러 발생 시에도 빈 배열 저장 (mock 데이터 방지)
-      localStorage.setItem('finance-stock-holdings', JSON.stringify([]));
+      console.error('[syncFromFirebase] Failed to sync stock holdings:', error);
+      // 에러 발생 시 기존 localStorage 데이터 유지 (빈 배열로 덮어쓰지 않음)
+      // Firebase에서 가져오기 실패해도 기존 데이터는 보존
+      const existing = localStorage.getItem('finance-stock-holdings');
+      if (!existing) {
+        // localStorage에 데이터가 없을 때만 빈 배열 저장
+        localStorage.setItem('finance-stock-holdings', JSON.stringify([]));
+      } else {
+        const existingData = JSON.parse(existing);
+        const existingRsu = existingData.filter((h: StockHolding) => h.type === 'rsu' || h.type === 'option');
+        console.log(`[syncFromFirebase] Keeping existing localStorage data - Total: ${existingData.length}개, RSU/Options: ${existingRsu.length}개`);
+      }
     }
     
     // Salaries
@@ -298,25 +332,19 @@ export function getStockHoldings(): StockHolding[] {
   return Array.isArray(parsed) ? parsed : [];
 }
 
-export function setStockHoldings(holdings: StockHolding[]): void {
+export async function setStockHoldings(holdings: StockHolding[]): Promise<void> {
   if (typeof window === 'undefined') return;
-  
-  // localStorage에 저장
+
   localStorage.setItem('finance-stock-holdings', JSON.stringify(holdings));
-  
-  // Firebase 사용 가능하면 백그라운드에서 Firebase에 저장 (비동기)
-  if (useFirebase()) {
-    getFirestoreFunctions().then(firestore => {
-      if (firestore) {
-        firestore.setStockHoldings(holdings).catch((error: unknown) => {
-          // 에러 무시 (이미 localStorage에 저장됨)
-          console.error('[Store] Failed to save Stock Holdings to Firebase:', error);
-        });
-      }
-    }).catch((error: unknown) => {
-      // 에러 무시
-      console.error('[Store] Failed to load Firestore functions:', error);
-    });
+
+  if (!useFirebase()) return;
+  try {
+    const firestore = await getFirestoreFunctions();
+    if (firestore) {
+      await firestore.setStockHoldings(holdings);
+    }
+  } catch (error: unknown) {
+    console.error('[Store] Failed to save Stock Holdings to Firebase:', error);
   }
 }
 
