@@ -245,50 +245,51 @@ export default function RSUPage() {
 
   // 현재 가격 주기적으로 업데이트
   useEffect(() => {
-    // 최신 holdings 참조 사용
-    const currentHoldings = holdingsRef.current;
-    if (!exchangeRates || currentHoldings.length === 0) return;
+    if (!exchangeRates) return;
 
     const updatePrices = async (forceRefresh: boolean = false) => {
+      // 매번 최신 holdings를 가져옴 (비고/실현 상태 등 다른 변경사항 반영)
+      const allHoldings = getStockHoldings();
+      const currentRsuHoldings = allHoldings.filter((h) => h.type === 'rsu' || h.type === 'option');
+      if (currentRsuHoldings.length === 0) return;
+
       // 강제 새로고침인 경우 모든 심볼의 캐시 삭제
       if (forceRefresh && typeof window !== 'undefined') {
-        currentHoldings.forEach((holding) => {
+        currentRsuHoldings.forEach((holding) => {
           if (holding.symbol) {
             localStorage.removeItem(`stock-quotes-cache-${holding.symbol}`);
           }
         });
       }
-      
-      // 전체 holdings 가져오기 (일반 주식 포함)
-      const allHoldings = getStockHoldings();
-      
-      // RSU/옵션만 업데이트
+
+      // RSU/옵션만 가격 업데이트 (기존 필드 모두 보존)
       const updatedRsuHoldings = await Promise.all(
-        currentHoldings.map(async (holding) => {
+        currentRsuHoldings.map(async (holding) => {
           if (!holding.symbol) return holding;
           try {
             const price = await getStockPrice(holding.symbol, forceRefresh);
             if (price !== null && price !== holding.currentPrice) {
               return { ...holding, currentPrice: price };
             }
-          } catch (error) {
+          } catch {
             // 에러 발생 시 기존 holding 반환
           }
           return holding;
         })
       );
-      
-      // 실제로 변경된 것이 있는지 확인
-      const hasChanges = updatedRsuHoldings.some((holding, index) => 
-        holding.currentPrice !== currentHoldings[index]?.currentPrice
+
+      // 가격만 변경된 경우에만 저장 (다른 필드는 건드리지 않음)
+      const hasChanges = updatedRsuHoldings.some((holding, index) =>
+        holding.currentPrice !== currentRsuHoldings[index]?.currentPrice
       );
-      
+
       if (hasChanges) {
-        const updatedAllHoldings = allHoldings.map(holding => {
-          const updatedRsu = updatedRsuHoldings.find(rsu => rsu.id === holding.id);
+        const updatedAllHoldings = allHoldings.map((holding) => {
+          const updatedRsu = updatedRsuHoldings.find((rsu) => rsu.id === holding.id);
           return updatedRsu || holding;
         });
         setHoldings(updatedRsuHoldings);
+        holdingsRef.current = updatedRsuHoldings;
         syncHoldingsToAsset(updatedRsuHoldings);
         await setStockHoldings(updatedAllHoldings);
       }
@@ -299,7 +300,7 @@ export default function RSUPage() {
     // 이후 1분마다 업데이트 (캐시 사용)
     const interval = setInterval(() => updatePrices(false), 60000);
     return () => clearInterval(interval);
-  }, [exchangeRates, syncHoldingsToAsset]); // holdings.length 제거 (useRef로 최신 값 참조)
+  }, [exchangeRates, syncHoldingsToAsset]);
 
   // 초기 로드 시 기존 RSU/옵션을 자산으로 동기화
   useEffect(() => {
@@ -869,40 +870,41 @@ export default function RSUPage() {
             <div className="flex gap-2">
               <button
                 onClick={async () => {
-                  const currentHoldings = holdingsRef.current;
-                  if (!exchangeRates || currentHoldings.length === 0) return;
-                  
+                  if (!exchangeRates) return;
+                  // 매번 최신 holdings를 가져옴 (비고/실현 상태 등 반영)
+                  const allHoldings = getStockHoldings();
+                  const currentRsuHoldings = allHoldings.filter((h) => h.type === 'rsu' || h.type === 'option');
+                  if (currentRsuHoldings.length === 0) return;
+
                   // 모든 심볼의 캐시 삭제
                   if (typeof window !== 'undefined') {
-                    currentHoldings.forEach((holding) => {
+                    currentRsuHoldings.forEach((holding) => {
                       if (holding.symbol) {
                         localStorage.removeItem(`stock-quotes-cache-${holding.symbol}`);
                       }
                     });
                   }
-                  
+
                   const updatedRsuHoldings = await Promise.all(
-                    currentHoldings.map(async (holding) => {
+                    currentRsuHoldings.map(async (holding) => {
                       if (!holding.symbol) return holding;
                       try {
                         const price = await getStockPrice(holding.symbol, true);
                         if (price !== null) {
-                          // isRealized, notes 등 기존 필드 보존
                           return { ...holding, currentPrice: price };
                         }
-                      } catch (error) {
+                      } catch {
                         // 에러 발생 시 기존 holding 반환
                       }
                       return holding;
                     })
                   );
-                  // 전체 holdings에서 RSU/옵션만 교체 (일반 주식 보존)
-                  const allHoldings = getStockHoldings();
-                  const updatedAllHoldings = allHoldings.map(h => {
-                    const updated = updatedRsuHoldings.find(r => r.id === h.id);
+                  const updatedAllHoldings = allHoldings.map((h) => {
+                    const updated = updatedRsuHoldings.find((r) => r.id === h.id);
                     return updated || h;
                   });
                   setHoldings(updatedRsuHoldings);
+                  holdingsRef.current = updatedRsuHoldings;
                   syncHoldingsToAsset(updatedRsuHoldings);
                   await setStockHoldings(updatedAllHoldings);
                 }}
