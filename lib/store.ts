@@ -78,11 +78,11 @@ export async function syncFromFirebase(): Promise<void> {
       if (localRaw) {
         try {
           const localHoldings: StockHolding[] = JSON.parse(localRaw);
-          const localMaxDate = localHoldings.reduce((max, h) => {
+          const localMaxDate = localHoldings.reduce((max: string, h) => {
             const d = h.as_of_date || '';
             return d > max ? d : max;
           }, '');
-          const remoteMaxDate = realHoldings.reduce((max, h) => {
+          const remoteMaxDate = realHoldings.reduce((max: string, h) => {
             const d = h.as_of_date || '';
             return d > max ? d : max;
           }, '');
