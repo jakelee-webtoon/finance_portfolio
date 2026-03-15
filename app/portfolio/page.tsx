@@ -4,8 +4,8 @@ import { useState, useEffect, useMemo } from 'react';
 import TopBar from '@/components/TopBar';
 import Navigation from '@/components/Navigation';
 import Table, { Column } from '@/components/Table';
-import { Asset, Liability, DashboardState, Apartment } from '@/types';
-import { getDashboardState, getAssets, setAssets, getLiabilities, setLiabilities, getApartments, setApartments, syncFromFirebase } from '@/lib/store';
+import { Asset, Liability, DashboardState, Apartment, StockHolding } from '@/types';
+import { getDashboardState, getAssets, setAssets, getLiabilities, setLiabilities, getApartments, setApartments, getStockHoldings, syncFromFirebase } from '@/lib/store';
 import { getExchangeRates, convertCurrency } from '@/lib/exchangeRate';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -15,6 +15,7 @@ export default function PortfolioPage() {
   const isAuthenticated = useAuth();
   const [state, setState] = useState<DashboardState | null>(null);
   const [assets, setAssetsState] = useState<Asset[]>([]);
+  const [stockHoldingsState, setStockHoldingsState] = useState<StockHolding[]>([]);
   const [liabilities, setLiabilitiesState] = useState<Liability[]>([]);
   const [activeTab, setActiveTab] = useState<TabType>('assets');
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -76,9 +77,9 @@ export default function PortfolioPage() {
     }
     
     setAssetsState(assets);
+    setStockHoldingsState(getStockHoldings());
     setLiabilitiesState(getLiabilities());
     
-      // 환율 로드
       getExchangeRates().then((rates) => {
         setExchangeRates(rates);
       });
@@ -86,6 +87,30 @@ export default function PortfolioPage() {
     
     loadData();
   }, [isAuthenticated]);
+
+  // RSU 자산이 unvested인지 stock holdings에서 직접 판단
+  const isRsuAssetUnvested = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0];
+    return (assetId: string): boolean => {
+      if (!assetId.startsWith('asset-rsu-')) return false;
+      const stockName = assetId.replace('asset-rsu-', '');
+      const relatedHoldings = stockHoldingsState.filter(h =>
+        (h.type === 'rsu' || h.type === 'option') &&
+        !h.isRealized &&
+        (h.name === stockName || h.symbol === stockName)
+      );
+      if (relatedHoldings.length === 0) return false;
+      return relatedHoldings.every(h => h.vestingDate && h.vestingDate > today);
+    };
+  }, [stockHoldingsState]);
+
+  // asset의 실질적인 isOtherAsset 여부 판단 (수동 설정 OR unvested RSU)
+  const isEffectiveOtherAsset = useMemo(() => {
+    return (asset: Asset): boolean => {
+      if (asset.isOtherAsset) return true;
+      return isRsuAssetUnvested(asset.id);
+    };
+  }, [isRsuAssetUnvested]);
 
   // DashboardState 변경 감지 (TopBar에서 변경 시)
   useEffect(() => {
@@ -352,37 +377,25 @@ export default function PortfolioPage() {
   const totalAssets = useMemo(() => {
     if (!exchangeRates) return 0;
     return Math.floor(filteredAssets.reduce((sum, asset) => {
-      // 기타 자산은 총자산에서 제외
-      if (asset.isOtherAsset) return sum;
-      
-      if (asset.currency === 'KRW') {
-        return sum + asset.amount;
-      } else if (asset.currency === 'USD') {
-        return sum + asset.amount * exchangeRates.USD_TO_KRW;
-      } else if (asset.currency === 'EUR') {
-        return sum + asset.amount * exchangeRates.EUR_TO_KRW;
-      }
+      if (isEffectiveOtherAsset(asset)) return sum;
+      if (asset.currency === 'KRW') return sum + asset.amount;
+      if (asset.currency === 'USD') return sum + asset.amount * exchangeRates.USD_TO_KRW;
+      if (asset.currency === 'EUR') return sum + asset.amount * exchangeRates.EUR_TO_KRW;
       return sum + asset.amount;
     }, 0));
-  }, [filteredAssets, exchangeRates]);
+  }, [filteredAssets, exchangeRates, isEffectiveOtherAsset]);
 
   // 기타 자산
   const otherAssets = useMemo(() => {
     if (!exchangeRates) return 0;
     return Math.floor(filteredAssets.reduce((sum, asset) => {
-      // 기타 자산만 합산
-      if (!asset.isOtherAsset) return sum;
-      
-      if (asset.currency === 'KRW') {
-        return sum + asset.amount;
-      } else if (asset.currency === 'USD') {
-        return sum + asset.amount * exchangeRates.USD_TO_KRW;
-      } else if (asset.currency === 'EUR') {
-        return sum + asset.amount * exchangeRates.EUR_TO_KRW;
-      }
+      if (!isEffectiveOtherAsset(asset)) return sum;
+      if (asset.currency === 'KRW') return sum + asset.amount;
+      if (asset.currency === 'USD') return sum + asset.amount * exchangeRates.USD_TO_KRW;
+      if (asset.currency === 'EUR') return sum + asset.amount * exchangeRates.EUR_TO_KRW;
       return sum + asset.amount;
     }, 0));
-  }, [filteredAssets, exchangeRates]);
+  }, [filteredAssets, exchangeRates, isEffectiveOtherAsset]);
 
   const totalLiabilities = useMemo(() => {
     if (!exchangeRates) return 0;
@@ -417,7 +430,7 @@ export default function PortfolioPage() {
       }
       
       // 기타 자산은 별도로 집계
-      if (asset.isOtherAsset) {
+      if (isEffectiveOtherAsset(asset)) {
         otherAssetMap[category] = (otherAssetMap[category] || 0) + krwAmount;
       } else {
         categoryMap[category] = (categoryMap[category] || 0) + krwAmount;
@@ -439,7 +452,7 @@ export default function PortfolioPage() {
     }));
     
     return [...mainAssets, ...otherAssetsList];
-  }, [filteredAssets, exchangeRates]);
+  }, [filteredAssets, exchangeRates, isEffectiveOtherAsset]);
 
   const liabilitiesByCategory = useMemo(() => {
     if (!exchangeRates) return [];
@@ -706,8 +719,8 @@ export default function PortfolioPage() {
               <div className="col-span-12 md:col-span-3 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
                 <div className="text-sm text-gray-600 mb-1">평균 자산</div>
                 <div className="text-2xl font-bold text-gray-900">
-                  {filteredAssets.filter(a => !a.isOtherAsset).length > 0
-                    ? `${new Intl.NumberFormat('ko-KR').format(Math.floor(totalAssets / filteredAssets.filter(a => !a.isOtherAsset).length))}원`
+                  {filteredAssets.filter(a => !isEffectiveOtherAsset(a)).length > 0
+                    ? `${new Intl.NumberFormat('ko-KR').format(Math.floor(totalAssets / filteredAssets.filter(a => !isEffectiveOtherAsset(a)).length))}원`
                     : '0원'}
                 </div>
               </div>
@@ -921,21 +934,21 @@ export default function PortfolioPage() {
                   <p className="text-xs text-gray-500 mt-1">순자산 계산에 포함되는 자산</p>
                 </div>
                 <Table
-                  data={filteredAssets.filter(a => !a.isOtherAsset)}
+                  data={filteredAssets.filter(a => !isEffectiveOtherAsset(a))}
                   columns={assetColumns}
                   searchable
                 />
               </div>
               
               {/* 기타 자산 목록 */}
-              {filteredAssets.some(a => a.isOtherAsset) && (
+              {filteredAssets.some(a => isEffectiveOtherAsset(a)) && (
                 <div className="bg-gray-50 rounded-lg shadow-sm border border-gray-300 mb-4">
                   <div className="p-4 border-b border-gray-300">
                     <h2 className="text-lg font-semibold text-gray-700">기타 자산</h2>
                     <p className="text-xs text-gray-500 mt-1">순자산 계산에서 제외 (자동차, Unvested RSU 등)</p>
                   </div>
                   <Table
-                    data={filteredAssets.filter(a => a.isOtherAsset)}
+                    data={filteredAssets.filter(a => isEffectiveOtherAsset(a))}
                     columns={assetColumns}
                     searchable
                   />
