@@ -87,8 +87,8 @@ export default function RSUPage() {
   }, [holdings, state]);
 
   // RSU/옵션을 포트폴리오 자산으로 동기화
-  // vested → category: 'stocks' / unvested → category: 'other' 로 분리 저장
-  const syncHoldingsToAsset = useCallback((holdingsToSync: StockHolding[]) => {
+  // vested → category: 'stocks' / unvested → category: 'other' 로 분리 저장 (Firestore 포함)
+  const syncHoldingsToAsset = useCallback(async (holdingsToSync: StockHolding[]) => {
     if (!exchangeRates || holdingsToSync.length === 0) return;
 
     const assets = getAssets();
@@ -167,7 +167,7 @@ export default function RSUPage() {
       return true;
     });
 
-    setAssets(updatedAssets);
+    await setAssets(updatedAssets);
   }, [exchangeRates, state]);
 
   // 가격 업데이트 함수 (interval에서 호출, 수동 새로고침에서도 사용)
@@ -213,11 +213,10 @@ export default function RSUPage() {
         return updatedRsu || holding;
       });
       setHoldings(updatedRsuHoldings);
-      syncHoldingsToAsset(updatedRsuHoldings);
+      await syncHoldingsToAsset(updatedRsuHoldings);
       await setStockHoldings(updatedAllHoldings);
     } else {
-      // 가격 변경이 없어도 초기 로드 시 자산 동기화
-      syncHoldingsToAsset(currentRsuHoldings);
+      await syncHoldingsToAsset(currentRsuHoldings);
     }
   }, [syncHoldingsToAsset]);
 
@@ -306,7 +305,7 @@ export default function RSUPage() {
       const rsuHoldings = updatedAllHoldings.filter((h) => h.type === 'rsu' || h.type === 'option');
       setHoldings(rsuHoldings);
       setEditingId(null);
-      syncHoldingsToAsset(rsuHoldings);
+      await syncHoldingsToAsset(rsuHoldings);
       await setStockHoldings(updatedAllHoldings);
     } else {
       const newHolding: StockHolding = {
@@ -329,7 +328,7 @@ export default function RSUPage() {
       const updatedAllHoldings = [...allHoldings, newHolding];
       const rsuHoldings = updatedAllHoldings.filter((h) => h.type === 'rsu' || h.type === 'option');
       setHoldings(rsuHoldings);
-      syncHoldingsToAsset(rsuHoldings);
+      await syncHoldingsToAsset(rsuHoldings);
       await setStockHoldings(updatedAllHoldings);
     }
 
@@ -360,7 +359,7 @@ export default function RSUPage() {
     const updatedAllHoldings = allHoldings.filter((holding) => holding.id !== id);
     const updatedRsuHoldings = updatedAllHoldings.filter((h) => h.type === 'rsu' || h.type === 'option');
     setHoldings(updatedRsuHoldings);
-    syncHoldingsToAsset(updatedRsuHoldings);
+    await syncHoldingsToAsset(updatedRsuHoldings);
     await setStockHoldings(updatedAllHoldings);
   };
 
@@ -394,8 +393,7 @@ export default function RSUPage() {
 
     const rsuHoldings = updatedAllHoldings.filter((h) => h.type === 'rsu' || h.type === 'option');
     setHoldings(rsuHoldings);
-    syncHoldingsToAsset(rsuHoldings);
-
+    await syncHoldingsToAsset(rsuHoldings);
     await setStockHoldings(updatedAllHoldings);
   }, [syncHoldingsToAsset, state]);
 
@@ -837,7 +835,7 @@ export default function RSUPage() {
                     return updated || h;
                   });
                   setHoldings(updatedRsuHoldings);
-                  syncHoldingsToAsset(updatedRsuHoldings);
+                  await syncHoldingsToAsset(updatedRsuHoldings);
                   await setStockHoldings(updatedAllHoldings);
                 }}
                 className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors"

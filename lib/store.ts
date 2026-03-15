@@ -232,27 +232,20 @@ export function getAssets(): Asset[] {
   return stored ? JSON.parse(stored) : mockAssets;
 }
 
-export function setAssets(assets: Asset[]): void {
+export async function setAssets(assets: Asset[]): Promise<void> {
   if (typeof window === 'undefined') return;
-  
-  // localStorage에 저장
+
   localStorage.setItem('finance-assets', JSON.stringify(assets));
-  
-  // Firebase 사용 가능하면 백그라운드에서 Firebase에 저장 (비동기)
+
   if (useFirebase()) {
-    getFirestoreFunctions().then(firestore => {
+    try {
+      const firestore = await getFirestoreFunctions();
       if (firestore) {
-        firestore.setAssets(assets).catch((error: unknown) => {
-          // 에러 로깅 (디버깅용)
-          console.error('[Store] Failed to save Assets to Firebase:', error);
-          // 에러 무시 (이미 localStorage에 저장됨)
-        });
-      } else {
-        console.warn('[Store] Firestore functions not available');
+        await firestore.setAssets(assets);
       }
-    }).catch((error: unknown) => {
-      console.error('[Store] Failed to load Firestore functions:', error);
-    });
+    } catch (error: unknown) {
+      console.error('[Store] Failed to save Assets to Firebase:', error);
+    }
   }
 }
 

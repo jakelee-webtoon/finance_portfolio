@@ -71,9 +71,9 @@ export default function PortfolioPage() {
     });
     
     if (hasChanges) {
-      setAssets(assets);
+      await setAssets(assets);
     }
-    
+
     setAssetsState(assets);
     setLiabilitiesState(getLiabilities());
     
@@ -157,7 +157,7 @@ export default function PortfolioPage() {
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     const currentUser: 'husband' | 'wife' = state?.scope === 'husband' ? 'husband' : state?.scope === 'wife' ? 'wife' : 'husband';
@@ -189,8 +189,8 @@ export default function PortfolioPage() {
           asset.id === editingId ? updatedAsset : asset
         );
         setAssetsState(updated);
-        setAssets(updated);
-        
+        await setAssets(updated);
+
         // 아파트도 동기화 (real_estate 카테고리이고 아파트명 형식인 경우)
         if (updatedAsset.category === 'real_estate') {
           syncAssetToApartment(updatedAsset);
@@ -214,8 +214,8 @@ export default function PortfolioPage() {
         const allAssets = getAssets();
         const updated = [...allAssets, newAsset];
         setAssetsState(updated);
-        setAssets(updated);
-        
+        await setAssets(updated);
+
         // 아파트도 동기화 (real_estate 카테고리인 경우)
         if (newAsset.category === 'real_estate') {
           syncAssetToApartment(newAsset);
@@ -301,14 +301,12 @@ export default function PortfolioPage() {
     setIsFormOpen(true);
   };
 
-  const handleDeleteAsset = (id: string) => {
-    if (confirm('정말 삭제하시겠습니까?')) {
-      // 전체 자산 목록에서 삭제
-      const allAssets = getAssets();
-      const updated = allAssets.filter((asset) => asset.id !== id);
-      setAssetsState(updated);
-      setAssets(updated);
-    }
+  const handleDeleteAsset = async (id: string) => {
+    if (!confirm('정말 삭제하시겠습니까?')) return;
+    const allAssets = getAssets();
+    const updated = allAssets.filter((asset) => asset.id !== id);
+    setAssetsState(updated);
+    await setAssets(updated);
   };
 
   const handleDeleteLiability = (id: string) => {
@@ -687,21 +685,15 @@ export default function PortfolioPage() {
             </div>
           ) : (
             <div className="grid grid-cols-12 gap-4 mb-6">
-              <div className="col-span-12 md:col-span-4 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+              <div className="col-span-12 md:col-span-6 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
                 <div className="text-sm text-gray-600 mb-1">총 부채</div>
                 <div className="text-2xl font-bold text-red-600">
                   {new Intl.NumberFormat('ko-KR').format(totalLiabilities)}원
                 </div>
               </div>
-              <div className="col-span-12 md:col-span-4 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+              <div className="col-span-12 md:col-span-6 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
                 <div className="text-sm text-gray-600 mb-1">부채 항목 수</div>
                 <div className="text-2xl font-bold text-gray-900">{filteredLiabilities.length}개</div>
-              </div>
-              <div className="col-span-12 md:col-span-4 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-                <div className="text-sm text-gray-600 mb-1">순자산</div>
-                <div className={`text-2xl font-bold ${netWorth >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {new Intl.NumberFormat('ko-KR').format(netWorth)}원
-                </div>
               </div>
             </div>
           )}
