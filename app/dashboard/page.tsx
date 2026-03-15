@@ -5,8 +5,8 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip, LabelList } 
 import TopBar from '@/components/TopBar';
 import Navigation from '@/components/Navigation';
 import Table, { Column } from '@/components/Table';
-import { Asset, DashboardState, Scope, Liability, StockHolding } from '@/types';
-import { getDashboardState, getAssets, getLiabilities, getStockHoldings, syncFromFirebase } from '@/lib/store';
+import { Asset, DashboardState, Scope, Liability } from '@/types';
+import { getDashboardState, getAssets, getLiabilities, syncFromFirebase } from '@/lib/store';
 import { getExchangeRates } from '@/lib/exchangeRate';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -17,7 +17,6 @@ export default function DashboardPage() {
   const isAuthenticated = useAuth();
   const [state, setState] = useState<DashboardState | null>(null);
   const [assets, setAssets] = useState<Asset[]>([]);
-  const [stockHoldings, setStockHoldings] = useState<StockHolding[]>([]);
   const [liabilities, setLiabilities] = useState<Liability[]>([]);
   const [exchangeRates, setExchangeRates] = useState<Record<string, number> | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -32,7 +31,6 @@ export default function DashboardPage() {
         const dashboardState = getDashboardState();
         setState(dashboardState);
         setAssets(getAssets());
-        setStockHoldings(getStockHoldings());
         setLiabilities(getLiabilities());
         
         getExchangeRates().then((rates) => {
@@ -46,30 +44,8 @@ export default function DashboardPage() {
     loadData();
   }, [isAuthenticated]);
 
-  // RSU 자산이 unvested인지 stock holdings에서 직접 판단
-  const isRsuAssetUnvested = useMemo(() => {
-    const today = new Date().toISOString().split('T')[0];
-    return (assetId: string): boolean => {
-      if (!assetId.startsWith('asset-rsu-')) return false;
-      const stockName = assetId.replace('asset-rsu-', '');
-      const relatedHoldings = stockHoldings.filter(h =>
-        (h.type === 'rsu' || h.type === 'option') &&
-        !h.isRealized &&
-        (h.name === stockName || h.symbol === stockName)
-      );
-      if (relatedHoldings.length === 0) return false;
-      // 전부 unvested인 경우에만 기타 자산
-      return relatedHoldings.every(h => h.vestingDate && h.vestingDate > today);
-    };
-  }, [stockHoldings]);
-
-  // asset의 실질적인 isOtherAsset 여부 판단 (수동 설정 OR unvested RSU)
-  const isEffectiveOtherAsset = useMemo(() => {
-    return (asset: Asset): boolean => {
-      if (asset.isOtherAsset) return true;
-      return isRsuAssetUnvested(asset.id);
-    };
-  }, [isRsuAssetUnvested]);
+  // category === 'other' 인 자산은 기타 자산 (자동차, RSU unvested 등)
+  const isOtherAsset = (asset: Asset) => asset.category === 'other';
 
   // DashboardState 변경 감지 (TopBar에서 변경 시)
   useEffect(() => {
@@ -103,29 +79,29 @@ export default function DashboardPage() {
     return liabilities.filter((liability) => liability.owner === state.scope || liability.owner === 'joint');
   }, [liabilities, state]);
 
-  // 총자산 (기타 자산 제외)
+  // 총자산 (category=other 제외)
   const totalAssets = useMemo(() => {
     if (!exchangeRates) return 0;
     return Math.floor(filteredAssets.reduce((sum, asset) => {
-      if (isEffectiveOtherAsset(asset)) return sum;
+      if (isOtherAsset(asset)) return sum;
       if (asset.currency === 'KRW') return sum + asset.amount;
       if (asset.currency === 'USD') return sum + asset.amount * exchangeRates.USD_TO_KRW;
       if (asset.currency === 'EUR') return sum + asset.amount * exchangeRates.EUR_TO_KRW;
       return sum + asset.amount;
     }, 0));
-  }, [filteredAssets, exchangeRates, isEffectiveOtherAsset]);
+  }, [filteredAssets, exchangeRates]);
 
-  // 기타 자산 (자동차, unvested RSU 등)
+  // 기타 자산 (category=other: 자동차, RSU unvested 등)
   const otherAssets = useMemo(() => {
     if (!exchangeRates) return 0;
     return Math.floor(filteredAssets.reduce((sum, asset) => {
-      if (!isEffectiveOtherAsset(asset)) return sum;
+      if (!isOtherAsset(asset)) return sum;
       if (asset.currency === 'KRW') return sum + asset.amount;
       if (asset.currency === 'USD') return sum + asset.amount * exchangeRates.USD_TO_KRW;
       if (asset.currency === 'EUR') return sum + asset.amount * exchangeRates.EUR_TO_KRW;
       return sum + asset.amount;
     }, 0));
-  }, [filteredAssets, exchangeRates, isEffectiveOtherAsset]);
+  }, [filteredAssets, exchangeRates]);
 
   const totalLiabilities = useMemo(() => {
     if (!exchangeRates) return 0;
@@ -149,7 +125,7 @@ export default function DashboardPage() {
     if (!exchangeRates) return [];
     const categoryMap: Record<string, number> = {};
     filteredAssets.forEach((asset) => {
-      if (isEffectiveOtherAsset(asset)) return;
+      if (isOtherAsset(asset)) return;
       
       const category = asset.category;
       let krwAmount = asset.amount;
@@ -164,7 +140,7 @@ export default function DashboardPage() {
       name: getCategoryLabel(name),
       value: Math.floor(value),
     }));
-  }, [filteredAssets, exchangeRates, isEffectiveOtherAsset]);
+  }, [filteredAssets, exchangeRates]);
 
   // 커스텀 라벨 컴포넌트 - 색상을 세그먼트와 동일하게, 겹치지 않도록 위치 조정
   const CustomLabel = useMemo(() => {

@@ -86,192 +86,87 @@ export default function RSUPage() {
     });
   }, [holdings, state]);
 
-  // RSU/옵션을 포트폴리오 자산으로 동기화 (주식명별로 그룹화)
+  // RSU/옵션을 포트폴리오 자산으로 동기화
+  // vested → category: 'stocks' / unvested → category: 'other' 로 분리 저장
   const syncHoldingsToAsset = useCallback((holdingsToSync: StockHolding[]) => {
-    console.log('[syncHoldingsToAsset] Called with', holdingsToSync.length, 'holdings');
-    
-    if (!exchangeRates || holdingsToSync.length === 0) {
-      console.log('[syncHoldingsToAsset] Early return:', { exchangeRates: !!exchangeRates, length: holdingsToSync.length });
-      return;
-    }
-    const currentHoldings = holdingsToSync;
-    
+    if (!exchangeRates || holdingsToSync.length === 0) return;
+
     const assets = getAssets();
     const today = new Date().toISOString().split('T')[0];
-    const currentUser: 'husband' | 'wife' = state?.scope === 'husband' ? 'husband' : state?.scope === 'wife' ? 'wife' : 'husband';
-    
-    console.log('[syncHoldingsToAsset] Today:', today, 'Current assets:', assets.length);
-    
-    // RSU/옵션을 주식명별로 그룹화
-    const groupedByStock = currentHoldings.reduce((acc, holding) => {
+    const currentUser: 'husband' | 'wife' =
+      state?.scope === 'husband' ? 'husband' : state?.scope === 'wife' ? 'wife' : 'husband';
+
+    // 주식명별로 그룹화
+    const groupedByStock = holdingsToSync.reduce((acc, holding) => {
       const key = holding.name || holding.symbol;
-      if (!acc[key]) {
-        acc[key] = [];
-      }
+      if (!acc[key]) acc[key] = [];
       acc[key].push(holding);
       return acc;
     }, {} as Record<string, StockHolding[]>);
-    
-    // 기존 RSU 자산 ID 목록 (나중에 삭제되지 않은 것들은 제거하기 위해)
-    const rsuAssetIds = new Set<string>();
-    
-    // 각 주식별로 자산 생성/업데이트
+
+    // 이번 동기화에서 생성/유지할 RSU 자산 ID 집합
+    const activeRsuIds = new Set<string>();
+
     Object.entries(groupedByStock).forEach(([stockName, stockHoldings]) => {
-      // 해당 주식의 총 평가 금액 계산
-      let totalValueKRW = 0; // 원화로 변환된 총액
-      let totalValueOriginal = 0; // 원래 통화의 총액
-      let hasValidValue = false;
-      let hasVestedRSU = false; // vested RSU가 있는지 확인
-      let hasUnvestedRSU = false; // unvested RSU가 있는지 확인
+      let vestedValue = 0;
+      let unvestedValue = 0;
       let owner: 'husband' | 'wife' | 'joint' = 'joint';
       let currency = 'KRW';
-      let exchange = 'KRX';
-      
-      stockHoldings.forEach((holding) => {
-        // 실현된 RSU는 자산에 포함하지 않음
-        if (holding.isRealized) return;
 
+      stockHoldings.forEach((holding) => {
+        if (holding.isRealized) return;
         const currentPrice = holding.currentPrice || 0;
         if (!currentPrice) return;
-        
-        // Vesting 완료 여부 확인 (vestingDate가 오늘 이전이면 vested)
-        const today = new Date().toISOString().split('T')[0];
+
         const isVested = holding.vestingDate ? holding.vestingDate <= today : true;
-        if (isVested) {
-          hasVestedRSU = true;
-        } else {
-          hasUnvestedRSU = true;
-        }
-        
-        let quantity = 0;
-        let valueOriginal = 0; // 원래 통화의 가치
-        
+
+        let valueOriginal = 0;
         if (holding.type === 'rsu' && holding.totalQuantity !== undefined) {
-          quantity = holding.totalQuantity;
-          valueOriginal = currentPrice * quantity;
+          valueOriginal = currentPrice * holding.totalQuantity;
         } else if (holding.type === 'option' && holding.strikePrice !== undefined) {
           const intrinsicValue = currentPrice - holding.strikePrice;
-          if (intrinsicValue > 0) {
-            quantity = holding.quantity;
-            valueOriginal = intrinsicValue * quantity;
-          } else {
-            return; // 내재가치 없음
-          }
+          if (intrinsicValue > 0) valueOriginal = intrinsicValue * holding.quantity;
         } else {
-          quantity = holding.quantity;
-          valueOriginal = currentPrice * quantity;
+          valueOriginal = currentPrice * holding.quantity;
         }
-        
-        if (valueOriginal > 0) {
-          hasValidValue = true;
-          
-          // 환율 변환
-          const holdingCurrency = holding.currency || 'KRW';
-          const holdingExchange = holding.exchange || 'KRX';
-          const isUSD = holdingCurrency === 'USD' || holdingExchange === 'NASDAQ' || holdingExchange === 'NYSE';
-          const isEUR = holdingCurrency === 'EUR';
-          
-          let valueKRW = valueOriginal;
-          if (isUSD && exchangeRates) {
-            valueKRW = valueOriginal * exchangeRates.USD_TO_KRW;
-          } else if (isEUR && exchangeRates) {
-            valueKRW = valueOriginal * exchangeRates.EUR_TO_KRW;
-          }
-          
-          totalValueKRW += valueKRW;
-          totalValueOriginal += valueOriginal;
-          
-          // 소유자와 통화는 첫 번째 유효한 holding의 값 사용
-          if (owner === 'joint' && holding.owner) {
-            owner = holding.owner;
-          }
-          // 통화는 원래 통화 사용 (KRW가 아닌 경우)
-          if (currency === 'KRW' && holdingCurrency !== 'KRW') {
-            currency = holdingCurrency;
-            exchange = holdingExchange;
-          } else if (currency === 'KRW' && (holdingExchange === 'NASDAQ' || holdingExchange === 'NYSE')) {
-            currency = 'USD';
-            exchange = holdingExchange;
-          }
+
+        if (valueOriginal <= 0) return;
+
+        if (isVested) vestedValue += valueOriginal;
+        else unvestedValue += valueOriginal;
+
+        if (owner === 'joint' && holding.owner) owner = holding.owner;
+        if (currency === 'KRW') {
+          const hCurrency = holding.currency || 'KRW';
+          const hExchange = holding.exchange || 'KRX';
+          if (hCurrency !== 'KRW') currency = hCurrency;
+          else if (hExchange === 'NASDAQ' || hExchange === 'NYSE') currency = 'USD';
         }
       });
-      
-      if (!hasValidValue || totalValueKRW === 0) return;
-      
-      const assetId = `asset-rsu-${stockName}`;
-      rsuAssetIds.add(assetId);
-      
-      // 기존 자산 찾기
-      const existingAssetIndex = assets.findIndex((asset) => asset.id === assetId);
-      
-      // unvested만 있으면 기타 자산, vested가 하나라도 있으면 일반 자산
-      const isOtherAsset = hasUnvestedRSU && !hasVestedRSU;
-      
-      console.log(`[RSU Asset Sync] ${stockName}:`, {
-        hasVestedRSU,
-        hasUnvestedRSU,
-        isOtherAsset,
-        totalValueOriginal,
-        holdings: stockHoldings.map(h => ({
-          vestingDate: h.vestingDate,
-          isRealized: h.isRealized,
-          currentPrice: h.currentPrice
-        }))
-      });
-      
-      if (existingAssetIndex >= 0) {
-        // 기존 자산 업데이트
-        assets[existingAssetIndex] = {
-          ...assets[existingAssetIndex],
-          name: 'RSU',
-          amount: Math.floor(totalValueOriginal), // 원래 통화의 금액 저장 (포트폴리오 페이지가 환율 변환 처리)
-          owner,
-          currency, // 원래 통화 (USD, EUR 등) 저장
-          isOtherAsset: isOtherAsset || undefined, // unvested만 있으면 기타 자산
-          as_of_date: today,
-          last_modified_by: currentUser,
-        };
-        
-        // isOtherAsset이 false면 필드 삭제
-        if (!isOtherAsset) {
-          delete assets[existingAssetIndex].isOtherAsset;
+
+      const upsertAsset = (id: string, name: string, amount: number, category: 'stocks' | 'other') => {
+        if (amount <= 0) return;
+        activeRsuIds.add(id);
+        const existingIdx = assets.findIndex((a) => a.id === id);
+        const base = { name, amount: Math.floor(amount), owner, currency, category, as_of_date: today, last_modified_by: currentUser };
+        if (existingIdx >= 0) {
+          assets[existingIdx] = { ...assets[existingIdx], ...base };
+          delete assets[existingIdx].isOtherAsset;
+        } else {
+          assets.push({ id, source_type: 'manual', ...base });
         }
-      } else {
-        // 새 자산 추가
-        const newAsset: Asset = {
-          id: assetId,
-          name: 'RSU',
-          category: 'stocks',
-          amount: Math.floor(totalValueOriginal), // 원래 통화의 금액 저장 (포트폴리오 페이지가 환율 변환 처리)
-          owner,
-          currency, // 원래 통화 (USD, EUR 등) 저장
-          isOtherAsset: isOtherAsset || undefined, // unvested만 있으면 기타 자산
-          source_type: 'manual',
-          as_of_date: today,
-          last_modified_by: currentUser,
-        };
-        
-        // isOtherAsset이 false면 필드 삭제
-        if (!isOtherAsset) {
-          delete newAsset.isOtherAsset;
-        }
-        
-        assets.push(newAsset);
-      }
+      };
+
+      upsertAsset(`asset-rsu-${stockName}-vested`, 'RSU (vested)', vestedValue, 'stocks');
+      upsertAsset(`asset-rsu-${stockName}-unvested`, 'RSU (unvested)', unvestedValue, 'other');
     });
-    
-    // 기존 RSU 자산 중 더 이상 존재하지 않는 것들 제거
+
+    // 더 이상 유효하지 않은 RSU 자산 제거 (기존 단일 asset-rsu-XXX 포함)
     const updatedAssets = assets.filter((asset) => {
-      if (asset.id.startsWith('asset-rsu-')) {
-        return rsuAssetIds.has(asset.id);
-      }
-      // RSU가 아닌 자산은 그대로 유지
+      if (asset.id.startsWith('asset-rsu-')) return activeRsuIds.has(asset.id);
       return true;
     });
-    
-    console.log('[syncHoldingsToAsset] Updated assets:', updatedAssets.length, 'RSU assets:', Array.from(rsuAssetIds));
-    console.log('[syncHoldingsToAsset] Assets with isOtherAsset:', updatedAssets.filter(a => a.isOtherAsset).map(a => ({ id: a.id, name: a.name, amount: a.amount, isOtherAsset: a.isOtherAsset })));
-    
+
     setAssets(updatedAssets);
   }, [exchangeRates, state]);
 
