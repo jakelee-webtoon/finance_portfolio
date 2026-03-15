@@ -80,9 +80,31 @@ export default function DashboardPage() {
     return liabilities.filter((liability) => liability.owner === state.scope || liability.owner === 'joint');
   }, [liabilities, state]);
 
+  // 총자산 (기타 자산 제외)
   const totalAssets = useMemo(() => {
     if (!exchangeRates) return 0;
     return Math.floor(filteredAssets.reduce((sum, asset) => {
+      // 기타 자산은 총자산에서 제외
+      if (asset.isOtherAsset) return sum;
+      
+      if (asset.currency === 'KRW') {
+        return sum + asset.amount;
+      } else if (asset.currency === 'USD') {
+        return sum + asset.amount * exchangeRates.USD_TO_KRW;
+      } else if (asset.currency === 'EUR') {
+        return sum + asset.amount * exchangeRates.EUR_TO_KRW;
+      }
+      return sum + asset.amount;
+    }, 0));
+  }, [filteredAssets, exchangeRates]);
+
+  // 기타 자산 (자동차, unvested RSU 등)
+  const otherAssets = useMemo(() => {
+    if (!exchangeRates) return 0;
+    return Math.floor(filteredAssets.reduce((sum, asset) => {
+      // 기타 자산만 합산
+      if (!asset.isOtherAsset) return sum;
+      
       if (asset.currency === 'KRW') {
         return sum + asset.amount;
       } else if (asset.currency === 'USD') {
@@ -116,6 +138,9 @@ export default function DashboardPage() {
     if (!exchangeRates) return [];
     const categoryMap: Record<string, number> = {};
     filteredAssets.forEach((asset) => {
+      // 기타 자산은 카테고리 차트에서 제외
+      if (asset.isOtherAsset) return;
+      
       const category = asset.category;
       let krwAmount = asset.amount;
       if (asset.currency === 'USD') {
@@ -355,23 +380,32 @@ export default function DashboardPage() {
 
           {/* KPI Cards */}
           <div className="grid grid-cols-12 gap-4 mb-6">
-            <div className="col-span-12 md:col-span-4 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+            <div className="col-span-12 md:col-span-3 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
               <div className="text-sm text-gray-600 mb-1">총 자산</div>
               <div className="text-2xl font-bold text-gray-900">
                 {new Intl.NumberFormat('ko-KR').format(totalAssets)}원
               </div>
+              <div className="text-xs text-gray-400 mt-1">기타 자산 제외</div>
             </div>
-            <div className="col-span-12 md:col-span-4 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+            <div className="col-span-12 md:col-span-3 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
               <div className="text-sm text-gray-600 mb-1">순자산</div>
               <div className={`text-2xl font-bold ${netWorth >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                 {new Intl.NumberFormat('ko-KR').format(netWorth)}원
               </div>
+              <div className="text-xs text-gray-400 mt-1">총자산 - 부채</div>
             </div>
-            <div className="col-span-12 md:col-span-4 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+            <div className="col-span-12 md:col-span-3 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
               <div className="text-sm text-gray-600 mb-1">부채</div>
               <div className="text-2xl font-bold text-red-600">
                 {new Intl.NumberFormat('ko-KR').format(totalLiabilities)}원
               </div>
+            </div>
+            <div className="col-span-12 md:col-span-3 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+              <div className="text-sm text-gray-600 mb-1">기타 자산</div>
+              <div className="text-2xl font-bold text-gray-500">
+                {new Intl.NumberFormat('ko-KR').format(otherAssets)}원
+              </div>
+              <div className="text-xs text-gray-400 mt-1">자동차, Unvested RSU</div>
             </div>
           </div>
 

@@ -15,6 +15,7 @@ export interface Asset extends BaseEntity {
   owner: 'husband' | 'wife' | 'joint';
   currency: string;
   notes?: string; // 비고/내용
+  isOtherAsset?: boolean; // 기타 자산 (자동차 등, 순자산 계산에서 제외)
 }
 
 export interface Liability extends BaseEntity {

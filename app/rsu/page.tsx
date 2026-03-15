@@ -114,6 +114,7 @@ export default function RSUPage() {
       let totalValueKRW = 0; // 원화로 변환된 총액
       let totalValueOriginal = 0; // 원래 통화의 총액
       let hasValidValue = false;
+      let hasUnvestedOnly = true; // 모두 unvested인지 확인
       let owner: 'husband' | 'wife' | 'joint' = 'joint';
       let currency = 'KRW';
       let exchange = 'KRX';
@@ -121,6 +122,12 @@ export default function RSUPage() {
       stockHoldings.forEach((holding) => {
         // 실현된 RSU는 자산에 포함하지 않음
         if (holding.isRealized) return;
+        
+        // Vesting 완료 여부 확인 (vestingDate가 오늘 이전이면 vested)
+        const isVested = holding.vestingDate ? new Date(holding.vestingDate) <= new Date() : true;
+        if (isVested) {
+          hasUnvestedOnly = false;
+        }
 
         const currentPrice = holding.currentPrice || 0;
         if (!currentPrice) return;
@@ -194,6 +201,7 @@ export default function RSUPage() {
           amount: Math.floor(totalValueOriginal), // 원래 통화의 금액 저장 (포트폴리오 페이지가 환율 변환 처리)
           owner,
           currency, // 원래 통화 (USD, EUR 등) 저장
+          isOtherAsset: hasUnvestedOnly, // 모두 unvested면 기타 자산으로 분류
           as_of_date: today,
           last_modified_by: currentUser,
         };
@@ -206,6 +214,7 @@ export default function RSUPage() {
           amount: Math.floor(totalValueOriginal), // 원래 통화의 금액 저장 (포트폴리오 페이지가 환율 변환 처리)
           owner,
           currency, // 원래 통화 (USD, EUR 등) 저장
+          isOtherAsset: hasUnvestedOnly, // 모두 unvested면 기타 자산으로 분류
           source_type: 'manual',
           as_of_date: today,
           last_modified_by: currentUser,
@@ -931,7 +940,7 @@ export default function RSUPage() {
 
               {/* 카드 2: 실현 손익 */}
               <div className="col-span-12 md:col-span-3 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-                <div className="text-xs text-gray-500 mb-1">실현 손익</div>
+                <div className="text-xs text-gray-500 mb-1">현금화 가능 금액</div>
                 <div className={`text-2xl font-bold ${realizedGainLoss.krw >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                   {realizedGainLoss.krw >= 0 ? '+' : ''}
                   {new Intl.NumberFormat('ko-KR').format(realizedGainLoss.krw)}원

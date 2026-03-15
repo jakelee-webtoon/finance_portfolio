@@ -26,6 +26,7 @@ export default function PortfolioPage() {
     owner: 'joint' as 'husband' | 'wife' | 'joint',
     category: 'cash' as 'cash' | 'stocks' | 'bonds' | 'real_estate' | 'other' | 'loan' | 'credit_card' | 'mortgage',
     currency: 'KRW',
+    isOtherAsset: false,
   });
 
   useEffect(() => {
@@ -178,9 +179,15 @@ export default function PortfolioPage() {
           owner: formData.owner,
           category: formData.category as Asset['category'],
           currency: formData.currency,
+          isOtherAsset: formData.isOtherAsset || undefined,
           as_of_date: today,
           last_modified_by: currentUser,
         };
+        
+        // isOtherAsset이 false면 필드 삭제
+        if (!formData.isOtherAsset) {
+          delete updatedAsset.isOtherAsset;
+        }
         
         // 전체 자산 목록에서 수정
         const updated = allAssets.map((asset) =>
@@ -204,10 +211,16 @@ export default function PortfolioPage() {
           owner: formData.owner,
           category: formData.category as Asset['category'],
           currency: formData.currency,
+          isOtherAsset: formData.isOtherAsset || undefined,
           source_type: 'manual',
           as_of_date: today,
           last_modified_by: currentUser,
         };
+        
+        // isOtherAsset이 false면 필드 삭제
+        if (!formData.isOtherAsset) {
+          delete newAsset.isOtherAsset;
+        }
         // 전체 자산 목록에 추가
         const allAssets = getAssets();
         const updated = [...allAssets, newAsset];
@@ -269,6 +282,7 @@ export default function PortfolioPage() {
       owner: 'joint',
       category: activeTab === 'assets' ? 'cash' : 'loan',
       currency: 'KRW',
+      isOtherAsset: false,
     });
     setIsFormOpen(false);
   };
@@ -280,6 +294,7 @@ export default function PortfolioPage() {
       owner: asset.owner,
       category: asset.category,
       currency: asset.currency,
+      isOtherAsset: asset.isOtherAsset || false,
     });
     setEditingId(asset.id);
     setActiveTab('assets');
@@ -293,6 +308,7 @@ export default function PortfolioPage() {
       owner: liability.owner,
       category: liability.category,
       currency: liability.currency,
+      isOtherAsset: false,
     });
     setEditingId(liability.id);
     setActiveTab('liabilities');
@@ -328,12 +344,35 @@ export default function PortfolioPage() {
       owner: 'joint',
       category: activeTab === 'assets' ? 'cash' : 'loan',
       currency: 'KRW',
+      isOtherAsset: false,
     });
   };
 
+  // 총자산 (기타 자산 제외)
   const totalAssets = useMemo(() => {
     if (!exchangeRates) return 0;
     return Math.floor(filteredAssets.reduce((sum, asset) => {
+      // 기타 자산은 총자산에서 제외
+      if (asset.isOtherAsset) return sum;
+      
+      if (asset.currency === 'KRW') {
+        return sum + asset.amount;
+      } else if (asset.currency === 'USD') {
+        return sum + asset.amount * exchangeRates.USD_TO_KRW;
+      } else if (asset.currency === 'EUR') {
+        return sum + asset.amount * exchangeRates.EUR_TO_KRW;
+      }
+      return sum + asset.amount;
+    }, 0));
+  }, [filteredAssets, exchangeRates]);
+
+  // 기타 자산
+  const otherAssets = useMemo(() => {
+    if (!exchangeRates) return 0;
+    return Math.floor(filteredAssets.reduce((sum, asset) => {
+      // 기타 자산만 합산
+      if (!asset.isOtherAsset) return sum;
+      
       if (asset.currency === 'KRW') {
         return sum + asset.amount;
       } else if (asset.currency === 'USD') {
@@ -366,6 +405,8 @@ export default function PortfolioPage() {
   const assetsByCategory = useMemo(() => {
     if (!exchangeRates) return [];
     const categoryMap: Record<string, number> = {};
+    const otherAssetMap: Record<string, number> = {};
+    
     filteredAssets.forEach((asset) => {
       const category = asset.category;
       let krwAmount = asset.amount;
@@ -374,13 +415,30 @@ export default function PortfolioPage() {
       } else if (asset.currency === 'EUR') {
         krwAmount = asset.amount * exchangeRates.EUR_TO_KRW;
       }
-      categoryMap[category] = (categoryMap[category] || 0) + krwAmount;
+      
+      // 기타 자산은 별도로 집계
+      if (asset.isOtherAsset) {
+        otherAssetMap[category] = (otherAssetMap[category] || 0) + krwAmount;
+      } else {
+        categoryMap[category] = (categoryMap[category] || 0) + krwAmount;
+      }
     });
-    return Object.entries(categoryMap).map(([category, amount]) => ({
+    
+    const mainAssets = Object.entries(categoryMap).map(([category, amount]) => ({
       category,
       amount: Math.floor(amount),
       label: getAssetCategoryLabel(category),
+      isOther: false,
     }));
+    
+    const otherAssetsList = Object.entries(otherAssetMap).map(([category, amount]) => ({
+      category,
+      amount: Math.floor(amount),
+      label: `${getAssetCategoryLabel(category)} (기타)`,
+      isOther: true,
+    }));
+    
+    return [...mainAssets, ...otherAssetsList];
   }, [filteredAssets, exchangeRates]);
 
   const liabilitiesByCategory = useMemo(() => {
@@ -627,21 +685,29 @@ export default function PortfolioPage() {
           {/* 통계 카드 */}
           {activeTab === 'assets' ? (
             <div className="grid grid-cols-12 gap-4 mb-6">
-              <div className="col-span-12 md:col-span-4 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+              <div className="col-span-12 md:col-span-3 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
                 <div className="text-sm text-gray-600 mb-1">총 자산</div>
                 <div className="text-2xl font-bold text-gray-900">
                   {new Intl.NumberFormat('ko-KR').format(totalAssets)}원
                 </div>
+                <div className="text-xs text-gray-400 mt-1">기타 자산 제외</div>
               </div>
-              <div className="col-span-12 md:col-span-4 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+              <div className="col-span-12 md:col-span-3 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+                <div className="text-sm text-gray-600 mb-1">기타 자산</div>
+                <div className="text-2xl font-bold text-gray-500">
+                  {new Intl.NumberFormat('ko-KR').format(otherAssets)}원
+                </div>
+                <div className="text-xs text-gray-400 mt-1">자동차, Unvested RSU</div>
+              </div>
+              <div className="col-span-12 md:col-span-3 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
                 <div className="text-sm text-gray-600 mb-1">자산 항목 수</div>
                 <div className="text-2xl font-bold text-gray-900">{filteredAssets.length}개</div>
               </div>
-              <div className="col-span-12 md:col-span-4 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+              <div className="col-span-12 md:col-span-3 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
                 <div className="text-sm text-gray-600 mb-1">평균 자산</div>
                 <div className="text-2xl font-bold text-gray-900">
-                  {filteredAssets.length > 0
-                    ? `${new Intl.NumberFormat('ko-KR').format(Math.floor(totalAssets / filteredAssets.length))}원`
+                  {filteredAssets.filter(a => !a.isOtherAsset).length > 0
+                    ? `${new Intl.NumberFormat('ko-KR').format(Math.floor(totalAssets / filteredAssets.filter(a => !a.isOtherAsset).length))}원`
                     : '0원'}
                 </div>
               </div>
@@ -674,25 +740,35 @@ export default function PortfolioPage() {
                 {activeTab === 'assets' ? '카테고리별 자산' : '카테고리별 부채'}
               </h2>
               <div className="space-y-2">
-                {(activeTab === 'assets' ? assetsByCategory : liabilitiesByCategory).map((item, idx) => (
-                  <div key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                    <span className="text-sm font-medium text-gray-700">{item.label}</span>
-                    <div className="flex items-center gap-4">
-                      <span className="text-sm text-gray-600">
-                        {activeTab === 'assets'
-                          ? totalAssets > 0
-                            ? `${((item.amount / totalAssets) * 100).toFixed(1)}%`
-                            : '0%'
-                          : totalLiabilities > 0
-                          ? `${((item.amount / totalLiabilities) * 100).toFixed(1)}%`
-                          : '0%'}
+                {(activeTab === 'assets' ? assetsByCategory : liabilitiesByCategory).map((item, idx) => {
+                  const isOther = activeTab === 'assets' && 'isOther' in item && item.isOther;
+                  return (
+                    <div 
+                      key={idx} 
+                      className={`flex items-center justify-between p-3 rounded-lg ${
+                        isOther ? 'bg-gray-100 border border-gray-300' : 'bg-gray-50'
+                      }`}
+                    >
+                      <span className={`text-sm font-medium ${isOther ? 'text-gray-500' : 'text-gray-700'}`}>
+                        {item.label}
                       </span>
-                      <span className="text-sm font-semibold text-gray-900">
-                        {new Intl.NumberFormat('ko-KR').format(item.amount)}원
-                      </span>
+                      <div className="flex items-center gap-4">
+                        <span className="text-sm text-gray-600">
+                          {activeTab === 'assets'
+                            ? totalAssets > 0 && !isOther
+                              ? `${((item.amount / totalAssets) * 100).toFixed(1)}%`
+                              : isOther ? '-' : '0%'
+                            : totalLiabilities > 0
+                            ? `${((item.amount / totalLiabilities) * 100).toFixed(1)}%`
+                            : '0%'}
+                        </span>
+                        <span className={`text-sm font-semibold ${isOther ? 'text-gray-500' : 'text-gray-900'}`}>
+                          {new Intl.NumberFormat('ko-KR').format(item.amount)}원
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -800,6 +876,21 @@ export default function PortfolioPage() {
                     </select>
                   </div>
 
+                  {activeTab === 'assets' && (
+                    <div className="flex items-center">
+                      <input
+                        type="checkbox"
+                        id="isOtherAsset"
+                        checked={formData.isOtherAsset}
+                        onChange={(e) => setFormData({ ...formData, isOtherAsset: e.target.checked })}
+                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                      />
+                      <label htmlFor="isOtherAsset" className="ml-2 text-sm text-gray-700">
+                        기타 자산 (순자산 계산에서 제외)
+                      </label>
+                    </div>
+                  )}
+
                   <div className="flex gap-2 pt-4">
                     <button
                       type="submit"
@@ -821,26 +912,48 @@ export default function PortfolioPage() {
           )}
 
           {/* 목록 테이블 */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-            <div className="p-4 border-b border-gray-200">
-              <h2 className="text-lg font-semibold text-gray-900">
-                {activeTab === 'assets' ? '자산 목록' : '부채 목록'}
-              </h2>
-            </div>
-            {activeTab === 'assets' ? (
-              <Table
-                data={filteredAssets}
-                columns={assetColumns}
-                searchable
-              />
-            ) : (
+          {activeTab === 'assets' ? (
+            <>
+              {/* 일반 자산 목록 */}
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-4">
+                <div className="p-4 border-b border-gray-200">
+                  <h2 className="text-lg font-semibold text-gray-900">자산 목록</h2>
+                  <p className="text-xs text-gray-500 mt-1">순자산 계산에 포함되는 자산</p>
+                </div>
+                <Table
+                  data={filteredAssets.filter(a => !a.isOtherAsset)}
+                  columns={assetColumns}
+                  searchable
+                />
+              </div>
+              
+              {/* 기타 자산 목록 */}
+              {filteredAssets.some(a => a.isOtherAsset) && (
+                <div className="bg-gray-50 rounded-lg shadow-sm border border-gray-300 mb-4">
+                  <div className="p-4 border-b border-gray-300">
+                    <h2 className="text-lg font-semibold text-gray-700">기타 자산</h2>
+                    <p className="text-xs text-gray-500 mt-1">순자산 계산에서 제외 (자동차, Unvested RSU 등)</p>
+                  </div>
+                  <Table
+                    data={filteredAssets.filter(a => a.isOtherAsset)}
+                    columns={assetColumns}
+                    searchable
+                  />
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+              <div className="p-4 border-b border-gray-200">
+                <h2 className="text-lg font-semibold text-gray-900">부채 목록</h2>
+              </div>
               <Table
                 data={filteredLiabilities}
                 columns={liabilityColumns}
                 searchable
               />
-            )}
-          </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
