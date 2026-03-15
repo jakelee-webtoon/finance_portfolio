@@ -88,12 +88,19 @@ export default function RSUPage() {
 
   // RSU/옵션을 포트폴리오 자산으로 동기화 (주식명별로 그룹화)
   const syncHoldingsToAsset = useCallback((holdingsToSync: StockHolding[]) => {
-    if (!exchangeRates || holdingsToSync.length === 0) return;
+    console.log('[syncHoldingsToAsset] Called with', holdingsToSync.length, 'holdings');
+    
+    if (!exchangeRates || holdingsToSync.length === 0) {
+      console.log('[syncHoldingsToAsset] Early return:', { exchangeRates: !!exchangeRates, length: holdingsToSync.length });
+      return;
+    }
     const currentHoldings = holdingsToSync;
     
     const assets = getAssets();
     const today = new Date().toISOString().split('T')[0];
     const currentUser: 'husband' | 'wife' = state?.scope === 'husband' ? 'husband' : state?.scope === 'wife' ? 'wife' : 'husband';
+    
+    console.log('[syncHoldingsToAsset] Today:', today, 'Current assets:', assets.length);
     
     // RSU/옵션을 주식명별로 그룹화
     const groupedByStock = currentHoldings.reduce((acc, holding) => {
@@ -114,7 +121,8 @@ export default function RSUPage() {
       let totalValueKRW = 0; // 원화로 변환된 총액
       let totalValueOriginal = 0; // 원래 통화의 총액
       let hasValidValue = false;
-      let hasUnvestedOnly = true; // 모두 unvested인지 확인
+      let hasVestedRSU = false; // vested RSU가 있는지 확인
+      let hasUnvestedRSU = false; // unvested RSU가 있는지 확인
       let owner: 'husband' | 'wife' | 'joint' = 'joint';
       let currency = 'KRW';
       let exchange = 'KRX';
@@ -122,15 +130,18 @@ export default function RSUPage() {
       stockHoldings.forEach((holding) => {
         // 실현된 RSU는 자산에 포함하지 않음
         if (holding.isRealized) return;
-        
-        // Vesting 완료 여부 확인 (vestingDate가 오늘 이전이면 vested)
-        const isVested = holding.vestingDate ? new Date(holding.vestingDate) <= new Date() : true;
-        if (isVested) {
-          hasUnvestedOnly = false;
-        }
 
         const currentPrice = holding.currentPrice || 0;
         if (!currentPrice) return;
+        
+        // Vesting 완료 여부 확인 (vestingDate가 오늘 이전이면 vested)
+        const today = new Date().toISOString().split('T')[0];
+        const isVested = holding.vestingDate ? holding.vestingDate <= today : true;
+        if (isVested) {
+          hasVestedRSU = true;
+        } else {
+          hasUnvestedRSU = true;
+        }
         
         let quantity = 0;
         let valueOriginal = 0; // 원래 통화의 가치
@@ -193,6 +204,21 @@ export default function RSUPage() {
       // 기존 자산 찾기
       const existingAssetIndex = assets.findIndex((asset) => asset.id === assetId);
       
+      // unvested만 있으면 기타 자산, vested가 하나라도 있으면 일반 자산
+      const isOtherAsset = hasUnvestedRSU && !hasVestedRSU;
+      
+      console.log(`[RSU Asset Sync] ${stockName}:`, {
+        hasVestedRSU,
+        hasUnvestedRSU,
+        isOtherAsset,
+        totalValueOriginal,
+        holdings: stockHoldings.map(h => ({
+          vestingDate: h.vestingDate,
+          isRealized: h.isRealized,
+          currentPrice: h.currentPrice
+        }))
+      });
+      
       if (existingAssetIndex >= 0) {
         // 기존 자산 업데이트
         assets[existingAssetIndex] = {
@@ -201,24 +227,36 @@ export default function RSUPage() {
           amount: Math.floor(totalValueOriginal), // 원래 통화의 금액 저장 (포트폴리오 페이지가 환율 변환 처리)
           owner,
           currency, // 원래 통화 (USD, EUR 등) 저장
-          isOtherAsset: hasUnvestedOnly, // 모두 unvested면 기타 자산으로 분류
+          isOtherAsset: isOtherAsset || undefined, // unvested만 있으면 기타 자산
           as_of_date: today,
           last_modified_by: currentUser,
         };
+        
+        // isOtherAsset이 false면 필드 삭제
+        if (!isOtherAsset) {
+          delete assets[existingAssetIndex].isOtherAsset;
+        }
       } else {
         // 새 자산 추가
-        assets.push({
+        const newAsset: Asset = {
           id: assetId,
           name: 'RSU',
           category: 'stocks',
           amount: Math.floor(totalValueOriginal), // 원래 통화의 금액 저장 (포트폴리오 페이지가 환율 변환 처리)
           owner,
           currency, // 원래 통화 (USD, EUR 등) 저장
-          isOtherAsset: hasUnvestedOnly, // 모두 unvested면 기타 자산으로 분류
+          isOtherAsset: isOtherAsset || undefined, // unvested만 있으면 기타 자산
           source_type: 'manual',
           as_of_date: today,
           last_modified_by: currentUser,
-        });
+        };
+        
+        // isOtherAsset이 false면 필드 삭제
+        if (!isOtherAsset) {
+          delete newAsset.isOtherAsset;
+        }
+        
+        assets.push(newAsset);
       }
     });
     
@@ -230,6 +268,9 @@ export default function RSUPage() {
       // RSU가 아닌 자산은 그대로 유지
       return true;
     });
+    
+    console.log('[syncHoldingsToAsset] Updated assets:', updatedAssets.length, 'RSU assets:', Array.from(rsuAssetIds));
+    console.log('[syncHoldingsToAsset] Assets with isOtherAsset:', updatedAssets.filter(a => a.isOtherAsset).map(a => ({ id: a.id, name: a.name, amount: a.amount, isOtherAsset: a.isOtherAsset })));
     
     setAssets(updatedAssets);
   }, [exchangeRates, state]);
@@ -277,9 +318,13 @@ export default function RSUPage() {
         return updatedRsu || holding;
       });
       setHoldings(updatedRsuHoldings);
+      syncHoldingsToAsset(updatedRsuHoldings);
       await setStockHoldings(updatedAllHoldings);
+    } else {
+      // 가격 변경이 없어도 초기 로드 시 자산 동기화
+      syncHoldingsToAsset(currentRsuHoldings);
     }
-  }, []);
+  }, [syncHoldingsToAsset]);
 
   // 가격 업데이트 interval 설정 (초기 로드 완료 후 한 번만)
   useEffect(() => {
