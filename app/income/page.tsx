@@ -62,15 +62,13 @@ export default function IncomePage() {
     return incomes.filter((income) => income.owner === state.scope || income.owner === 'joint');
   }, [incomes, state]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     const currentUser: 'husband' | 'wife' = state?.scope === 'husband' ? 'husband' : state?.scope === 'wife' ? 'wife' : 'husband';
     const today = new Date().toISOString().split('T')[0];
 
     if (editingId) {
-      // 수정
-      // 전체 수입 목록에서 수정
       const allIncomes = getIncome();
       const updated = allIncomes.map((income) =>
         income.id === editingId
@@ -84,10 +82,9 @@ export default function IncomePage() {
           : income
       );
       setIncomes(updated);
-      setIncome(updated);
+      await setIncome(updated);
       setEditingId(null);
     } else {
-      // 추가
       const newIncome: Income = {
         id: `income-${Date.now()}`,
         ...formData,
@@ -96,14 +93,12 @@ export default function IncomePage() {
         as_of_date: today,
         last_modified_by: currentUser,
       };
-      // 전체 수입 목록에 추가
       const allIncomes = getIncome();
       const updated = [...allIncomes, newIncome];
       setIncomes(updated);
-      setIncome(updated);
+      await setIncome(updated);
     }
 
-    // 폼 초기화
     setFormData({
       source: '',
       amount: '',
@@ -128,14 +123,12 @@ export default function IncomePage() {
     setIsFormOpen(true);
   };
 
-  const handleDelete = (id: string) => {
-    if (confirm('정말 삭제하시겠습니까?')) {
-      // 전체 수입 목록에서 삭제
-      const allIncomes = getIncome();
-      const updated = allIncomes.filter((income) => income.id !== id);
-      setIncomes(updated);
-      setIncome(updated);
-    }
+  const handleDelete = async (id: string) => {
+    if (!confirm('정말 삭제하시겠습니까?')) return;
+    const allIncomes = getIncome();
+    const updated = allIncomes.filter((income) => income.id !== id);
+    setIncomes(updated);
+    await setIncome(updated);
   };
 
   const handleCancel = () => {

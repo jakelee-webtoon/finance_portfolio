@@ -245,7 +245,7 @@ export default function PortfolioPage() {
             : liability
         );
         setLiabilitiesState(updated);
-        setLiabilities(updated);
+        await setLiabilities(updated);
         setEditingId(null);
         showToast('부채 정보가 수정되었습니다.');
       } else {
@@ -265,7 +265,7 @@ export default function PortfolioPage() {
         const allLiabilities = getLiabilities();
         const updated = [...allLiabilities, newLiability];
         setLiabilitiesState(updated);
-        setLiabilities(updated);
+        await setLiabilities(updated);
         showToast('새로운 부채가 추가되었습니다.');
       }
     }
@@ -316,15 +316,13 @@ export default function PortfolioPage() {
     showToast('자산이 삭제되었습니다.');
   };
 
-  const handleDeleteLiability = (id: string) => {
-    if (confirm('정말 삭제하시겠습니까?')) {
-      // 전체 부채 목록에서 삭제
-      const allLiabilities = getLiabilities();
-      const updated = allLiabilities.filter((liability) => liability.id !== id);
-      setLiabilitiesState(updated);
-      setLiabilities(updated);
-      showToast('부채가 삭제되었습니다.');
-    }
+  const handleDeleteLiability = async (id: string) => {
+    if (!confirm('정말 삭제하시겠습니까?')) return;
+    const allLiabilities = getLiabilities();
+    const updated = allLiabilities.filter((liability) => liability.id !== id);
+    setLiabilitiesState(updated);
+    await setLiabilities(updated);
+    showToast('부채가 삭제되었습니다.');
   };
 
   const handleCancel = () => {

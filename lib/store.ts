@@ -256,25 +256,18 @@ export function getIncome(): Income[] {
   return stored ? JSON.parse(stored) : mockIncome;
 }
 
-export function setIncome(income: Income[]): void {
+export async function setIncome(income: Income[]): Promise<void> {
   if (typeof window === 'undefined') return;
-  
-  // localStorage에 저장
   localStorage.setItem('finance-income', JSON.stringify(income));
-  
-  // Firebase 사용 가능하면 백그라운드에서 Firebase에 저장 (비동기)
   if (useFirebase()) {
-    getFirestoreFunctions().then(firestore => {
+    try {
+      const firestore = await getFirestoreFunctions();
       if (firestore) {
-        firestore.setIncome(income).catch((error: unknown) => {
-          // 에러 무시 (이미 localStorage에 저장됨)
-          console.error('[Store] Failed to save Income to Firebase:', error);
-        });
+        await firestore.setIncome(income);
       }
-    }).catch((error: unknown) => {
-      // 에러 무시
-      console.error('[Store] Failed to load Firestore functions:', error);
-    });
+    } catch (error: unknown) {
+      console.error('[Store] Failed to save Income to Firebase:', error);
+    }
   }
 }
 
@@ -284,9 +277,10 @@ export function getTransactions(): Transaction[] {
   return stored ? JSON.parse(stored) : mockTransactions;
 }
 
-export function setTransactions(transactions: Transaction[]) {
+export async function setTransactions(transactions: Transaction[]): Promise<void> {
   if (typeof window === 'undefined') return;
   localStorage.setItem('finance-transactions', JSON.stringify(transactions));
+  // Transactions는 현재 Firestore 컬렉션 미구현 — localStorage만 저장
 }
 
 export function getPortfolios(): Portfolio[] {
@@ -295,9 +289,10 @@ export function getPortfolios(): Portfolio[] {
   return stored ? JSON.parse(stored) : mockPortfolios;
 }
 
-export function setPortfolios(portfolios: Portfolio[]) {
+export async function setPortfolios(portfolios: Portfolio[]): Promise<void> {
   if (typeof window === 'undefined') return;
   localStorage.setItem('finance-portfolios', JSON.stringify(portfolios));
+  // Portfolios는 현재 Firestore 컬렉션 미구현 — localStorage만 저장
 }
 
 export function getLiabilities(): Liability[] {
@@ -306,25 +301,18 @@ export function getLiabilities(): Liability[] {
   return stored ? JSON.parse(stored) : mockLiabilities;
 }
 
-export function setLiabilities(liabilities: Liability[]): void {
+export async function setLiabilities(liabilities: Liability[]): Promise<void> {
   if (typeof window === 'undefined') return;
-  
-  // localStorage에 저장
   localStorage.setItem('finance-liabilities', JSON.stringify(liabilities));
-  
-  // Firebase 사용 가능하면 백그라운드에서 Firebase에 저장 (비동기)
   if (useFirebase()) {
-    getFirestoreFunctions().then(firestore => {
+    try {
+      const firestore = await getFirestoreFunctions();
       if (firestore) {
-        firestore.setLiabilities(liabilities).catch((error: unknown) => {
-          // 에러 무시 (이미 localStorage에 저장됨)
-          console.error('[Store] Failed to save Liabilities to Firebase:', error);
-        });
+        await firestore.setLiabilities(liabilities);
       }
-    }).catch((error: unknown) => {
-      // 에러 무시
-      console.error('[Store] Failed to load Firestore functions:', error);
-    });
+    } catch (error: unknown) {
+      console.error('[Store] Failed to save Liabilities to Firebase:', error);
+    }
   }
 }
 
@@ -361,25 +349,18 @@ export function getApartments(): Apartment[] {
   return stored ? JSON.parse(stored) : mockApartments;
 }
 
-export function setApartments(apartments: Apartment[]): void {
+export async function setApartments(apartments: Apartment[]): Promise<void> {
   if (typeof window === 'undefined') return;
-  
-  // localStorage에 저장
   localStorage.setItem('finance-apartments', JSON.stringify(apartments));
-  
-  // Firebase 사용 가능하면 백그라운드에서 Firebase에 저장 (비동기)
   if (useFirebase()) {
-    getFirestoreFunctions().then(firestore => {
+    try {
+      const firestore = await getFirestoreFunctions();
       if (firestore) {
-        firestore.setApartments(apartments).catch((error: unknown) => {
-          // 에러 무시 (이미 localStorage에 저장됨)
-          console.error('[Store] Failed to save Apartments to Firebase:', error);
-        });
+        await firestore.setApartments(apartments);
       }
-    }).catch((error: unknown) => {
-      // 에러 무시
-      console.error('[Store] Failed to load Firestore functions:', error);
-    });
+    } catch (error: unknown) {
+      console.error('[Store] Failed to save Apartments to Firebase:', error);
+    }
   }
 }
 
@@ -390,25 +371,18 @@ export function getSalaries(): Salary[] {
   return stored ? JSON.parse(stored) : [];
 }
 
-export function setSalaries(salaries: Salary[]): void {
+export async function setSalaries(salaries: Salary[]): Promise<void> {
   if (typeof window === 'undefined') return;
-  
-  // localStorage에 저장
   localStorage.setItem('finance-salaries', JSON.stringify(salaries));
-  
-  // Firebase 사용 가능하면 백그라운드에서 Firebase에 저장 (비동기)
   if (useFirebase()) {
-    getFirestoreFunctions().then(firestore => {
+    try {
+      const firestore = await getFirestoreFunctions();
       if (firestore) {
-        firestore.setSalaries(salaries).catch((error: unknown) => {
-          // 에러 무시 (이미 localStorage에 저장됨)
-          console.error('[Store] Failed to save Salaries to Firebase:', error);
-        });
+        await firestore.setSalaries(salaries);
       }
-    }).catch((error: unknown) => {
-      // 에러 무시
-      console.error('[Store] Failed to load Firestore functions:', error);
-    });
+    } catch (error: unknown) {
+      console.error('[Store] Failed to save Salaries to Firebase:', error);
+    }
   }
 }
 
@@ -419,24 +393,17 @@ export function getLedgerEntries(): LedgerEntry[] {
   return stored ? JSON.parse(stored) : [];
 }
 
-export function setLedgerEntries(entries: LedgerEntry[]): void {
+export async function setLedgerEntries(entries: LedgerEntry[]): Promise<void> {
   if (typeof window === 'undefined') return;
-  
-  // localStorage에 저장
   localStorage.setItem('finance-ledger-entries', JSON.stringify(entries));
-  
-  // Firebase 사용 가능하면 백그라운드에서 Firebase에 저장 (비동기)
   if (useFirebase()) {
-    getFirestoreFunctions().then(firestore => {
+    try {
+      const firestore = await getFirestoreFunctions();
       if (firestore) {
-        firestore.setLedgerEntries(entries).catch((error: unknown) => {
-          // 에러 무시 (이미 localStorage에 저장됨)
-          console.error('[Store] Failed to save Ledger Entries to Firebase:', error);
-        });
+        await firestore.setLedgerEntries(entries);
       }
-    }).catch((error: unknown) => {
-      // 에러 무시
-      console.error('[Store] Failed to load Firestore functions:', error);
-    });
+    } catch (error: unknown) {
+      console.error('[Store] Failed to save Ledger Entries to Firebase:', error);
+    }
   }
 }

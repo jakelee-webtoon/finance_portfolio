@@ -64,36 +64,32 @@ export default function ApartmentPage() {
     };
   }, []);
 
-  // 아파트 목록이 로드되면 기존 자산명을 "아파트"로 업데이트 (한 번만 실행)
+  // 아파트 목록이 로드되면 기존 자산명을 "아파트"로 업데이트 + 각 아파트를 자산에 동기화
   useEffect(() => {
     if (!state || apartments.length === 0) return;
-    
-    const assets = getAssets();
-    let hasChanges = false;
-    const updatedAssets = assets.map((asset) => {
-      // real_estate 카테고리이고 아파트명 형식인 경우 "아파트"로 변경
-      if (asset.category === 'real_estate' && asset.name.includes('(') && asset.name.includes('동')) {
-        // 아파트명 형식인지 확인 (예: "e편한세상서울대입구 (208동 603호)")
-        const match = asset.name.match(/^(.+?)\s*\((\d+)동\s*(\d+)호\)$/);
-        if (match) {
-          hasChanges = true;
-          return {
-            ...asset,
-            name: '아파트',
-          };
+
+    const run = async () => {
+      const assets = getAssets();
+      let hasChanges = false;
+      const updatedAssets = assets.map((asset) => {
+        if (asset.category === 'real_estate' && asset.name.includes('(') && asset.name.includes('동')) {
+          const match = asset.name.match(/^(.+?)\s*\((\d+)동\s*(\d+)호\)$/);
+          if (match) {
+            hasChanges = true;
+            return { ...asset, name: '아파트' };
+          }
         }
+        return asset;
+      });
+      if (hasChanges) {
+        await setAssets(updatedAssets);
       }
-      return asset;
-    });
-    
-    if (hasChanges) {
-      setAssets(updatedAssets);
-    }
-    
-    // 각 아파트를 자산으로 동기화
-    apartments.forEach((apartment) => {
-      syncApartmentToAsset(apartment);
-    });
+      for (const apartment of apartments) {
+        await syncApartmentToAsset(apartment);
+      }
+    };
+
+    run();
   }, [apartments.length, state?.scope]); // 의존성을 최소화하여 무한 루프 방지
 
 
@@ -103,33 +99,30 @@ export default function ApartmentPage() {
     return apartments.filter((apt) => apt.owner === state.scope || apt.owner === 'joint');
   }, [apartments, state]);
 
-  // 아파트를 포트폴리오 자산으로 동기화
-  const syncApartmentToAsset = (apartment: Apartment) => {
+  // 아파트를 포트폴리오 자산으로 동기화 (async — Firestore까지 저장)
+  const syncApartmentToAsset = async (apartment: Apartment) => {
     const assets = getAssets();
     const assetName = '아파트';
     const currentValue = apartment.currentPrice || apartment.purchasePrice;
-    
-    // 기존 자산 찾기 (아파트 ID로 매칭 또는 아파트명 형식으로 매칭)
     const apartmentId = `asset-apt-${apartment.id}`;
     const oldAssetName = `${apartment.apartmentName} (${apartment.dong}동 ${apartment.ho}호)`;
-    
+    const today = new Date().toISOString().split('T')[0];
+    const currentUser: 'husband' | 'wife' = apartment.last_modified_by || (state?.scope === 'husband' ? 'husband' : state?.scope === 'wife' ? 'wife' : 'husband');
+
     const existingAssetIndex = assets.findIndex(
-      (asset) => asset.id === apartmentId || 
+      (asset) => asset.id === apartmentId ||
                  (asset.name === oldAssetName && asset.category === 'real_estate') ||
                  (asset.name === assetName && asset.category === 'real_estate' && asset.id.startsWith('asset-apt-'))
     );
-    
-    const today = new Date().toISOString().split('T')[0];
-    const currentUser: 'husband' | 'wife' = apartment.last_modified_by || (state?.scope === 'husband' ? 'husband' : state?.scope === 'wife' ? 'wife' : 'husband');
-    
+
+    let updatedAssets: Asset[];
     if (existingAssetIndex >= 0) {
-      // 기존 자산 업데이트 (이름도 "아파트"로 변경)
-      const updatedAssets = assets.map((asset, index) =>
+      updatedAssets = assets.map((asset, index) =>
         index === existingAssetIndex
           ? {
               ...asset,
-              id: apartmentId, // ID는 유지하여 매칭
-              name: assetName, // 이름을 "아파트"로 변경
+              id: apartmentId,
+              name: assetName,
               amount: currentValue,
               owner: apartment.owner,
               currency: apartment.currency,
@@ -138,9 +131,7 @@ export default function ApartmentPage() {
             }
           : asset
       );
-      setAssets(updatedAssets);
     } else {
-      // 새 자산 생성
       const newAsset: Asset = {
         id: apartmentId,
         name: assetName,
@@ -152,18 +143,18 @@ export default function ApartmentPage() {
         as_of_date: today,
         last_modified_by: currentUser,
       };
-      setAssets([...assets, newAsset]);
+      updatedAssets = [...assets, newAsset];
     }
+    await setAssets(updatedAssets);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     const currentUser: 'husband' | 'wife' = state?.scope === 'husband' ? 'husband' : state?.scope === 'wife' ? 'wife' : 'husband';
     const today = new Date().toISOString().split('T')[0];
 
     if (editingId) {
-      // 수정
       const updatedApartment = {
         ...apartments.find(apt => apt.id === editingId)!,
         ...formData,
@@ -175,21 +166,15 @@ export default function ApartmentPage() {
         as_of_date: today,
         last_modified_by: currentUser,
       };
-      
-      // 전체 아파트 목록에서 수정
       const allApartments = getApartments();
       const updated = allApartments.map((apt) =>
         apt.id === editingId ? updatedApartment : apt
       );
       setApartmentsState(updated);
-      setApartments(updated);
-      
-      // 포트폴리오 자산도 동기화
-      syncApartmentToAsset(updatedApartment);
-      
+      await setApartments(updated);
+      await syncApartmentToAsset(updatedApartment);
       setEditingId(null);
     } else {
-      // 추가
       const newApartment: Apartment = {
         id: `apt-${Date.now()}`,
         ...formData,
@@ -202,17 +187,13 @@ export default function ApartmentPage() {
         as_of_date: today,
         last_modified_by: currentUser,
       };
-      // 전체 아파트 목록에 추가
       const allApartments = getApartments();
       const updated = [...allApartments, newApartment];
       setApartmentsState(updated);
-      setApartments(updated);
-      
-      // 포트폴리오 자산도 동기화
-      syncApartmentToAsset(newApartment);
+      await setApartments(updated);
+      await syncApartmentToAsset(newApartment);
     }
 
-    // 폼 초기화
     setFormData({
       apartmentName: '',
       address: '',
@@ -251,23 +232,19 @@ export default function ApartmentPage() {
     setIsFormOpen(true);
   };
 
-  const handleDelete = (id: string) => {
-    if (confirm('정말 삭제하시겠습니까?')) {
-      // 전체 아파트 목록에서 삭제
-      const allApartments = getApartments();
-      const apartment = allApartments.find((apt) => apt.id === id);
-      const updated = allApartments.filter((apt) => apt.id !== id);
-      setApartmentsState(updated);
-      setApartments(updated);
-      
-      // 포트폴리오 자산도 삭제
-      if (apartment) {
-        const assets = getAssets();
-        const updatedAssets = assets.filter(
-          (asset) => asset.id !== `asset-apt-${apartment.id}`
-        );
-        setAssets(updatedAssets);
-      }
+  const handleDelete = async (id: string) => {
+    if (!confirm('정말 삭제하시겠습니까?')) return;
+    const allApartments = getApartments();
+    const apartment = allApartments.find((apt) => apt.id === id);
+    const updated = allApartments.filter((apt) => apt.id !== id);
+    setApartmentsState(updated);
+    await setApartments(updated);
+    if (apartment) {
+      const assets = getAssets();
+      const updatedAssets = assets.filter(
+        (asset) => asset.id !== `asset-apt-${apartment.id}`
+      );
+      await setAssets(updatedAssets);
     }
   };
 

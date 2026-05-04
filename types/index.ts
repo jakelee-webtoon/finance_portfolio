@@ -111,6 +111,8 @@ export interface DashboardState {
   householdName: string;
   baseMonth: string; // YYYY-MM
   scope: Scope;
+  /** 목표 달성 위젯용 목표 자산(원). 미설정 시 진행률·NEXT STEP은 안내 문구만 표시 */
+  targetAssetKrw?: number;
 }
 
 // 가계부 항목 타입

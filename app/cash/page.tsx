@@ -87,15 +87,15 @@ export default function CashPage() {
     }, 0));
   }, [filteredAssets, exchangeRates]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     const currentUser: 'husband' | 'wife' = state?.scope === 'husband' ? 'husband' : state?.scope === 'wife' ? 'wife' : 'husband';
     const today = new Date().toISOString().split('T')[0];
 
     if (editingId) {
-      // 수정
-      const updated = assets.map((asset) =>
+      const allAssets = getAssets();
+      const updatedAllAssets = allAssets.map((asset) =>
         asset.id === editingId
           ? {
               ...asset,
@@ -109,28 +109,10 @@ export default function CashPage() {
             }
           : asset
       );
-      setAssetsState(updated);
-      // 전체 자산 목록도 업데이트
-      const allAssets = getAssets();
-      const updatedAllAssets = allAssets.map((asset) => {
-        if (asset.id === editingId) {
-          return {
-            ...asset,
-            name: formData.name,
-            amount: Number(formData.amount),
-            owner: formData.owner,
-            currency: formData.currency,
-            notes: formData.notes || undefined,
-            as_of_date: today,
-            last_modified_by: currentUser,
-          };
-        }
-        return asset;
-      });
-      setAssets(updatedAllAssets);
+      setAssetsState(updatedAllAssets.filter((a) => a.category === 'cash'));
+      await setAssets(updatedAllAssets);
       setEditingId(null);
     } else {
-      // 추가
       const newAsset: Asset = {
         id: `cash-${Date.now()}`,
         name: formData.name,
@@ -143,14 +125,12 @@ export default function CashPage() {
         as_of_date: today,
         last_modified_by: currentUser,
       };
-      const updated = [...assets, newAsset];
-      setAssetsState(updated);
-      // 전체 자산 목록에도 추가
       const allAssets = getAssets();
-      setAssets([...allAssets, newAsset]);
+      const updatedAll = [...allAssets, newAsset];
+      setAssetsState(updatedAll.filter((a) => a.category === 'cash'));
+      await setAssets(updatedAll);
     }
 
-    // 폼 초기화
     setFormData({
       name: '',
       category: 'cash',
@@ -175,14 +155,12 @@ export default function CashPage() {
     setIsFormOpen(true);
   };
 
-  const handleDelete = (id: string) => {
-    if (confirm('정말 삭제하시겠습니까?')) {
-      const updated = assets.filter((asset) => asset.id !== id);
-      setAssetsState(updated);
-      // 전체 자산 목록에서도 삭제
-      const allAssets = getAssets();
-      setAssets(allAssets.filter((asset) => asset.id !== id));
-    }
+  const handleDelete = async (id: string) => {
+    if (!confirm('정말 삭제하시겠습니까?')) return;
+    const allAssets = getAssets();
+    const updated = allAssets.filter((asset) => asset.id !== id);
+    setAssetsState(updated.filter((a) => a.category === 'cash'));
+    await setAssets(updated);
   };
 
   const handleCancel = () => {

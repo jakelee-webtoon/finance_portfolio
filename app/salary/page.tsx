@@ -304,7 +304,7 @@ export default function SalaryPage() {
     );
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     const currentUser: 'husband' | 'wife' = state?.scope === 'husband' ? 'husband' : state?.scope === 'wife' ? 'wife' : 'husband';
@@ -331,12 +331,11 @@ export default function SalaryPage() {
         last_modified_by: currentUser,
       };
       
-      // 전체 목록 업데이트
       const updated = allSalaries.map((salary) =>
         salary.id === editingId ? updatedSalary : salary
       );
       setSalariesState(updated);
-      setSalaries(updated);
+      await setSalaries(updated);
       setIsFormOpen(false);
       setEditingId(null);
       setFormData({
@@ -365,7 +364,7 @@ export default function SalaryPage() {
       const allSalaries = getSalaries();
       const updated = [...allSalaries, newSalary];
       setSalariesState(updated);
-      setSalaries(updated);
+      await setSalaries(updated);
       setIsFormOpen(false);
       setFormData({
         year: new Date().getFullYear().toString(),
@@ -391,14 +390,12 @@ export default function SalaryPage() {
     setIsFormOpen(true);
   };
 
-  const handleDelete = (id: string) => {
-    if (confirm('정말 삭제하시겠습니까?')) {
-      // 전체 연봉 목록에서 삭제
-      const allSalaries = getSalaries();
-      const updated = allSalaries.filter((salary) => salary.id !== id);
-      setSalariesState(updated);
-      setSalaries(updated);
-    }
+  const handleDelete = async (id: string) => {
+    if (!confirm('정말 삭제하시겠습니까?')) return;
+    const allSalaries = getSalaries();
+    const updated = allSalaries.filter((salary) => salary.id !== id);
+    setSalariesState(updated);
+    await setSalaries(updated);
   };
 
   const handleCancel = () => {

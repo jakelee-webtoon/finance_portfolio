@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip, LabelList } from 'recharts';
 import TopBar from '@/components/TopBar';
 import Navigation from '@/components/Navigation';
 import Table, { Column } from '@/components/Table';
-import { Asset, DashboardState, Scope, Liability } from '@/types';
-import { getDashboardState, getAssets, getLiabilities, syncFromFirebase } from '@/lib/store';
+import { Asset, DashboardState, Liability } from '@/types';
+import { getDashboardState, getAssets, getLiabilities, setDashboardState, syncFromFirebase } from '@/lib/store';
 import { getExchangeRates } from '@/lib/exchangeRate';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -192,6 +192,34 @@ export default function DashboardPage() {
     }
     return data;
   }, [netWorth, totalLiabilities]);
+
+  const goalKrw = useMemo(() => {
+    const g = state?.targetAssetKrw;
+    return g != null && g > 0 ? g : 0;
+  }, [state?.targetAssetKrw]);
+
+  const [goalDraft, setGoalDraft] = useState('');
+  useEffect(() => {
+    const g = state?.targetAssetKrw;
+    setGoalDraft(g != null && g > 0 ? String(g) : '');
+  }, [state?.targetAssetKrw]);
+
+  const saveGoalDraft = useCallback(() => {
+    if (!state) return;
+    const parsed = parseInt(goalDraft.replace(/[^\d]/g, ''), 10) || 0;
+    const next: DashboardState = { ...state };
+    if (parsed > 0) {
+      next.targetAssetKrw = parsed;
+    } else {
+      delete next.targetAssetKrw;
+    }
+    setDashboardState(next);
+    window.dispatchEvent(new Event('storage'));
+    window.dispatchEvent(new CustomEvent('dashboardStateChanged', { detail: next }));
+  }, [state, goalDraft]);
+
+  const goalProgressPct = goalKrw > 0 ? Math.min(100, (totalAssets / goalKrw) * 100) : 0;
+  const goalRemaining = goalKrw > 0 ? Math.max(0, goalKrw - totalAssets) : 0;
 
   const assetTableColumns: Column<Asset>[] = [
     { key: 'name', label: '자산명', sortable: true },
@@ -445,15 +473,15 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Charts and Tables Row */}
-          <div className="grid grid-cols-12 gap-6 mb-8">
-            {/* 자산 구성 차트 */}
-            <div className="col-span-12 lg:col-span-4 bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-6 min-w-0 max-w-full overflow-hidden">
+          {/* Charts and Tables Row — items-start: 한 열만 길어질 때 다른 카드가 늘어나지 않음 */}
+          <div className="grid grid-cols-12 gap-6 mb-8 items-start">
+            {/* 자산 구성 차트 (overflow-hidden 제거: 파이 라벨·범례가 잘리지 않도록) */}
+            <div className="col-span-12 lg:col-span-4 bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-6 min-w-0 max-w-full">
               <div className="flex items-center justify-between mb-6 min-w-0 gap-2">
                 <h2 className="text-lg font-bold text-gray-900 truncate">자산 구성</h2>
                 <div className="text-xs text-gray-400 font-medium shrink-0 hidden sm:block">카테고리별 비중</div>
               </div>
-              <div className="relative h-[300px] w-full max-w-full min-w-0 overflow-hidden">
+              <div className="relative h-[320px] w-full max-w-full min-w-0">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
@@ -490,13 +518,13 @@ export default function DashboardPage() {
             </div>
 
             {/* 순자산/부채 차트 */}
-            <div className="col-span-12 lg:col-span-5 bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-6 min-w-0 max-w-full overflow-hidden">
+            <div className="col-span-12 lg:col-span-5 bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-6 min-w-0 max-w-full">
               <div className="flex items-center justify-between mb-6 min-w-0 gap-2">
                 <h2 className="text-lg font-bold text-gray-900 truncate">순자산 vs 부채</h2>
                 <div className="text-xs text-gray-400 font-medium shrink-0 hidden sm:block">자산 건전성</div>
               </div>
               {netWorthData.length > 0 ? (
-                <div className="relative h-[300px] w-full max-w-full min-w-0 overflow-hidden">
+                <div className="relative h-[320px] w-full max-w-full min-w-0">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie
@@ -533,21 +561,21 @@ export default function DashboardPage() {
                   </div>
                 </div>
               ) : (
-                <div className="flex items-center justify-center h-[300px] text-gray-400 text-sm italic">
+                <div className="flex items-center justify-center h-[320px] text-gray-400 text-sm italic">
                   표시할 데이터가 없습니다
                 </div>
               )}
             </div>
 
-            {/* 갈아타기 위젯 */}
-            <div className="col-span-12 lg:col-span-3 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-2xl shadow-lg border-none p-6 text-white">
-              <h2 className="text-lg font-bold mb-6 flex items-center">
+            {/* 목표 달성 위젯 */}
+            <div className="col-span-12 lg:col-span-3 min-w-0 max-w-full bg-gradient-to-br from-blue-600 to-indigo-700 rounded-2xl shadow-lg border-none p-4 sm:p-6 text-white">
+              <h2 className="text-lg font-bold mb-4 flex items-center min-w-0">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0V9m0 8l-8-8-4 4-6-6" />
                 </svg>
                 목표 달성 현황
               </h2>
-              <div className="space-y-6">
+              <div className="space-y-4 sm:space-y-5">
                 <div>
                   <div className="text-blue-100 text-xs font-medium mb-1 opacity-80">현재 자산</div>
                   <div className="text-2xl font-bold">
@@ -556,26 +584,61 @@ export default function DashboardPage() {
                 </div>
                 
                 <div>
-                  <div className="flex justify-between items-end mb-1.5">
-                    <span className="text-blue-100 text-xs font-medium opacity-80">목표 자산 (120%)</span>
-                    <span className="text-xs font-bold">{((totalAssets / (totalAssets * 1.2 || 1)) * 100).toFixed(1)}%</span>
+                  <div className="flex justify-between items-end mb-1.5 gap-2">
+                    <span className="text-blue-100 text-xs font-medium opacity-80">목표 자산</span>
+                    <span className="text-xs font-bold tabular-nums shrink-0">
+                      {goalKrw > 0 ? `${goalProgressPct.toFixed(1)}%` : '—'}
+                    </span>
                   </div>
                   <div className="w-full bg-white/20 rounded-full h-2 mb-1">
-                    <div 
-                      className="bg-emerald-400 h-2 rounded-full shadow-[0_0_8px_rgba(52,211,153,0.6)] transition-all duration-1000" 
-                      style={{ width: `${Math.min(100, (totalAssets / (totalAssets * 1.2 || 1)) * 100)}%` }}
-                    ></div>
+                    <div
+                      className="bg-emerald-400 h-2 rounded-full shadow-[0_0_8px_rgba(52,211,153,0.6)] transition-all duration-1000"
+                      style={{ width: `${goalProgressPct}%` }}
+                    />
                   </div>
-                  <div className="text-right text-[10px] text-blue-100 opacity-60">
-                    {new Intl.NumberFormat('ko-KR').format(totalAssets * 1.2)}원 목표
+                  <div className="text-right text-[10px] text-blue-100 opacity-60 tabular-nums">
+                    {goalKrw > 0 ? `${new Intl.NumberFormat('ko-KR').format(goalKrw)}원` : '금액 미설정'}
                   </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="block text-[10px] font-medium text-blue-100/90 uppercase tracking-wide">
+                    목표 금액 (원)
+                  </label>
+                  <div className="flex gap-2 min-w-0">
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="예: 2000000000"
+                      value={goalDraft}
+                      onChange={(e) => setGoalDraft(e.target.value.replace(/[^\d]/g, ''))}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') saveGoalDraft();
+                      }}
+                      className="min-w-0 w-0 flex-1 rounded-lg border border-white/25 bg-white/15 px-2.5 py-2 text-sm text-white placeholder:text-blue-200/50 outline-none focus:border-white/50 focus:ring-1 focus:ring-white/30 tabular-nums"
+                    />
+                    <button
+                      type="button"
+                      onClick={saveGoalDraft}
+                      className="shrink-0 rounded-lg bg-white/20 px-3 py-2 text-xs font-semibold text-white ring-1 ring-white/30 hover:bg-white/30"
+                    >
+                      적용
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-blue-100/70 leading-snug">
+                    숫자만 입력해도 됩니다. 비우고 적용하면 목표를 해제합니다.
+                  </p>
                 </div>
 
                 <div className="pt-2">
                   <div className="bg-white/10 rounded-xl p-3 backdrop-blur-sm border border-white/10">
                     <div className="text-[10px] uppercase tracking-wider text-blue-100 opacity-70 mb-1">Next Step</div>
                     <div className="text-xs font-medium leading-relaxed">
-                      현재 자산 대비 약 {new Intl.NumberFormat('ko-KR').format(totalAssets * 0.2)}원을 더 모으면 목표에 도달합니다!
+                      {goalKrw <= 0
+                        ? '목표 금액을 입력한 뒤 적용하면 진행률과 남은 금액이 표시됩니다.'
+                        : totalAssets >= goalKrw
+                          ? '목표 금액에 도달했습니다.'
+                          : `현재 자산 대비 약 ${new Intl.NumberFormat('ko-KR').format(goalRemaining)}원을 더 모으면 목표에 도달합니다.`}
                     </div>
                   </div>
                 </div>
@@ -584,7 +647,7 @@ export default function DashboardPage() {
           </div>
 
           {/* Tables Row */}
-          <div className="grid grid-cols-12 gap-6 mb-8">
+          <div className="grid grid-cols-12 gap-6 mb-8 items-start">
             {/* 자산 표 */}
             <div className="col-span-12 lg:col-span-6 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
               <div className="p-5 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">

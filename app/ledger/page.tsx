@@ -117,7 +117,7 @@ export default function LedgerPage() {
   }, []);
 
   // 고정비 자동 반복 로직
-  const checkAndCreateFixedEntries = (targetMonth: string) => {
+  const checkAndCreateFixedEntries = async (targetMonth: string) => {
     if (!targetMonth) return;
     
     const allEntries = getLedgerEntries();
@@ -167,7 +167,7 @@ export default function LedgerPage() {
     if (newEntries.length > 0) {
       const updated = [...allEntries, ...newEntries];
       setEntriesState(updated);
-      setLedgerEntries(updated);
+      await setLedgerEntries(updated);
     }
   };
 
@@ -250,19 +250,17 @@ export default function LedgerPage() {
       .sort((a, b) => b.value - a.value);
   }, [entriesByType]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     const currentUser: 'husband' | 'wife' = state?.scope === 'husband' ? 'husband' : state?.scope === 'wife' ? 'wife' : 'husband';
     const today = new Date().toISOString().split('T')[0];
-    const targetMonth = state?.baseMonth || new Date().toISOString().slice(0, 7);
 
     if (editingId) {
-      // 수정
       const allEntries = getLedgerEntries();
       const existingEntry = allEntries.find(e => e.id === editingId);
       if (!existingEntry) return;
-      
+
       const updatedEntry: LedgerEntry = {
         ...existingEntry,
         date: formData.date,
@@ -278,15 +276,14 @@ export default function LedgerPage() {
         as_of_date: today,
         last_modified_by: currentUser,
       };
-      
+
       const updated = allEntries.map(e => e.id === editingId ? updatedEntry : e);
       setEntriesState(updated);
-      setLedgerEntries(updated);
+      await setLedgerEntries(updated);
       setIsFormOpen(false);
       setEditingId(null);
       resetForm();
     } else {
-      // 추가
       const newEntry: LedgerEntry = {
         id: `ledger-${Date.now()}`,
         date: formData.date,
@@ -303,11 +300,11 @@ export default function LedgerPage() {
         as_of_date: today,
         last_modified_by: currentUser,
       };
-      
+
       const allEntries = getLedgerEntries();
       const updated = [...allEntries, newEntry];
       setEntriesState(updated);
-      setLedgerEntries(updated);
+      await setLedgerEntries(updated);
       setIsFormOpen(false);
       resetForm();
     }
@@ -344,13 +341,12 @@ export default function LedgerPage() {
     setIsFormOpen(true);
   };
 
-  const handleDelete = (id: string) => {
-    if (confirm('정말 삭제하시겠습니까?')) {
-      const allEntries = getLedgerEntries();
-      const updated = allEntries.filter(e => e.id !== id);
-      setEntriesState(updated);
-      setLedgerEntries(updated);
-    }
+  const handleDelete = async (id: string) => {
+    if (!confirm('정말 삭제하시겠습니까?')) return;
+    const allEntries = getLedgerEntries();
+    const updated = allEntries.filter(e => e.id !== id);
+    setEntriesState(updated);
+    await setLedgerEntries(updated);
   };
 
   const handleCancel = () => {
