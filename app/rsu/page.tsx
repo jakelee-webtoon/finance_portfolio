@@ -9,9 +9,11 @@ import { getDashboardState, getStockHoldings, setStockHoldings, getAssets, setAs
 import { getStockPrice, detectExchangeAndCurrency } from '@/lib/stockApi';
 import { getExchangeRates } from '@/lib/exchangeRate';
 import { useAuth } from '@/hooks/useAuth';
+import { useToast } from '@/components/Toast';
 
 export default function RSUPage() {
   const isAuthenticated = useAuth();
+  const { showToast } = useToast();
   const [state, setState] = useState<DashboardState | null>(null);
   const [holdings, setHoldings] = useState<StockHolding[]>([]);
   const [exchangeRates, setExchangeRates] = useState<Record<string, number> | null>(null);
@@ -20,6 +22,7 @@ export default function RSUPage() {
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [noteValue, setNoteValue] = useState('');
   const [isInitialLoaded, setIsInitialLoaded] = useState(false);
+  const [isUpdatingPrices, setIsUpdatingPrices] = useState(false);
   const priceUpdateIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const getInitialFormData = useCallback(() => ({
@@ -172,53 +175,61 @@ export default function RSUPage() {
 
   // 가격 업데이트 함수 (interval에서 호출, 수동 새로고침에서도 사용)
   const updatePrices = useCallback(async (forceRefresh: boolean = false) => {
-    // 매번 최신 holdings를 localStorage에서 가져옴 (다른 변경사항 반영)
-    const allHoldings = getStockHoldings();
-    const currentRsuHoldings = allHoldings.filter((h) => h.type === 'rsu' || h.type === 'option');
-    if (currentRsuHoldings.length === 0) return;
+    if (isUpdatingPrices) return;
+    setIsUpdatingPrices(true);
+    try {
+      // 매번 최신 holdings를 localStorage에서 가져옴 (다른 변경사항 반영)
+      const allHoldings = getStockHoldings();
+      const currentRsuHoldings = allHoldings.filter((h) => h.type === 'rsu' || h.type === 'option');
+      if (currentRsuHoldings.length === 0) return;
 
-    // 강제 새로고침인 경우 모든 심볼의 캐시 삭제
-    if (forceRefresh && typeof window !== 'undefined') {
-      currentRsuHoldings.forEach((holding) => {
-        if (holding.symbol) {
-          localStorage.removeItem(`stock-quotes-cache-${holding.symbol}`);
-        }
-      });
-    }
-
-    // RSU/옵션만 가격 업데이트 (기존 필드 모두 보존)
-    const updatedRsuHoldings = await Promise.all(
-      currentRsuHoldings.map(async (holding) => {
-        if (!holding.symbol) return holding;
-        try {
-          const price = await getStockPrice(holding.symbol, forceRefresh);
-          if (price !== null && price !== holding.currentPrice) {
-            return { ...holding, currentPrice: price };
+      // 강제 새로고침인 경우 모든 심볼의 캐시 삭제
+      if (forceRefresh && typeof window !== 'undefined') {
+        currentRsuHoldings.forEach((holding) => {
+          if (holding.symbol) {
+            localStorage.removeItem(`stock-quotes-cache-${holding.symbol}`);
           }
-        } catch {
-          // 에러 발생 시 기존 holding 반환
-        }
-        return holding;
-      })
-    );
+        });
+      }
 
-    // 가격만 변경된 경우에만 저장
-    const hasChanges = updatedRsuHoldings.some((holding, index) =>
-      holding.currentPrice !== currentRsuHoldings[index]?.currentPrice
-    );
+      // RSU/옵션만 가격 업데이트 (기존 필드 모두 보존)
+      const updatedRsuHoldings = await Promise.all(
+        currentRsuHoldings.map(async (holding) => {
+          if (!holding.symbol) return holding;
+          try {
+            const price = await getStockPrice(holding.symbol, forceRefresh);
+            if (price !== null && price !== holding.currentPrice) {
+              return { ...holding, currentPrice: price };
+            }
+          } catch {
+            // 에러 발생 시 기존 holding 반환
+          }
+          return holding;
+        })
+      );
 
-    if (hasChanges) {
-      const updatedAllHoldings = allHoldings.map((holding) => {
-        const updatedRsu = updatedRsuHoldings.find((rsu) => rsu.id === holding.id);
-        return updatedRsu || holding;
-      });
-      setHoldings(updatedRsuHoldings);
-      await syncHoldingsToAsset(updatedRsuHoldings);
-      await setStockHoldings(updatedAllHoldings);
-    } else {
-      await syncHoldingsToAsset(currentRsuHoldings);
+      // 가격만 변경된 경우에만 저장
+      const hasChanges = updatedRsuHoldings.some((holding, index) =>
+        holding.currentPrice !== currentRsuHoldings[index]?.currentPrice
+      );
+
+      if (hasChanges) {
+        const updatedAllHoldings = allHoldings.map((holding) => {
+          const updatedRsu = updatedRsuHoldings.find((rsu) => rsu.id === holding.id);
+          return updatedRsu || holding;
+        });
+        setHoldings(updatedRsuHoldings);
+        await syncHoldingsToAsset(updatedRsuHoldings);
+        await setStockHoldings(updatedAllHoldings);
+        showToast('주가가 업데이트되었습니다.');
+      } else {
+        await syncHoldingsToAsset(currentRsuHoldings);
+        if (forceRefresh) showToast('최신 주가입니다.');
+      }
+    } finally {
+      setIsUpdatingPrices(false);
     }
-  }, [syncHoldingsToAsset]);
+  }, [syncHoldingsToAsset, showToast, isUpdatingPrices]);
 
   // 가격 업데이트 interval 설정 (초기 로드 완료 후 한 번만)
   useEffect(() => {
@@ -307,6 +318,7 @@ export default function RSUPage() {
       setEditingId(null);
       await syncHoldingsToAsset(rsuHoldings);
       await setStockHoldings(updatedAllHoldings);
+      showToast('RSU 정보가 수정되었습니다.');
     } else {
       const newHolding: StockHolding = {
         id: `stock-${Date.now()}`,
@@ -330,6 +342,7 @@ export default function RSUPage() {
       setHoldings(rsuHoldings);
       await syncHoldingsToAsset(rsuHoldings);
       await setStockHoldings(updatedAllHoldings);
+      showToast('새로운 RSU가 추가되었습니다.');
     }
 
     setFormData(getInitialFormData());
@@ -361,6 +374,7 @@ export default function RSUPage() {
     setHoldings(updatedRsuHoldings);
     await syncHoldingsToAsset(updatedRsuHoldings);
     await setStockHoldings(updatedAllHoldings);
+    showToast('항목이 삭제되었습니다.');
   };
 
   const handleCancel = () => {
@@ -395,7 +409,8 @@ export default function RSUPage() {
     setHoldings(rsuHoldings);
     await syncHoldingsToAsset(rsuHoldings);
     await setStockHoldings(updatedAllHoldings);
-  }, [syncHoldingsToAsset, state]);
+    showToast(updatedAllHoldings.find(h => h.id === id)?.isRealized ? '실현 상태로 변경되었습니다.' : '미실현 상태로 변경되었습니다.');
+  }, [syncHoldingsToAsset, state, showToast]);
 
   const handleSaveNote = useCallback(async (id: string, note: string) => {
     const today = new Date().toISOString().split('T')[0];
@@ -421,7 +436,8 @@ export default function RSUPage() {
     setHoldings(rsuHoldings);
     setEditingNoteId(null);
     await setStockHoldings(updatedAllHoldings);
-  }, [state]);
+    showToast('비고 내용이 저장되었습니다.');
+  }, [state, showToast]);
 
   // 공통 holding 가치 계산 헬퍼
   const calcHoldingValue = useCallback((holding: StockHolding, rates: Record<string, number>) => {
@@ -801,46 +817,19 @@ export default function RSUPage() {
             <div className="flex gap-2">
               <button
                 onClick={async () => {
-                  if (!exchangeRates) return;
-                  // 매번 최신 holdings를 가져옴 (비고/실현 상태 등 반영)
-                  const allHoldings = getStockHoldings();
-                  const currentRsuHoldings = allHoldings.filter((h) => h.type === 'rsu' || h.type === 'option');
-                  if (currentRsuHoldings.length === 0) return;
-
-                  // 모든 심볼의 캐시 삭제
-                  if (typeof window !== 'undefined') {
-                    currentRsuHoldings.forEach((holding) => {
-                      if (holding.symbol) {
-                        localStorage.removeItem(`stock-quotes-cache-${holding.symbol}`);
-                      }
-                    });
-                  }
-
-                  const updatedRsuHoldings = await Promise.all(
-                    currentRsuHoldings.map(async (holding) => {
-                      if (!holding.symbol) return holding;
-                      try {
-                        const price = await getStockPrice(holding.symbol, true);
-                        if (price !== null) {
-                          return { ...holding, currentPrice: price };
-                        }
-                      } catch {
-                        // 에러 발생 시 기존 holding 반환
-                      }
-                      return holding;
-                    })
-                  );
-                  const updatedAllHoldings = allHoldings.map((h) => {
-                    const updated = updatedRsuHoldings.find((r) => r.id === h.id);
-                    return updated || h;
-                  });
-                  setHoldings(updatedRsuHoldings);
-                  await syncHoldingsToAsset(updatedRsuHoldings);
-                  await setStockHoldings(updatedAllHoldings);
+                  await updatePrices(true);
                 }}
-                className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors"
+                disabled={isUpdatingPrices}
+                className={`px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors flex items-center gap-2 ${isUpdatingPrices ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
-                🔄 가격 새로고침
+                {isUpdatingPrices ? (
+                  <>
+                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
+                    업데이트 중...
+                  </>
+                ) : (
+                  <>🔄 가격 새로고침</>
+                )}
               </button>
               <button
                 onClick={() => {
@@ -855,133 +844,97 @@ export default function RSUPage() {
           </div>
 
           {/* 통계 카드 */}
-          <div className="mb-6">
-            <div className="grid grid-cols-12 gap-3">
+          <div className="mb-8">
+            <div className="grid grid-cols-12 gap-4">
               {/* 카드 1: 현재 평가 금액 (미실현) */}
-              <div className="col-span-12 md:col-span-3 bg-blue-50 border border-blue-100 rounded-lg shadow-sm p-4">
-                <div className="text-xs text-blue-500 font-medium mb-1">현재 평가 금액</div>
-                <div className="text-2xl font-bold text-blue-900">
+              <div className="col-span-12 md:col-span-3 bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="p-2 bg-blue-50 rounded-lg text-blue-600">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 00-2 2z" />
+                    </svg>
+                  </div>
+                  <span className="text-[10px] font-bold text-blue-500 bg-blue-50 px-2 py-0.5 rounded-full uppercase">Current</span>
+                </div>
+                <div className="text-xs text-gray-500 font-medium mb-1">현재 평가 금액 (미실현)</div>
+                <div className="text-2xl font-bold text-blue-600 tracking-tight">
                   {new Intl.NumberFormat('ko-KR').format(currentUnrealizedValue.krw)}원
                 </div>
                 {currentUnrealizedValue.usd !== 0 && (
-                  <div className="text-sm text-blue-400 mt-1">
+                  <div className="text-sm text-gray-400 mt-1 font-medium">
                     (${new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(currentUnrealizedValue.usd)})
                   </div>
                 )}
-                {currentUnrealizedValue.eur !== 0 && (
-                  <div className="text-sm text-blue-400 mt-1">
-                    (€{new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(currentUnrealizedValue.eur)})
-                  </div>
-                )}
-                <div className="text-xs text-blue-400 mt-2">미실현 RSU 기준</div>
               </div>
 
               {/* 카드 2: 실현 손익 */}
-              <div className="col-span-12 md:col-span-3 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-                <div className="text-xs text-gray-500 mb-1">현금화 가능 금액</div>
-                <div className={`text-2xl font-bold ${realizedGainLoss.krw >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {realizedGainLoss.krw >= 0 ? '+' : ''}
+              <div className="col-span-12 md:col-span-3 bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="p-2 bg-emerald-50 rounded-lg text-emerald-600">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <span className="text-[10px] font-bold text-emerald-500 bg-emerald-50 px-2 py-0.5 rounded-full uppercase">Available</span>
+                </div>
+                <div className="text-xs text-gray-500 font-medium mb-1">현금화 가능 금액</div>
+                <div className={`text-2xl font-bold tracking-tight ${realizedGainLoss.krw >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
                   {new Intl.NumberFormat('ko-KR').format(realizedGainLoss.krw)}원
                 </div>
-                {realizedGainLoss.usd !== 0 && (
-                  <div className={`text-sm mt-1 ${realizedGainLoss.usd >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                    (${realizedGainLoss.usd >= 0 ? '+' : ''}{new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(realizedGainLoss.usd)})
-                  </div>
-                )}
-                {realizedGainLoss.eur !== 0 && (
-                  <div className={`text-sm mt-1 ${realizedGainLoss.eur >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                    (€{realizedGainLoss.eur >= 0 ? '+' : ''}{new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(realizedGainLoss.eur)})
-                  </div>
-                )}
-                <div className="text-xs text-gray-400 mt-2">Vesting 완료 + 미실현 합계</div>
+                <div className="text-[10px] text-gray-400 mt-2 font-medium italic">Vesting 완료 항목 합계</div>
               </div>
 
               {/* 카드 3: 누적 RSU 금액 */}
-              <div className="col-span-12 md:col-span-3 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-                <div className="text-xs text-gray-500 mb-1">누적 RSU 금액</div>
-                <div className="text-2xl font-bold text-gray-900">
+              <div className="col-span-12 md:col-span-3 bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="p-2 bg-amber-50 rounded-lg text-amber-600">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                    </svg>
+                  </div>
+                  <span className="text-[10px] font-bold text-amber-500 bg-amber-50 px-2 py-0.5 rounded-full uppercase">Total</span>
+                </div>
+                <div className="text-xs text-gray-500 font-medium mb-1">누적 RSU 금액</div>
+                <div className="text-2xl font-bold text-gray-900 tracking-tight">
                   {new Intl.NumberFormat('ko-KR').format(cumulativeValue.krw)}원
                 </div>
-                {cumulativeValue.usd !== 0 && (
-                  <div className="text-sm text-gray-500 mt-1">
-                    (${new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(cumulativeValue.usd)})
-                  </div>
-                )}
-                {cumulativeValue.eur !== 0 && (
-                  <div className="text-sm text-gray-500 mt-1">
-                    (€{new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(cumulativeValue.eur)})
-                  </div>
-                )}
-                <div className="text-xs text-gray-400 mt-2">
-                  실현(현금화) {new Intl.NumberFormat('ko-KR').format(cashedOutValue.krw)}원 + 미실현 {new Intl.NumberFormat('ko-KR').format(unrealizedGainLoss.krw)}원
+                <div className="text-[10px] text-gray-400 mt-2 font-medium">
+                  실현 {new Intl.NumberFormat('ko-KR', { notation: 'compact' }).format(cashedOutValue.krw)} + 미실현 {new Intl.NumberFormat('ko-KR', { notation: 'compact' }).format(unrealizedGainLoss.krw)}
                 </div>
               </div>
 
               {/* 카드 4: Vesting 일정 */}
-              <div className="col-span-12 md:col-span-3 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-                <div className="text-xs text-gray-500 mb-2">Vesting 일정</div>
+              <div className="col-span-12 md:col-span-3 bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="p-2 bg-purple-50 rounded-lg text-purple-600">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                </div>
+                <div className="text-xs text-gray-500 font-medium mb-2">Vesting 일정 요약</div>
                 {(() => {
                   const todayDate = new Date();
                   todayDate.setHours(0, 0, 0, 0);
 
-                  const allVestingRows = filteredHoldings
-                    .filter((h) => h.type === 'rsu' && h.vestingDate)
-                    .map((h) => {
-                      const vestingDate = new Date(h.vestingDate!);
-                      vestingDate.setHours(0, 0, 0, 0);
-                      const diffDays = Math.ceil((vestingDate.getTime() - todayDate.getTime()) / (1000 * 60 * 60 * 24));
-                      const year = vestingDate.getFullYear();
-                      const month = String(vestingDate.getMonth() + 1).padStart(2, '0');
-                      const day = String(vestingDate.getDate()).padStart(2, '0');
-                      return { holding: h, dateStr: `${year}.${month}.${day}`, daysRemaining: diffDays };
-                    })
-                    .sort((a, b) => b.holding.vestingDate!.localeCompare(a.holding.vestingDate!));
+                  const nextVesting = filteredHoldings
+                    .filter((h) => h.type === 'rsu' && h.vestingDate && new Date(h.vestingDate) >= todayDate)
+                    .sort((a, b) => a.vestingDate!.localeCompare(b.vestingDate!))[0];
 
-                  if (allVestingRows.length === 0) {
-                    return <div className="text-sm text-gray-400">Vesting 정보 없음</div>;
+                  if (!nextVesting) {
+                    return <div className="text-sm text-gray-400 italic">남은 일정 없음</div>;
                   }
 
-                  const grouped = allVestingRows.reduce((acc, row) => {
-                    const key = row.holding.name;
-                    if (!acc[key]) acc[key] = [];
-                    acc[key].push(row);
-                    return acc;
-                  }, {} as Record<string, typeof allVestingRows>);
+                  const d = new Date(nextVesting.vestingDate!);
+                  const diffDays = Math.ceil((d.getTime() - todayDate.getTime()) / (1000 * 60 * 60 * 24));
 
                   return (
-                    <div className="space-y-3">
-                      {Object.entries(grouped).map(([stockName, rows]) => (
-                        <div key={stockName}>
-                          <div className="text-xs font-semibold text-gray-600 mb-1">{stockName}</div>
-                          <div className="space-y-1">
-                            {rows.map((row, idx) => {
-                              const isCompleted = row.daysRemaining < 0;
-                              const isToday = row.daysRemaining === 0;
-                              const daysText = isCompleted
-                                ? 'Vesting 완료'
-                                : isToday
-                                ? '오늘'
-                                : `${row.daysRemaining}일 남음`;
-                              return (
-                                <div key={idx} className="flex items-center gap-2 text-sm">
-                                  <span className={isCompleted ? 'text-gray-400' : 'text-gray-800'}>
-                                    {row.dateStr}
-                                  </span>
-                                  <span className={`text-xs px-1.5 py-0.5 rounded-full ${
-                                    isCompleted
-                                      ? 'bg-gray-100 text-gray-400'
-                                      : isToday
-                                      ? 'bg-green-100 text-green-700'
-                                      : 'bg-blue-50 text-blue-600'
-                                  }`}>
-                                    {daysText}
-                                  </span>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      ))}
+                    <div>
+                      <div className="text-lg font-bold text-gray-900">{nextVesting.name}</div>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-sm text-purple-600 font-bold">{diffDays === 0 ? '오늘' : `${diffDays}일 남음`}</span>
+                        <span className="text-xs text-gray-400">({nextVesting.vestingDate})</span>
+                      </div>
                     </div>
                   );
                 })()}

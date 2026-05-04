@@ -583,26 +583,39 @@ export default function StocksPage() {
           </div>
 
           {/* 시장 지수 */}
-          <div className="grid grid-cols-12 gap-4 mb-6">
+          <div className="grid grid-cols-12 gap-4 mb-8">
             {Object.values(marketIndices).map((index) => {
               const isPositive = index.change >= 0;
               return (
                 <div
                   key={index.symbol}
-                  className="col-span-12 md:col-span-4 bg-white rounded-lg shadow-sm border border-gray-200 p-4"
+                  className="col-span-12 md:col-span-4 bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow"
                 >
-                  <div className="text-sm text-gray-600 mb-1">{index.name}</div>
-                  <div className="text-2xl font-bold text-gray-900 mb-1">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="text-xs font-bold text-gray-400 uppercase tracking-wider">{index.name}</div>
+                    <div className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${isPositive ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
+                      {isPositive ? 'MARKET UP' : 'MARKET DOWN'}
+                    </div>
+                  </div>
+                  <div className="text-2xl font-black text-gray-900 mb-2 tracking-tight">
                     {new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(index.price)}
                   </div>
-                  <div className={`text-sm font-medium ${isPositive ? 'text-green-600' : 'text-red-600'}`}>
-                    <span className={isPositive ? 'text-green-600' : 'text-red-600'}>
-                      {isPositive ? '▲' : '▼'} {isPositive ? '+' : ''}
+                  <div className="flex items-center gap-2">
+                    <div className={`flex items-center text-sm font-bold ${isPositive ? 'text-emerald-500' : 'text-rose-500'}`}>
+                      {isPositive ? (
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" viewBox="0 0 20 20" fill="currentColor">
+                          <path fillRule="evenodd" d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z" clipRule="evenodd" />
+                        </svg>
+                      ) : (
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" viewBox="0 0 20 20" fill="currentColor">
+                          <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                        </svg>
+                      )}
                       {new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Math.abs(index.change))}
-                    </span>
-                    <span className={`ml-1 ${isPositive ? 'text-green-600' : 'text-red-600'}`}>
-                      ({isPositive ? '+' : ''}{index.changePercent.toFixed(2)}%)
-                    </span>
+                    </div>
+                    <div className={`text-xs font-bold px-1.5 py-0.5 rounded ${isPositive ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
+                      {isPositive ? '+' : '-'}{index.changePercent.toFixed(2)}%
+                    </div>
                   </div>
                 </div>
               );
@@ -610,45 +623,72 @@ export default function StocksPage() {
           </div>
 
           {/* 통계 카드 */}
-          <div className="grid grid-cols-12 gap-4 mb-6">
-            <div className="col-span-12 md:col-span-4 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-              <div className="text-sm text-gray-600 mb-1">총 평가 금액</div>
-              <div className="text-2xl font-bold text-gray-900">
+          <div className="grid grid-cols-12 gap-4 mb-8">
+            <div className="col-span-12 md:col-span-4 bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
+              <div className="flex items-center justify-between mb-3">
+                <div className="p-2 bg-blue-50 rounded-lg text-blue-600">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 00-2 2z" />
+                  </svg>
+                </div>
+                <span className="text-[10px] font-bold text-blue-500 bg-blue-50 px-2 py-0.5 rounded-full uppercase">Value</span>
+              </div>
+              <div className="text-xs text-gray-500 font-medium mb-1">총 평가 금액</div>
+              <div className="text-2xl font-bold text-gray-900 tracking-tight">
                 {new Intl.NumberFormat('ko-KR').format(totalValue)}원
               </div>
             </div>
-            <div className="col-span-12 md:col-span-4 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-              <div className="text-sm text-gray-600 mb-1">총 손익</div>
+
+            <div className="col-span-12 md:col-span-4 bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
+              <div className="flex items-center justify-between mb-3">
+                <div className="p-2 bg-emerald-50 rounded-lg text-emerald-600">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0V9m0 8l-8-8-4 4-6-6" />
+                  </svg>
+                </div>
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${totalGainLoss.krw >= 0 ? 'bg-emerald-50 text-emerald-500' : 'bg-rose-50 text-rose-500'}`}>
+                  {totalGainLoss.krw >= 0 ? 'Profit' : 'Loss'}
+                </span>
+              </div>
+              <div className="text-xs text-gray-500 font-medium mb-1">총 손익</div>
               {totalGainLoss.usd !== 0 ? (
                 <div>
-                  <div className={`text-2xl font-bold ${totalGainLoss.krw >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  <div className={`text-2xl font-bold tracking-tight ${totalGainLoss.krw >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
                     {totalGainLoss.krw >= 0 ? '+' : ''}
                     {new Intl.NumberFormat('ko-KR').format(totalGainLoss.krw)}원
                   </div>
-                  <div className={`text-sm text-gray-500 ${totalGainLoss.usd >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  <div className="text-xs text-gray-400 mt-1 font-medium">
                     (${totalGainLoss.usd >= 0 ? '+' : ''}{new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(totalGainLoss.usd)})
                   </div>
                 </div>
               ) : totalGainLoss.eur !== 0 ? (
                 <div>
-                  <div className={`text-2xl font-bold ${totalGainLoss.krw >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  <div className={`text-2xl font-bold tracking-tight ${totalGainLoss.krw >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
                     {totalGainLoss.krw >= 0 ? '+' : ''}
                     {new Intl.NumberFormat('ko-KR').format(totalGainLoss.krw)}원
                   </div>
-                  <div className={`text-sm text-gray-500 ${totalGainLoss.eur >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  <div className="text-xs text-gray-400 mt-1 font-medium">
                     (€{totalGainLoss.eur >= 0 ? '+' : ''}{new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(totalGainLoss.eur)})
                   </div>
                 </div>
               ) : (
-                <div className={`text-2xl font-bold ${totalGainLoss.krw >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                <div className={`text-2xl font-bold tracking-tight ${totalGainLoss.krw >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
                   {totalGainLoss.krw >= 0 ? '+' : ''}
                   {new Intl.NumberFormat('ko-KR').format(totalGainLoss.krw)}원
                 </div>
               )}
             </div>
-            <div className="col-span-12 md:col-span-4 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-              <div className="text-sm text-gray-600 mb-1">보유 종목 수</div>
-              <div className="text-2xl font-bold text-gray-900">{filteredHoldings.length}개</div>
+
+            <div className="col-span-12 md:col-span-4 bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
+              <div className="flex items-center justify-between mb-3">
+                <div className="p-2 bg-amber-50 rounded-lg text-amber-600">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                  </svg>
+                </div>
+              </div>
+              <div className="text-xs text-gray-500 font-medium mb-1">보유 종목 수</div>
+              <div className="text-2xl font-bold text-gray-900 tracking-tight">{filteredHoldings.length}개</div>
             </div>
           </div>
 

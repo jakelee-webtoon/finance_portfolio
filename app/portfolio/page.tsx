@@ -8,11 +8,13 @@ import { Asset, Liability, DashboardState, Apartment } from '@/types';
 import { getDashboardState, getAssets, setAssets, getLiabilities, setLiabilities, getApartments, setApartments, syncFromFirebase } from '@/lib/store';
 import { getExchangeRates, convertCurrency } from '@/lib/exchangeRate';
 import { useAuth } from '@/hooks/useAuth';
+import { useToast } from '@/components/Toast';
 
 type TabType = 'assets' | 'liabilities';
 
 export default function PortfolioPage() {
   const isAuthenticated = useAuth();
+  const { showToast } = useToast();
   const [state, setState] = useState<DashboardState | null>(null);
   const [assets, setAssetsState] = useState<Asset[]>([]);
   const [liabilities, setLiabilitiesState] = useState<Liability[]>([]);
@@ -197,6 +199,7 @@ export default function PortfolioPage() {
         }
         
         setEditingId(null);
+        showToast('정보가 수정되었습니다.');
       } else {
         // 추가
         const newAsset: Asset = {
@@ -220,6 +223,7 @@ export default function PortfolioPage() {
         if (newAsset.category === 'real_estate') {
           syncAssetToApartment(newAsset);
         }
+        showToast('새로운 자산이 추가되었습니다.');
       }
     } else {
       if (editingId) {
@@ -243,6 +247,7 @@ export default function PortfolioPage() {
         setLiabilitiesState(updated);
         setLiabilities(updated);
         setEditingId(null);
+        showToast('부채 정보가 수정되었습니다.');
       } else {
         // 추가
         const newLiability: Liability = {
@@ -261,6 +266,7 @@ export default function PortfolioPage() {
         const updated = [...allLiabilities, newLiability];
         setLiabilitiesState(updated);
         setLiabilities(updated);
+        showToast('새로운 부채가 추가되었습니다.');
       }
     }
 
@@ -307,6 +313,7 @@ export default function PortfolioPage() {
     const updated = allAssets.filter((asset) => asset.id !== id);
     setAssetsState(updated);
     await setAssets(updated);
+    showToast('자산이 삭제되었습니다.');
   };
 
   const handleDeleteLiability = (id: string) => {
@@ -316,6 +323,7 @@ export default function PortfolioPage() {
       const updated = allLiabilities.filter((liability) => liability.id !== id);
       setLiabilitiesState(updated);
       setLiabilities(updated);
+      showToast('부채가 삭제되었습니다.');
     }
   };
 
@@ -655,45 +663,78 @@ export default function PortfolioPage() {
 
           {/* 통계 카드 */}
           {activeTab === 'assets' ? (
-            <div className="grid grid-cols-12 gap-4 mb-6">
-              <div className="col-span-12 md:col-span-3 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-                <div className="text-sm text-gray-600 mb-1">총 자산</div>
-                <div className="text-2xl font-bold text-gray-900">
-                  {new Intl.NumberFormat('ko-KR').format(totalAssets)}원
+            <div className="grid grid-cols-12 gap-4 mb-8">
+              <div className="col-span-12 md:col-span-4 bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="p-2 bg-emerald-50 rounded-lg text-emerald-600">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <span className={`text-xs font-medium px-2 py-1 rounded-full ${netWorth >= 0 ? 'text-emerald-500 bg-emerald-50' : 'text-rose-500 bg-red-50'}`}>
+                    {netWorth >= 0 ? '플러스' : '마이너스'}
+                  </span>
                 </div>
-                <div className="text-xs text-gray-400 mt-1">기타 자산 제외</div>
+                <div className="text-sm text-gray-500 mb-1 font-medium">순자산</div>
+                <div className={`text-2xl font-bold tracking-tight ${netWorth >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                  {new Intl.NumberFormat('ko-KR').format(netWorth)}원
+                </div>
               </div>
-              <div className="col-span-12 md:col-span-3 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-                <div className="text-sm text-gray-600 mb-1">기타 자산</div>
-                <div className="text-2xl font-bold text-gray-500">
+
+              <div className="col-span-12 md:col-span-4 bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="p-2 bg-amber-50 rounded-lg text-amber-600">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                    </svg>
+                  </div>
+                </div>
+                <div className="text-sm text-gray-500 mb-1 font-medium">기타 자산</div>
+                <div className="text-2xl font-bold text-gray-700 tracking-tight">
                   {new Intl.NumberFormat('ko-KR').format(otherAssets)}원
                 </div>
-                <div className="text-xs text-gray-400 mt-1">자동차, Unvested RSU</div>
-              </div>
-              <div className="col-span-12 md:col-span-3 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-                <div className="text-sm text-gray-600 mb-1">자산 항목 수</div>
-                <div className="text-2xl font-bold text-gray-900">{filteredAssets.length}개</div>
-              </div>
-              <div className="col-span-12 md:col-span-3 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-                <div className="text-sm text-gray-600 mb-1">평균 자산</div>
-                <div className="text-2xl font-bold text-gray-900">
-                  {filteredAssets.filter(a => !isOtherAsset(a)).length > 0
-                    ? `${new Intl.NumberFormat('ko-KR').format(Math.floor(totalAssets / filteredAssets.filter(a => !isOtherAsset(a)).length))}원`
-                    : '0원'}
+                <div className="text-xs text-gray-400 mt-2 flex items-center">
+                  자동차, Unvested RSU 등
                 </div>
+              </div>
+
+              <div className="col-span-12 md:col-span-4 bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="p-2 bg-blue-50 rounded-lg text-blue-600">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+                    </svg>
+                  </div>
+                </div>
+                <div className="text-sm text-gray-500 mb-1 font-medium">자산 항목 수</div>
+                <div className="text-2xl font-bold text-gray-900 tracking-tight">{filteredAssets.length}개</div>
               </div>
             </div>
           ) : (
-            <div className="grid grid-cols-12 gap-4 mb-6">
-              <div className="col-span-12 md:col-span-6 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-                <div className="text-sm text-gray-600 mb-1">총 부채</div>
-                <div className="text-2xl font-bold text-red-600">
+            <div className="grid grid-cols-12 gap-4 mb-8">
+              <div className="col-span-12 md:col-span-6 bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="p-2 bg-rose-50 rounded-lg text-rose-600">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 17h8m0 0V9m0 8l-8-8-4 4-6-6" />
+                    </svg>
+                  </div>
+                </div>
+                <div className="text-sm text-gray-500 mb-1 font-medium">총 부채</div>
+                <div className="text-2xl font-bold text-rose-600 tracking-tight">
                   {new Intl.NumberFormat('ko-KR').format(totalLiabilities)}원
                 </div>
               </div>
-              <div className="col-span-12 md:col-span-6 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-                <div className="text-sm text-gray-600 mb-1">부채 항목 수</div>
-                <div className="text-2xl font-bold text-gray-900">{filteredLiabilities.length}개</div>
+              <div className="col-span-12 md:col-span-6 bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="p-2 bg-gray-50 rounded-lg text-gray-600">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+                    </svg>
+                  </div>
+                </div>
+                <div className="text-sm text-gray-500 mb-1 font-medium">부채 항목 수</div>
+                <div className="text-2xl font-bold text-gray-900 tracking-tight">{filteredLiabilities.length}개</div>
               </div>
             </div>
           )}

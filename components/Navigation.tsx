@@ -19,16 +19,16 @@ export default function Navigation() {
   ];
 
   return (
-    <nav className="bg-white border-b border-gray-200 px-6 sticky top-[65px] z-40">
-      <div className="flex space-x-1">
+    <nav className="bg-white/80 backdrop-blur-md border-b border-gray-100 px-4 sticky top-[65px] z-40 overflow-x-auto no-scrollbar">
+      <div className="flex space-x-1 max-w-7xl mx-auto">
         {navItems.map((item) => (
           <Link
             key={item.href}
             href={item.href}
-            className={`px-4 py-3 text-sm font-medium transition-colors ${
-              pathname === item.href || (item.href === '/dashboard' && pathname === '/')
-                ? 'text-blue-600 border-b-2 border-blue-600'
-                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+            className={`px-4 py-4 text-sm font-bold transition-all whitespace-nowrap border-b-2 ${
+              pathname === item.href || (item.href === '/dashboard' && (pathname === '/' || pathname === ''))
+                ? 'text-blue-600 border-blue-600 bg-blue-50/30'
+                : 'text-gray-400 border-transparent hover:text-gray-600 hover:bg-gray-50/50'
             }`}
           >
             {item.label}
