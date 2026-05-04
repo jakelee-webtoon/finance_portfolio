@@ -73,6 +73,18 @@ export default function DashboardPage() {
     return assets.filter((asset) => asset.owner === state.scope || asset.owner === 'joint');
   }, [assets, state]);
 
+  /** 순자산·총자산·자산 구성 차트에 포함되는 자산 */
+  const filteredNetWorthAssets = useMemo(
+    () => filteredAssets.filter((a) => !isOtherAsset(a)),
+    [filteredAssets]
+  );
+
+  /** 기타 자산 (순자산 합계·차트에서 제외) */
+  const filteredOtherCategoryAssets = useMemo(
+    () => filteredAssets.filter((a) => isOtherAsset(a)),
+    [filteredAssets]
+  );
+
   const filteredLiabilities = useMemo(() => {
     if (!state) return [];
     if (state.scope === 'combined') return liabilities;
@@ -648,14 +660,56 @@ export default function DashboardPage() {
 
           {/* Tables Row */}
           <div className="grid grid-cols-12 gap-6 mb-8 items-start">
-            {/* 자산 표 */}
+            {/* 자산 표 — 순자산 포함 / 기타 구분 */}
             <div className="col-span-12 lg:col-span-6 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-              <div className="p-5 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
+              <div className="p-5 border-b border-gray-100 flex items-center justify-between bg-gray-50/50 gap-2">
                 <h2 className="text-lg font-bold text-gray-900">자산 목록</h2>
-                <span className="text-xs font-medium text-blue-600 bg-blue-50 px-2 py-1 rounded-lg">Top 5</span>
+                <span className="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-1 rounded-lg shrink-0">
+                  섹션별 상위 5건
+                </span>
               </div>
-              <div className="p-1">
-                <Table data={filteredAssets.slice(0, 5)} columns={assetTableColumns} />
+              <div className="p-1 space-y-1">
+                <div className="rounded-xl border border-emerald-100/80 bg-emerald-50/30 overflow-hidden">
+                  <div className="px-4 py-3 border-b border-emerald-100/60 bg-emerald-50/50">
+                    <div className="flex items-center justify-between gap-2">
+                      <h3 className="text-sm font-bold text-emerald-900">순자산 포함 자산</h3>
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-700 bg-white/80 px-2 py-0.5 rounded-md">
+                        Top 5
+                      </span>
+                    </div>
+                    <p className="text-xs text-emerald-800/80 mt-1 leading-snug">
+                      총자산·자산 구성 차트·순자산 계산에 반영됩니다.
+                    </p>
+                  </div>
+                  <div className="p-1 bg-white/60">
+                    {filteredNetWorthAssets.length === 0 ? (
+                      <p className="text-sm text-gray-400 italic text-center py-8">표시할 항목이 없습니다.</p>
+                    ) : (
+                      <Table data={filteredNetWorthAssets.slice(0, 5)} columns={assetTableColumns} />
+                    )}
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-amber-100/80 bg-amber-50/30 overflow-hidden">
+                  <div className="px-4 py-3 border-b border-amber-100/60 bg-amber-50/50">
+                    <div className="flex items-center justify-between gap-2">
+                      <h3 className="text-sm font-bold text-amber-900">기타 자산</h3>
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-800 bg-white/80 px-2 py-0.5 rounded-md">
+                        Top 5
+                      </span>
+                    </div>
+                    <p className="text-xs text-amber-900/80 mt-1 leading-snug">
+                      순자산·총자산 합계에서 제외됩니다. (예: 자동차, 미베스트 RSU)
+                    </p>
+                  </div>
+                  <div className="p-1 bg-white/60">
+                    {filteredOtherCategoryAssets.length === 0 ? (
+                      <p className="text-sm text-gray-400 italic text-center py-8">기타 자산이 없습니다.</p>
+                    ) : (
+                      <Table data={filteredOtherCategoryAssets.slice(0, 5)} columns={assetTableColumns} />
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
 
