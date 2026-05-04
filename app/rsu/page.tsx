@@ -24,6 +24,8 @@ export default function RSUPage() {
   const [isInitialLoaded, setIsInitialLoaded] = useState(false);
   const [isUpdatingPrices, setIsUpdatingPrices] = useState(false);
   const priceUpdateIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  /** updatePrices 중복 실행·의존성 루프 방지 (isUpdatingPrices는 UI용이라 useCallback deps에 넣지 않음) */
+  const priceUpdateInProgressRef = useRef(false);
 
   const getInitialFormData = useCallback(() => ({
     symbol: '',
@@ -175,7 +177,8 @@ export default function RSUPage() {
 
   // 가격 업데이트 함수 (interval에서 호출, 수동 새로고침에서도 사용)
   const updatePrices = useCallback(async (forceRefresh: boolean = false) => {
-    if (isUpdatingPrices) return;
+    if (priceUpdateInProgressRef.current) return;
+    priceUpdateInProgressRef.current = true;
     setIsUpdatingPrices(true);
     try {
       // 매번 최신 holdings를 localStorage에서 가져옴 (다른 변경사항 반영)
@@ -227,9 +230,10 @@ export default function RSUPage() {
         if (forceRefresh) showToast('최신 주가입니다.');
       }
     } finally {
+      priceUpdateInProgressRef.current = false;
       setIsUpdatingPrices(false);
     }
-  }, [syncHoldingsToAsset, showToast, isUpdatingPrices]);
+  }, [syncHoldingsToAsset, showToast]);
 
   // 가격 업데이트 interval 설정 (초기 로드 완료 후 한 번만)
   useEffect(() => {

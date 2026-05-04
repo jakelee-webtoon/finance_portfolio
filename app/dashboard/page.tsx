@@ -357,11 +357,11 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 min-w-0 max-w-[100vw] overflow-x-clip">
       <TopBar />
       <Navigation />
-      <div className="p-6">
-        <div className="max-w-7xl mx-auto">
+      <div className="px-3 py-4 sm:p-6 min-w-0">
+        <div className="max-w-7xl mx-auto min-w-0">
           <h1 className="text-2xl font-bold text-gray-900 mb-6">대시보드</h1>
 
           {/* KPI Cards */}
@@ -448,12 +448,12 @@ export default function DashboardPage() {
           {/* Charts and Tables Row */}
           <div className="grid grid-cols-12 gap-6 mb-8">
             {/* 자산 구성 차트 */}
-            <div className="col-span-12 lg:col-span-4 bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-lg font-bold text-gray-900">자산 구성</h2>
-                <div className="text-xs text-gray-400 font-medium">카테고리별 비중</div>
+            <div className="col-span-12 lg:col-span-4 bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-6 min-w-0 max-w-full overflow-hidden">
+              <div className="flex items-center justify-between mb-6 min-w-0 gap-2">
+                <h2 className="text-lg font-bold text-gray-900 truncate">자산 구성</h2>
+                <div className="text-xs text-gray-400 font-medium shrink-0 hidden sm:block">카테고리별 비중</div>
               </div>
-              <div className="relative h-[300px]">
+              <div className="relative h-[300px] w-full max-w-full min-w-0 overflow-hidden">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
@@ -490,13 +490,13 @@ export default function DashboardPage() {
             </div>
 
             {/* 순자산/부채 차트 */}
-            <div className="col-span-12 lg:col-span-5 bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-lg font-bold text-gray-900">순자산 vs 부채</h2>
-                <div className="text-xs text-gray-400 font-medium">자산 건전성</div>
+            <div className="col-span-12 lg:col-span-5 bg-white rounded-2xl shadow-sm border border-gray-100 p-4 sm:p-6 min-w-0 max-w-full overflow-hidden">
+              <div className="flex items-center justify-between mb-6 min-w-0 gap-2">
+                <h2 className="text-lg font-bold text-gray-900 truncate">순자산 vs 부채</h2>
+                <div className="text-xs text-gray-400 font-medium shrink-0 hidden sm:block">자산 건전성</div>
               </div>
               {netWorthData.length > 0 ? (
-                <div className="relative h-[300px]">
+                <div className="relative h-[300px] w-full max-w-full min-w-0 overflow-hidden">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie

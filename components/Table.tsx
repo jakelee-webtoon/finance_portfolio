@@ -71,7 +71,7 @@ export default function Table<T extends Record<string, any>>({
   };
 
   return (
-    <div className={`bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden ${className}`}>
+    <div className={`bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden max-w-full min-w-0 ${className}`}>
       {searchable && (
         <div className="p-4 border-b border-gray-100 bg-gray-50/30">
           <div className="relative">

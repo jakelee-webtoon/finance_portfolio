@@ -19,8 +19,11 @@ export default function Navigation() {
   ];
 
   return (
-    <nav className="bg-white/80 backdrop-blur-md border-b border-gray-100 px-4 sticky top-[65px] z-40 overflow-x-auto no-scrollbar">
-      <div className="flex space-x-1 max-w-7xl mx-auto">
+    <nav
+      className="bg-white/80 backdrop-blur-md border-b border-gray-100 px-2 sm:px-4 sticky top-32 lg:top-[73px] z-40 overflow-x-auto no-scrollbar overscroll-x-contain touch-pan-x max-w-full min-w-0 isolate"
+      style={{ WebkitOverflowScrolling: 'touch' }}
+    >
+      <div className="flex space-x-1 max-w-7xl mx-auto min-w-0">
         {navItems.map((item) => (
           <Link
             key={item.href}

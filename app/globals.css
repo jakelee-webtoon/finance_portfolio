@@ -14,10 +14,22 @@
   }
 }
 
+/* 모바일: 가로 오버플로우·미세 좌우 흔들림 방지 (100vw 스크롤바 이슈 포함) */
+html {
+  overflow-x: clip;
+  max-width: 100%;
+  overscroll-behavior-x: none;
+}
+
 body {
   color: var(--foreground);
-  background: #f8fafc; /* Slightly off-white for better contrast with cards */
-  font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, 'Helvetica Neue', 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif;
+  background: #f8fafc;
+  overflow-x: clip;
+  max-width: 100%;
+  min-height: 100dvh;
+  overscroll-behavior-x: none;
+  /* Pretendard 미로딩 시 첫 렌더 지연 방지 — 시스템 폰트 우선 */
+  font-family: -apple-system, BlinkMacSystemFont, system-ui, 'Segoe UI', Roboto, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif;
 }
 
 @layer utilities {
