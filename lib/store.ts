@@ -73,50 +73,10 @@ export async function syncFromFirebase(): Promise<void> {
         return true;
       });
 
-      // 로컬 데이터가 있으면 더 스마트하게 병합
-      const localRaw = localStorage.getItem('finance-stock-holdings');
-      if (localRaw) {
-        try {
-          const localHoldings: StockHolding[] = JSON.parse(localRaw);
-          
-          // 각 항목별로 더 최신인 것을 선택하는 병합 전략
-          const mergedHoldings: StockHolding[] = [];
-          const processedIds = new Set<string>();
-          
-          // 로컬 데이터 우선 처리
-          for (const local of localHoldings) {
-            const remote = realHoldings.find((r: StockHolding) => r.id === local.id);
-            if (remote) {
-              // 둘 다 있으면 as_of_date 비교 (같은 날이면 로컬 우선 - 방금 변경했을 가능성)
-              const localDate = local.as_of_date || '';
-              const remoteDate = remote.as_of_date || '';
-              if (localDate >= remoteDate) {
-                mergedHoldings.push(local);
-              } else {
-                mergedHoldings.push(remote);
-              }
-            } else {
-              // 로컬에만 있으면 로컬 유지
-              mergedHoldings.push(local);
-            }
-            processedIds.add(local.id);
-          }
-          
-          // 리모트에만 있는 항목 추가
-          for (const remote of realHoldings) {
-            if (!processedIds.has(remote.id)) {
-              mergedHoldings.push(remote);
-            }
-          }
-          
-          localStorage.setItem('finance-stock-holdings', JSON.stringify(mergedHoldings));
-          console.log(`[syncFromFirebase] Merged stock holdings: local=${localHoldings.length}, remote=${realHoldings.length}, merged=${mergedHoldings.length}`);
-        } catch {
-          localStorage.setItem('finance-stock-holdings', JSON.stringify(realHoldings));
-        }
-      } else {
-        localStorage.setItem('finance-stock-holdings', JSON.stringify(realHoldings));
-      }
+      // Firestore 스냅샷을 단일 소스로 사용 (로컬·원격 병합 제거)
+      // 병합 시 "리모트에만 있는 항목"을 다시 붙이면, 로컬에서 삭제한 직후/일시적 지연에서 삭제분이 부활하는 문제가 생김
+      localStorage.setItem('finance-stock-holdings', JSON.stringify(realHoldings));
+      console.log(`[syncFromFirebase] Stock holdings from Firebase: ${realHoldings.length} items (local merge disabled)`);
     } catch (error) {
       console.error('[syncFromFirebase] Failed to sync stock holdings:', error);
       // 에러 발생 시 기존 localStorage 데이터 유지

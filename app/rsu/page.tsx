@@ -26,6 +26,8 @@ export default function RSUPage() {
   const priceUpdateIntervalRef = useRef<NodeJS.Timeout | null>(null);
   /** updatePrices 중복 실행·의존성 루프 방지 (isUpdatingPrices는 UI용이라 useCallback deps에 넣지 않음) */
   const priceUpdateInProgressRef = useRef(false);
+  /** interval effect가 showToast/updatePrices 참조 변경마다 재실행되지 않도록 최신 함수만 유지 */
+  const updatePricesRef = useRef<(forceRefresh?: boolean, fromUserAction?: boolean) => Promise<void>>(async () => {});
 
   const getInitialFormData = useCallback(() => ({
     symbol: '',
@@ -176,7 +178,8 @@ export default function RSUPage() {
   }, [exchangeRates, state]);
 
   // 가격 업데이트 함수 (interval에서 호출, 수동 새로고침에서도 사용)
-  const updatePrices = useCallback(async (forceRefresh: boolean = false) => {
+  // fromUserAction: true일 때만 "최신 주가입니다" 토스트 (자동/재마운트 시 스팸 방지)
+  const updatePrices = useCallback(async (forceRefresh: boolean = false, fromUserAction: boolean = false) => {
     if (priceUpdateInProgressRef.current) return;
     priceUpdateInProgressRef.current = true;
     setIsUpdatingPrices(true);
@@ -227,7 +230,7 @@ export default function RSUPage() {
         showToast('주가가 업데이트되었습니다.');
       } else {
         await syncHoldingsToAsset(currentRsuHoldings);
-        if (forceRefresh) showToast('최신 주가입니다.');
+        if (forceRefresh && fromUserAction) showToast('최신 주가입니다.');
       }
     } finally {
       priceUpdateInProgressRef.current = false;
@@ -235,19 +238,18 @@ export default function RSUPage() {
     }
   }, [syncHoldingsToAsset, showToast]);
 
-  // 가격 업데이트 interval 설정 (초기 로드 완료 후 한 번만)
+  updatePricesRef.current = updatePrices;
+
+  // 가격 업데이트 interval 설정 (초기 로드 완료 후 한 번만 — updatePrices 참조에 의존하지 않음)
   useEffect(() => {
     if (!isInitialLoaded || !exchangeRates) return;
-    
-    // 이미 interval이 있으면 중복 생성 방지
+
     if (priceUpdateIntervalRef.current) return;
 
-    // 초기 가격 업데이트
-    updatePrices(true);
-    
-    // 1분마다 가격 업데이트
+    void updatePricesRef.current(true, false);
+
     priceUpdateIntervalRef.current = setInterval(() => {
-      updatePrices(false);
+      void updatePricesRef.current(false, false);
     }, 60000);
 
     return () => {
@@ -256,7 +258,7 @@ export default function RSUPage() {
         priceUpdateIntervalRef.current = null;
       }
     };
-  }, [isInitialLoaded, exchangeRates, updatePrices]);
+  }, [isInitialLoaded, exchangeRates]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -705,6 +707,57 @@ export default function RSUPage() {
       },
     },
     {
+      key: 'vestingStatus',
+      label: '베스팅',
+      sortable: false,
+      render: (_, row) => {
+        const today = new Date().toISOString().split('T')[0];
+        if (row.type === 'rsu') {
+          if (!row.vestingDate) {
+            return (
+              <div className="flex flex-col gap-0.5 items-start max-w-[7rem]">
+                <span className="inline-flex rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-700">
+                  Vested
+                </span>
+                <span className="text-[10px] leading-tight text-gray-400">일자 없음 · 평가는 베스팅됨 처리</span>
+              </div>
+            );
+          }
+          const vested = row.vestingDate <= today;
+          return (
+            <div className="flex flex-col gap-0.5 items-start">
+              <span
+                className={`inline-flex rounded-md px-2 py-0.5 text-[11px] font-bold ${
+                  vested ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'
+                }`}
+              >
+                {vested ? 'Vested' : 'Unvested'}
+              </span>
+              <span className={`text-[10px] font-medium ${vested ? 'text-emerald-700/90' : 'text-amber-800/90'}`}>
+                {vested ? '베스팅 완료' : '미베스팅'}
+              </span>
+            </div>
+          );
+        }
+        if (row.type === 'option' && row.expiryDate) {
+          const expired = row.expiryDate < today;
+          return (
+            <div className="flex flex-col gap-0.5 items-start">
+              <span
+                className={`inline-flex rounded-md px-2 py-0.5 text-[11px] font-bold ${
+                  expired ? 'bg-gray-200 text-gray-600' : 'bg-sky-100 text-sky-900'
+                }`}
+              >
+                {expired ? 'Expired' : 'Active'}
+              </span>
+              <span className="text-[10px] text-gray-500">{expired ? '만료' : '유효'}</span>
+            </div>
+          );
+        }
+        return <span className="text-gray-300 text-sm">—</span>;
+      },
+    },
+    {
       key: 'notes',
       label: '비고',
       sortable: false,
@@ -821,7 +874,7 @@ export default function RSUPage() {
             <div className="flex gap-2">
               <button
                 onClick={async () => {
-                  await updatePrices(true);
+                  await updatePrices(true, true);
                 }}
                 disabled={isUpdatingPrices}
                 className={`px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors flex items-center gap-2 ${isUpdatingPrices ? 'opacity-50 cursor-not-allowed' : ''}`}
