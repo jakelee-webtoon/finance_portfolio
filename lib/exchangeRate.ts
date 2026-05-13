@@ -1,15 +1,28 @@
 // 환율 API 관련 유틸리티
 
 const EXCHANGE_RATE_CACHE_KEY = 'exchange-rate-cache';
-const CACHE_DURATION = 60 * 60 * 1000; // 1시간
+const CACHE_VERSION = 2;
+const CACHE_DURATION = 1 * 60 * 1000; // 1분
 
 interface ExchangeRateCache {
   rates: Record<string, number>;
   timestamp: number;
+  version?: number;
 }
 
-// ExchangeRate-API 무료 엔드포인트 사용
-const EXCHANGE_RATE_API_URL = 'https://api.exchangerate-api.com/v4/latest/USD';
+function getFallbackRates(): Record<string, number> {
+  return {
+    USD: 1,
+    KRW: 1300,
+    EUR: 0.92,
+    USD_TO_KRW: 1300,
+    KRW_TO_USD: 1 / 1300,
+    USD_TO_EUR: 0.92,
+    EUR_TO_USD: 1 / 0.92,
+    KRW_TO_EUR: 0.92 / 1300,
+    EUR_TO_KRW: 1300 / 0.92,
+  };
+}
 
 export async function getExchangeRates(): Promise<Record<string, number>> {
   // 캐시 확인
@@ -19,8 +32,8 @@ export async function getExchangeRates(): Promise<Record<string, number>> {
       try {
         const cache: ExchangeRateCache = JSON.parse(cached);
         const now = Date.now();
-        // 캐시가 1시간 이내면 사용
-        if (now - cache.timestamp < CACHE_DURATION) {
+        // 캐시가 1분 이내면 사용
+        if (cache.version === CACHE_VERSION && now - cache.timestamp < CACHE_DURATION) {
           return cache.rates;
         }
       } catch (e) {
@@ -30,37 +43,20 @@ export async function getExchangeRates(): Promise<Record<string, number>> {
   }
 
   try {
-    const response = await fetch(EXCHANGE_RATE_API_URL);
+    const response = await fetch(`/api/exchange-rate?_t=${Date.now()}`, {
+      cache: 'no-store',
+    });
     if (!response.ok) {
       throw new Error('Failed to fetch exchange rates');
     }
-    const data = await response.json();
-    
-    // USD 기준 환율이므로 KRW/USD = 1 / rates.KRW
-    const rates: Record<string, number> = {
-      USD: 1,
-      KRW: data.rates.KRW || 1300, // 기본값
-      EUR: data.rates.EUR || 0.92, // 기본값
-    };
-
-    // USD to KRW 환율
-    rates.USD_TO_KRW = rates.KRW;
-    // KRW to USD 환율
-    rates.KRW_TO_USD = 1 / rates.KRW;
-    // USD to EUR 환율
-    rates.USD_TO_EUR = rates.EUR;
-    // EUR to USD 환율
-    rates.EUR_TO_USD = 1 / rates.EUR;
-    // KRW to EUR 환율
-    rates.KRW_TO_EUR = rates.EUR / rates.KRW;
-    // EUR to KRW 환율
-    rates.EUR_TO_KRW = rates.KRW / rates.EUR;
+    const rates = await response.json();
 
     // 캐시 저장
     if (typeof window !== 'undefined') {
       const cache: ExchangeRateCache = {
         rates,
         timestamp: Date.now(),
+        version: CACHE_VERSION,
       };
       localStorage.setItem(EXCHANGE_RATE_CACHE_KEY, JSON.stringify(cache));
     }
@@ -68,17 +64,7 @@ export async function getExchangeRates(): Promise<Record<string, number>> {
     return rates;
   } catch (error) {
     // 기본 환율 반환 (오프라인 또는 API 실패 시)
-    return {
-      USD: 1,
-      KRW: 1300,
-      EUR: 0.92,
-      USD_TO_KRW: 1300,
-      KRW_TO_USD: 1 / 1300,
-      USD_TO_EUR: 0.92,
-      EUR_TO_USD: 1 / 0.92,
-      KRW_TO_EUR: 0.92 / 1300,
-      EUR_TO_KRW: 1300 / 0.92,
-    };
+    return getFallbackRates();
   }
 }
 
