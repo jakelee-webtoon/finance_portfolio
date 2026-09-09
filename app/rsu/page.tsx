@@ -356,13 +356,14 @@ export default function RSUPage() {
   };
 
   const handleEdit = (holding: StockHolding) => {
+    const holdingType = holding.type === 'option' ? 'option' : 'rsu';
     setFormData({
       symbol: holding.symbol,
       name: holding.name,
       owner: holding.owner,
       currency: holding.currency,
       exchange: holding.exchange,
-      type: holding.type || 'rsu',
+      type: holdingType,
       totalQuantity: holding.totalQuantity ? String(holding.totalQuantity) : '',
       vestingDate: holding.vestingDate || '',
       strikePrice: holding.strikePrice ? String(holding.strikePrice) : '',

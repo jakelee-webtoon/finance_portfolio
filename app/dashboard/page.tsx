@@ -5,10 +5,11 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip, LabelList } 
 import TopBar from '@/components/TopBar';
 import Navigation from '@/components/Navigation';
 import Table, { Column } from '@/components/Table';
-import { Asset, DashboardState, Liability } from '@/types';
-import { getDashboardState, getAssets, getLiabilities, setDashboardState, syncFromFirebase } from '@/lib/store';
+import { Asset, DashboardState, Liability, StockHolding } from '@/types';
+import { getDashboardState, getAssets, getLiabilities, getStockHoldings, setDashboardState, syncFromFirebase } from '@/lib/store';
 import { getExchangeRates } from '@/lib/exchangeRate';
 import { useAuth } from '@/hooks/useAuth';
+import { formatKrw, getHoldingCurrentValueKrw, isIsaEtfHolding } from '@/lib/investments';
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'];
 
@@ -18,6 +19,7 @@ export default function DashboardPage() {
   const [state, setState] = useState<DashboardState | null>(null);
   const [assets, setAssets] = useState<Asset[]>([]);
   const [liabilities, setLiabilities] = useState<Liability[]>([]);
+  const [holdings, setHoldings] = useState<StockHolding[]>([]);
   const [exchangeRates, setExchangeRates] = useState<Record<string, number> | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -32,6 +34,7 @@ export default function DashboardPage() {
         setState(dashboardState);
         setAssets(getAssets());
         setLiabilities(getLiabilities());
+        setHoldings(getStockHoldings());
         
         getExchangeRates().then((rates) => {
           setExchangeRates(rates);
@@ -91,17 +94,30 @@ export default function DashboardPage() {
     return liabilities.filter((liability) => liability.owner === state.scope || liability.owner === 'joint');
   }, [liabilities, state]);
 
+  const filteredIsaEtfs = useMemo(() => {
+    if (!state) return [];
+    const etfs = holdings.filter(isIsaEtfHolding);
+    if (state.scope === 'combined') return etfs;
+    return etfs.filter((holding) => holding.owner === state.scope || holding.owner === 'joint');
+  }, [holdings, state]);
+
+  const isaEtfValue = useMemo(() => {
+    if (!exchangeRates) return 0;
+    return Math.floor(filteredIsaEtfs.reduce((sum, holding) => sum + getHoldingCurrentValueKrw(holding, exchangeRates), 0));
+  }, [filteredIsaEtfs, exchangeRates]);
+
   // 총자산 (category=other 제외)
   const totalAssets = useMemo(() => {
     if (!exchangeRates) return 0;
-    return Math.floor(filteredAssets.reduce((sum, asset) => {
+    const assetTotal = filteredAssets.reduce((sum, asset) => {
       if (isOtherAsset(asset)) return sum;
       if (asset.currency === 'KRW') return sum + asset.amount;
       if (asset.currency === 'USD') return sum + asset.amount * exchangeRates.USD_TO_KRW;
       if (asset.currency === 'EUR') return sum + asset.amount * exchangeRates.EUR_TO_KRW;
       return sum + asset.amount;
-    }, 0));
-  }, [filteredAssets, exchangeRates]);
+    }, 0);
+    return Math.floor(assetTotal + isaEtfValue);
+  }, [filteredAssets, exchangeRates, isaEtfValue]);
 
   // 기타 자산 (category=other: 자동차, RSU unvested 등)
   const otherAssets = useMemo(() => {
@@ -148,11 +164,14 @@ export default function DashboardPage() {
       }
       categoryMap[category] = (categoryMap[category] || 0) + krwAmount;
     });
+    if (isaEtfValue > 0) {
+      categoryMap.stocks = (categoryMap.stocks || 0) + isaEtfValue;
+    }
     return Object.entries(categoryMap).map(([name, value]) => ({
       name: getCategoryLabel(name),
       value: Math.floor(value),
     }));
-  }, [filteredAssets, exchangeRates]);
+  }, [filteredAssets, exchangeRates, isaEtfValue]);
 
   // 커스텀 라벨 컴포넌트 - 색상을 세그먼트와 동일하게, 겹치지 않도록 위치 조정
   const CustomLabel = useMemo(() => {
@@ -326,6 +345,7 @@ export default function DashboardPage() {
             <div className="font-semibold text-red-600">
               {new Intl.NumberFormat('ko-KR').format(Math.floor(krwAmount))}원
             </div>
+
             {currency !== 'KRW' && (
               <div className="text-xs text-gray-500">
                 {currency === 'USD' ? '$' : currency === 'EUR' ? '€' : ''}
@@ -481,6 +501,25 @@ export default function DashboardPage() {
               <div className="text-xs text-gray-400 mt-2 flex items-center">
                 <span className="inline-block w-1 h-1 bg-gray-300 rounded-full mr-1.5"></span>
                 자동차, Unvested RSU 등
+              </div>
+            </div>
+
+            <div className="col-span-12 sm:col-span-6 lg:col-span-3 bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
+              <div className="flex items-center justify-between mb-3">
+                <div className="p-2 bg-indigo-50 rounded-lg text-indigo-600">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 3v18m4-14H7a4 4 0 000 8h10a4 4 0 010 8H9" />
+                  </svg>
+                </div>
+                <span className="text-xs font-medium text-indigo-500 bg-indigo-50 px-2 py-1 rounded-full">ISA</span>
+              </div>
+              <div className="text-sm text-gray-500 mb-1 font-medium">ISA ETF</div>
+              <div className="text-2xl font-bold text-gray-900 tracking-tight">
+                {formatKrw(isaEtfValue)}
+              </div>
+              <div className="text-xs text-gray-400 mt-2 flex items-center">
+                <span className="inline-block w-1 h-1 bg-gray-300 rounded-full mr-1.5"></span>
+                총자산에 반영
               </div>
             </div>
           </div>

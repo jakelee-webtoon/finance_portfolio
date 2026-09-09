@@ -11,6 +11,7 @@ export default function Navigation() {
     { href: '/portfolio', label: '포트폴리오' },
     { href: '/apartment', label: '아파트' },
     { href: '/stocks', label: '주식' },
+    { href: '/isa', label: 'ISA' },
     { href: '/rsu', label: 'RSU' },
     { href: '/cash', label: '현금' },
     { href: '/income', label: '수입' },

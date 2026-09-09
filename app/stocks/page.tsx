@@ -9,6 +9,7 @@ import { getDashboardState, getStockHoldings, setStockHoldings, syncFromFirebase
 import { getMarketIndices, getStockQuotes, getStockPrice } from '@/lib/stockApi';
 import { getExchangeRates } from '@/lib/exchangeRate';
 import { useAuth } from '@/hooks/useAuth';
+import { isStockHolding } from '@/lib/investments';
 
 interface StockQuote {
   symbol: string;
@@ -107,7 +108,7 @@ export default function StocksPage() {
     const updatePrices = async () => {
       // 매번 최신 holdings를 localStorage에서 가져옴
       const currentHoldings = getStockHoldings();
-      const stockHoldings = currentHoldings.filter(h => !h.type || h.type === 'stock');
+      const stockHoldings = currentHoldings.filter(isStockHolding);
       if (stockHoldings.length === 0) return;
       
       const symbols = stockHoldings.map((h) => h.symbol);
@@ -145,7 +146,7 @@ export default function StocksPage() {
   const filteredHoldings = useMemo(() => {
     if (!state) return [];
     // 일반 주식만 필터링 (RSU/옵션은 별도 페이지로 분리)
-    let filtered = holdings.filter((h) => !h.type || h.type === 'stock');
+    let filtered = holdings.filter(isStockHolding);
     
     // 소유자 필터링
     if (state.scope === 'combined') return filtered;
@@ -193,7 +194,7 @@ export default function StocksPage() {
       const updatedAllHoldings = allHoldings.map((holding) =>
         holding.id === editingId ? updatedHolding : holding
       );
-      const stockHoldings = updatedAllHoldings.filter((h) => !h.type || h.type === 'stock');
+      const stockHoldings = updatedAllHoldings.filter(isStockHolding);
       setHoldings(stockHoldings);
       setEditingId(null);
       await setStockHoldings(updatedAllHoldings);
@@ -210,7 +211,7 @@ export default function StocksPage() {
       };
       const allHoldings = getStockHoldings();
       const updatedAllHoldings = [...allHoldings, newHolding];
-      const stockHoldings = updatedAllHoldings.filter((h) => !h.type || h.type === 'stock');
+      const stockHoldings = updatedAllHoldings.filter(isStockHolding);
       setHoldings(stockHoldings);
       await setStockHoldings(updatedAllHoldings);
     }
@@ -243,7 +244,7 @@ export default function StocksPage() {
     if (!confirm('정말 삭제하시겠습니까?')) return;
     const allHoldings = getStockHoldings();
     const updatedAllHoldings = allHoldings.filter((holding) => holding.id !== id);
-    const stockHoldings = updatedAllHoldings.filter((h) => !h.type || h.type === 'stock');
+    const stockHoldings = updatedAllHoldings.filter(isStockHolding);
     setHoldings(stockHoldings);
     await setStockHoldings(updatedAllHoldings);
   };

@@ -67,7 +67,10 @@ export interface StockHolding extends BaseEntity {
   owner: 'husband' | 'wife' | 'joint';
   currency: string;
   exchange: 'KRX' | 'NASDAQ' | 'NYSE' | 'other'; // 거래소
-  type?: 'stock' | 'rsu' | 'option'; // 주식 유형 (기본값: 'stock')
+  type?: 'stock' | 'rsu' | 'option' | 'etf'; // 주식 유형 (기본값: 'stock')
+  accountType?: 'general' | 'isa'; // 계좌 유형. ETF는 ISA로 고정
+  etfCategory?: 'sp500' | 'nasdaq100' | 'dividend' | 'bond' | 'domestic_index' | 'sector' | 'other';
+  provider?: 'TIGER' | 'KODEX' | 'ACE' | 'SOL' | 'KBSTAR' | 'HANARO' | 'other';
   // RSU 관련 필드
   vestedQuantity?: number; // 베스팅된 수량 (RSU)
   totalQuantity?: number; // 전체 수량 (RSU)
