@@ -101,8 +101,13 @@ export default function IsaPage() {
     if (!state) return [];
     const etfs = holdings.filter(isIsaEtfHolding);
     if (state.scope === 'combined') return etfs;
-    return etfs.filter((holding) => holding.owner === state.scope || holding.owner === 'joint');
+    return etfs.filter((holding) => holding.owner === state.scope);
   }, [holdings, state]);
+
+  const isaLimitMultiplier = state?.scope === 'combined' ? 2 : 1;
+  const annualContributionLimit = ISA_ANNUAL_CONTRIBUTION_LIMIT * isaLimitMultiplier;
+  const totalContributionLimit = ISA_TOTAL_CONTRIBUTION_LIMIT * isaLimitMultiplier;
+  const taxFreeLimit = ISA_BASIC_TAX_FREE_LIMIT * isaLimitMultiplier;
 
   const summary = useMemo(() => {
     if (!exchangeRates) {
@@ -110,8 +115,8 @@ export default function IsaPage() {
         currentValue: 0,
         purchaseValue: 0,
         gainLoss: 0,
-        remainingAnnualContribution: ISA_ANNUAL_CONTRIBUTION_LIMIT,
-        remainingTotalContribution: ISA_TOTAL_CONTRIBUTION_LIMIT,
+        remainingAnnualContribution: annualContributionLimit,
+        remainingTotalContribution: totalContributionLimit,
         taxableProfit: 0,
         estimatedTax: 0,
       };
@@ -120,18 +125,18 @@ export default function IsaPage() {
     const currentValue = filteredEtfs.reduce((sum, holding) => sum + getHoldingCurrentValueKrw(holding, exchangeRates), 0);
     const purchaseValue = filteredEtfs.reduce((sum, holding) => sum + getHoldingPurchaseValueKrw(holding, exchangeRates), 0);
     const gainLoss = currentValue - purchaseValue;
-    const taxableProfit = Math.max(0, gainLoss - ISA_BASIC_TAX_FREE_LIMIT);
+    const taxableProfit = Math.max(0, gainLoss - taxFreeLimit);
 
     return {
       currentValue,
       purchaseValue,
       gainLoss,
-      remainingAnnualContribution: Math.max(0, ISA_ANNUAL_CONTRIBUTION_LIMIT - purchaseValue),
-      remainingTotalContribution: Math.max(0, ISA_TOTAL_CONTRIBUTION_LIMIT - purchaseValue),
+      remainingAnnualContribution: Math.max(0, annualContributionLimit - purchaseValue),
+      remainingTotalContribution: Math.max(0, totalContributionLimit - purchaseValue),
       taxableProfit,
       estimatedTax: taxableProfit * ISA_SEPARATE_TAX_RATE,
     };
-  }, [filteredEtfs, exchangeRates]);
+  }, [annualContributionLimit, filteredEtfs, exchangeRates, taxFreeLimit, totalContributionLimit]);
 
   const categoryRows = useMemo(() => {
     if (!exchangeRates || summary.currentValue <= 0) return [];
@@ -359,12 +364,14 @@ export default function IsaPage() {
             </div>
             <div className="col-span-12 sm:col-span-6 lg:col-span-3 bg-indigo-50 rounded-2xl border border-indigo-100 p-5">
               <div className="text-xs font-bold text-indigo-500 mb-2">납입한도</div>
-              <div className="text-xl font-black text-indigo-900">{formatKrw(ISA_ANNUAL_CONTRIBUTION_LIMIT)}</div>
-              <div className="text-xs text-indigo-700/80 mt-1">연간 기준 · 총 {formatKrw(ISA_TOTAL_CONTRIBUTION_LIMIT)}</div>
+              <div className="text-xl font-black text-indigo-900">{formatKrw(annualContributionLimit)}</div>
+              <div className="text-xs text-indigo-700/80 mt-1">
+                {state.scope === 'combined' ? '부부 합산 기준' : '개인 기준'} · 총 {formatKrw(totalContributionLimit)}
+              </div>
             </div>
             <div className="col-span-12 sm:col-span-6 lg:col-span-3 bg-emerald-50 rounded-2xl border border-emerald-100 p-5">
               <div className="text-xs font-bold text-emerald-600 mb-2">세제 혜택</div>
-              <div className="text-xl font-black text-emerald-900">일반형 {formatKrw(ISA_BASIC_TAX_FREE_LIMIT)}</div>
+              <div className="text-xl font-black text-emerald-900">일반형 {formatKrw(taxFreeLimit)}</div>
               <div className="text-xs text-emerald-700/80 mt-1">초과분 {(ISA_SEPARATE_TAX_RATE * 100).toFixed(1)}% 분리과세</div>
             </div>
           </div>
@@ -442,7 +449,7 @@ export default function IsaPage() {
               </div>
               <div className="space-y-3">
                 <MetricRow label="순이익" value={`${summary.gainLoss >= 0 ? '+' : ''}${formatKrw(summary.gainLoss)}`} />
-                <MetricRow label="비과세 한도" value={formatKrw(ISA_BASIC_TAX_FREE_LIMIT)} />
+                <MetricRow label="비과세 한도" value={formatKrw(taxFreeLimit)} />
                 <MetricRow label="분리과세 대상" value={formatKrw(summary.taxableProfit)} />
                 <MetricRow label="예상 세금" value={formatKrw(summary.estimatedTax)} />
               </div>

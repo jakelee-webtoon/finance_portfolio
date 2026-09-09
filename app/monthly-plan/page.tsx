@@ -31,6 +31,14 @@ const MANAGED_PLAN_ITEMS = [
     annualTarget: 1_500_000,
   },
   {
+    key: 'husband-mortgage',
+    owner: 'husband',
+    category: 'fixed_expense',
+    title: '주담대 원리금',
+    monthlyTarget: 3_000_000,
+    annualTarget: 15_000_000,
+  },
+  {
     key: 'wife-saving',
     owner: 'wife',
     category: 'saving',
@@ -46,6 +54,14 @@ const MANAGED_PLAN_ITEMS = [
     monthlyTarget: 500_000,
     annualTarget: 2_500_000,
   },
+  {
+    key: 'wife-living-cost',
+    owner: 'wife',
+    category: 'fixed_expense',
+    title: '생활비',
+    monthlyTarget: 2_000_000,
+    annualTarget: 10_000_000,
+  },
 ] as const satisfies ReadonlyArray<{
   key: string;
   owner: 'husband' | 'wife';
@@ -54,6 +70,13 @@ const MANAGED_PLAN_ITEMS = [
   monthlyTarget: number;
   annualTarget: number;
 }>;
+
+const GOAL_PLAN_KEYS = new Set([
+  'husband-investment',
+  'husband-cash',
+  'wife-saving',
+  'wife-irregular',
+]);
 
 export default function MonthlyPlanPage() {
   const isAuthenticated = useAuth();
@@ -177,7 +200,10 @@ export default function MonthlyPlanPage() {
   const annualProgress = useMemo(() => {
     if (!state?.baseMonth) return [];
     const year = state.baseMonth.slice(0, 4);
-    const visibleItems = MANAGED_PLAN_ITEMS.filter((item) => state.scope === 'combined' || item.owner === state.scope);
+    const visibleItems = MANAGED_PLAN_ITEMS.filter((item) =>
+      GOAL_PLAN_KEYS.has(item.key) &&
+      (state.scope === 'combined' || item.owner === state.scope)
+    );
 
     return visibleItems.map((item) => {
       const matchingEntries = monthlyPlans.filter((entry) =>
@@ -304,7 +330,7 @@ export default function MonthlyPlanPage() {
               {currentMonthPlans.length === 0 ? (
                 <div className="px-5 py-12 text-center">
                   <p className="text-sm text-gray-500">시트의 월별 실행표 구조를 앱용 템플릿으로 시작합니다.</p>
-                  <p className="text-xs text-gray-400 mt-2">종한: 투자, 현금 모으기 · 민지: 저축(마통상환), 비정기 지출 모으기</p>
+                  <p className="text-xs text-gray-400 mt-2">종한: 투자, 현금 모으기, 주담대 원리금 · 민지: 저축(마통상환), 비정기 지출 모으기, 생활비</p>
                 </div>
               ) : (
                 <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -488,11 +514,11 @@ function getPlanCategoryLabel(category: PlanCategory): string {
 function getPlanCategoryOrder(category: PlanCategory): number {
   const order: Record<PlanCategory, number> = {
     income: 0,
-    fixed_expense: 1,
-    investment: 2,
+    investment: 1,
+    cash_reserve: 2,
     saving: 3,
-    cash_reserve: 4,
-    irregular_expense: 5,
+    irregular_expense: 4,
+    fixed_expense: 5,
     allowance: 6,
     debt_repayment: 7,
   };
