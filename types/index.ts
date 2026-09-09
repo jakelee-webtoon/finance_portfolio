@@ -118,6 +118,29 @@ export interface DashboardState {
   targetAssetKrw?: number;
 }
 
+export type PlanCategory =
+  | 'income'
+  | 'fixed_expense'
+  | 'saving'
+  | 'investment'
+  | 'irregular_expense'
+  | 'cash_reserve'
+  | 'allowance'
+  | 'debt_repayment';
+
+export interface MonthlyPlanEntry extends BaseEntity {
+  id: string;
+  planKey?: string;
+  month: string; // YYYY-MM
+  owner: 'husband' | 'wife' | 'joint';
+  category: PlanCategory;
+  title: string;
+  targetAmount: number;
+  actualAmount?: number;
+  isCompleted: boolean;
+  notes?: string;
+}
+
 // 가계부 항목 타입
 export type LedgerType = 'expense_fixed' | 'expense_variable' | 'income' | 'savings';
 export type LedgerCategory = 

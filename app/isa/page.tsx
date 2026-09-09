@@ -347,6 +347,82 @@ export default function IsaPage() {
           </div>
 
           <div className="grid grid-cols-12 gap-4 mb-8">
+            <div className="col-span-12 lg:col-span-6 bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-lg font-bold text-gray-900">ISA 계좌란?</h2>
+                <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-lg">중개형</span>
+              </div>
+              <div className="space-y-1 text-sm text-gray-700">
+                <p className="font-semibold">중단기 자산 형성 + 절세 계좌</p>
+                <p className="font-semibold">대상: 국내 상장된 해외 ETF</p>
+              </div>
+            </div>
+            <div className="col-span-12 sm:col-span-6 lg:col-span-3 bg-indigo-50 rounded-2xl border border-indigo-100 p-5">
+              <div className="text-xs font-bold text-indigo-500 mb-2">납입한도</div>
+              <div className="text-xl font-black text-indigo-900">{formatKrw(ISA_ANNUAL_CONTRIBUTION_LIMIT)}</div>
+              <div className="text-xs text-indigo-700/80 mt-1">연간 기준 · 총 {formatKrw(ISA_TOTAL_CONTRIBUTION_LIMIT)}</div>
+            </div>
+            <div className="col-span-12 sm:col-span-6 lg:col-span-3 bg-emerald-50 rounded-2xl border border-emerald-100 p-5">
+              <div className="text-xs font-bold text-emerald-600 mb-2">세제 혜택</div>
+              <div className="text-xl font-black text-emerald-900">일반형 {formatKrw(ISA_BASIC_TAX_FREE_LIMIT)}</div>
+              <div className="text-xs text-emerald-700/80 mt-1">초과분 {(ISA_SEPARATE_TAX_RATE * 100).toFixed(1)}% 분리과세</div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-8">
+            <div className="p-5 border-b border-gray-100 bg-gray-50/50">
+              <h2 className="text-lg font-bold text-gray-900">ISA 참고 설명</h2>
+            </div>
+            <div className="divide-y divide-gray-100">
+              <InfoAccordion title="혜택">
+                <div className="space-y-5">
+                  <div>
+                    <p className="font-bold text-gray-900">ISA 계좌에서 번 돈은 비과세 한도까지 세금이 없습니다.</p>
+                    <p>예: 2,000만원에서 10% 수익이 나면 수익은 200만원입니다.</p>
+                    <p>일반 계좌는 15.4% 세금으로 308,000원을 내지만, ISA 계좌는 비과세 혜택 적용 시 0원입니다.</p>
+                  </div>
+                  <div>
+                    <p className="font-bold text-gray-900">비과세 한도를 넘는 초과분은 9.9% 분리과세됩니다.</p>
+                    <p>예: 일반형에서 300만원 수익이 나면 비과세 한도 200만원을 제외하고, 100만원에 대해서만 9.9% 세금이 적용됩니다.</p>
+                  </div>
+                  <div>
+                    <p className="font-bold text-gray-900">손익통산으로 순이익에 대해서만 세금이 부과됩니다.</p>
+                    <p>예: A ETF에서 -200만원, B ETF에서 +400만원이면 순이익은 200만원입니다.</p>
+                    <p>일반 계좌는 번 돈만 보고 세금을 매기지만, ISA는 순이익 기준으로 보고 비과세 한도 안이면 세금이 없습니다.</p>
+                  </div>
+                </div>
+              </InfoAccordion>
+
+              <InfoAccordion title="납입 한도와 유형">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-3">
+                    <LimitLine label="연간 납입한도" value="2,000만원" />
+                    <LimitLine label="총 납입 한도" value="1억원 (5년)" />
+                    <LimitLine label="의무 가입 기간" value="3년" />
+                  </div>
+                  <div className="rounded-xl bg-gray-50 p-4 text-sm text-gray-700 leading-relaxed">
+                    <p className="font-bold text-gray-900 mb-1">유형: 중개형 (직접 투자)</p>
+                    <p>신탁형은 은행에서 직접 운용하기 때문에 ETF 직접 투자가 어렵고, 일임형은 전문가가 운용하는 대신 수수료가 존재합니다.</p>
+                  </div>
+                </div>
+              </InfoAccordion>
+
+              <InfoAccordion title="주의사항">
+                <div className="space-y-5">
+                  <div>
+                    <p className="font-bold text-gray-900">만기 설정은 최대한 길게 잡는 편이 좋습니다.</p>
+                    <p>3년이 지나면 의무가입이 종료되어 언제든 해지 가능하고, 매도 시점을 더 자유롭게 가져갈 수 있습니다.</p>
+                  </div>
+                  <div>
+                    <p className="font-bold text-gray-900">중도인출은 가능하지만 원금만 가능합니다.</p>
+                    <p>수익금은 중도 인출할 수 없습니다.</p>
+                  </div>
+                </div>
+              </InfoAccordion>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-12 gap-4 mb-8">
             <SummaryCard label="평가금액" value={formatKrw(summary.currentValue)} badge="VALUE" tone="blue" />
             <SummaryCard
               label="총 손익"
@@ -509,6 +585,29 @@ function MetricRow({ label, value }: { label: string; value: string }) {
     <div className="flex items-center justify-between gap-4 border-b border-gray-100 pb-2 last:border-b-0">
       <span className="text-sm text-gray-500">{label}</span>
       <span className="text-sm font-bold text-gray-900">{value}</span>
+    </div>
+  );
+}
+
+function InfoAccordion({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <details className="group">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 text-sm font-bold text-gray-900 hover:bg-gray-50">
+        <span>{title}</span>
+        <span className="text-gray-400 transition-transform group-open:rotate-180">⌄</span>
+      </summary>
+      <div className="px-5 pb-5 text-sm leading-relaxed text-gray-700">
+        {children}
+      </div>
+    </details>
+  );
+}
+
+function LimitLine({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl bg-gray-50 p-4">
+      <div className="text-xs font-semibold text-gray-500">{label}</div>
+      <div className="mt-1 text-lg font-black text-gray-900">{value}</div>
     </div>
   );
 }

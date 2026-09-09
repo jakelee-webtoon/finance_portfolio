@@ -19,7 +19,7 @@ import { db } from './firebase';
 
 // db가 null이면 함수들이 에러를 반환하도록 처리
 // (런타임에만 체크, 빌드 시 에러 방지)
-import { DashboardState, Asset, Income, Transaction, Portfolio, Liability, StockHolding, Apartment, Salary, LedgerEntry } from '@/types';
+import { DashboardState, Asset, Income, Transaction, Portfolio, Liability, StockHolding, Apartment, Salary, LedgerEntry, MonthlyPlanEntry } from '@/types';
 
 // 사용자 ID 가져오기 (현재는 단일 사용자 가정, 나중에 인증 추가)
 const getUserId = (): string => {
@@ -718,6 +718,76 @@ export async function setLedgerEntries(entries: LedgerEntry[]): Promise<void> {
     localStorage.setItem('finance-ledger-entries', JSON.stringify(entries));
     console.error(`[Firestore] Failed to save Ledger Entries:`, error);
     // 에러를 다시 throw하여 마이그레이션 함수에서 감지할 수 있도록
+    throw error;
+  }
+}
+
+// 월간 계획
+export async function getMonthlyPlanEntries(): Promise<MonthlyPlanEntry[]> {
+  if (typeof window === 'undefined') return [];
+  if (!db) {
+    const stored = localStorage.getItem('finance-monthly-plan-entries');
+    return stored ? JSON.parse(stored) : [];
+  }
+
+  try {
+    const firestore = db;
+    const collectionPath = getCollectionPath('monthlyPlanEntries');
+    const q = query(collection(firestore, collectionPath), orderBy('month', 'desc'));
+    const querySnapshot = await getDocs(q);
+
+    return querySnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+      as_of_date: timestampToDate(doc.data().as_of_date).toISOString().split('T')[0],
+    } as MonthlyPlanEntry));
+  } catch (error) {
+    const stored = localStorage.getItem('finance-monthly-plan-entries');
+    return stored ? JSON.parse(stored) : [];
+  }
+}
+
+export async function setMonthlyPlanEntries(entries: MonthlyPlanEntry[]): Promise<void> {
+  if (typeof window === 'undefined') return;
+  if (!db) {
+    localStorage.setItem('finance-monthly-plan-entries', JSON.stringify(entries));
+    return;
+  }
+
+  try {
+    const firestore = db;
+    const batch = writeBatch(firestore);
+    const collectionPath = getCollectionPath('monthlyPlanEntries');
+    const existingSnapshot = await getDocs(query(collection(firestore, collectionPath)));
+    const existingIds = new Set(existingSnapshot.docs.map(doc => doc.id));
+    const newIds = new Set(entries.map(entry => entry.id));
+
+    existingIds.forEach(id => {
+      if (!newIds.has(id)) {
+        batch.delete(doc(firestore, collectionPath, id));
+      }
+    });
+
+    entries.forEach(entry => {
+      const docRef = doc(firestore, collectionPath, entry.id);
+      const { id, ...data } = entry;
+      const cleanData: any = {};
+      Object.keys(data).forEach(key => {
+        const value = (data as any)[key];
+        if (value !== undefined) cleanData[key] = value;
+      });
+
+      batch.set(docRef, {
+        ...cleanData,
+        as_of_date: dateToTimestamp(cleanData.as_of_date),
+      });
+    });
+
+    await batch.commit();
+    localStorage.setItem('finance-monthly-plan-entries', JSON.stringify(entries));
+  } catch (error) {
+    localStorage.setItem('finance-monthly-plan-entries', JSON.stringify(entries));
+    console.error('[Firestore] Failed to save Monthly Plan Entries:', error);
     throw error;
   }
 }

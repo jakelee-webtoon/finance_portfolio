@@ -1,4 +1,4 @@
-import { DashboardState, Asset, Income, Transaction, Portfolio, Liability, StockHolding, Apartment, Salary, Scope, LedgerEntry } from '@/types';
+import { DashboardState, Asset, Income, Transaction, Portfolio, Liability, StockHolding, Apartment, Salary, Scope, LedgerEntry, MonthlyPlanEntry } from '@/types';
 import { mockAssets, mockIncome, mockTransactions, mockPortfolios, mockLiabilities, mockStockHoldings, mockApartments } from '@/data/mockData';
 
 const STORAGE_KEY = 'finance-dashboard-state';
@@ -135,6 +135,16 @@ export async function syncFromFirebase(): Promise<void> {
       // 에러 발생 시에도 빈 배열 저장 (mock 데이터 방지)
       localStorage.setItem('finance-ledger-entries', JSON.stringify([]));
     }
+
+    // Monthly Plan Entries
+    try {
+      const monthlyPlanEntries = await firestore.getMonthlyPlanEntries();
+      localStorage.setItem('finance-monthly-plan-entries', JSON.stringify(monthlyPlanEntries));
+    } catch (error) {
+      const existing = localStorage.getItem('finance-monthly-plan-entries');
+      if (!existing) localStorage.setItem('finance-monthly-plan-entries', JSON.stringify([]));
+    }
+
   } catch (error) {
     // 전체 에러 무시 (Firebase 연결 실패 시 localStorage만 사용)
   }
@@ -364,6 +374,27 @@ export async function setLedgerEntries(entries: LedgerEntry[]): Promise<void> {
       }
     } catch (error: unknown) {
       console.error('[Store] Failed to save Ledger Entries to Firebase:', error);
+    }
+  }
+}
+
+export function getMonthlyPlanEntries(): MonthlyPlanEntry[] {
+  if (typeof window === 'undefined') return [];
+  const stored = localStorage.getItem('finance-monthly-plan-entries');
+  return stored ? JSON.parse(stored) : [];
+}
+
+export async function setMonthlyPlanEntries(entries: MonthlyPlanEntry[]): Promise<void> {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem('finance-monthly-plan-entries', JSON.stringify(entries));
+  if (useFirebase()) {
+    try {
+      const firestore = await getFirestoreFunctions();
+      if (firestore) {
+        await firestore.setMonthlyPlanEntries(entries);
+      }
+    } catch (error: unknown) {
+      console.error('[Store] Failed to save Monthly Plan Entries to Firebase:', error);
     }
   }
 }
