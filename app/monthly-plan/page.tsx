@@ -78,6 +78,17 @@ const GOAL_PLAN_KEYS = new Set([
   'wife-irregular',
 ]);
 
+function getPlanMonthlyTarget(item: (typeof MANAGED_PLAN_ITEMS)[number], month: string): number {
+  if (item.key === 'husband-cash' && month >= '2026-09') return 600_000;
+  return item.monthlyTarget;
+}
+
+function getPlanAnnualTarget(item: (typeof MANAGED_PLAN_ITEMS)[number], year: string): number {
+  if (year !== '2026') return item.annualTarget;
+  const targetMonths = ['2026-08', '2026-09', '2026-10', '2026-11', '2026-12'];
+  return targetMonths.reduce((sum, month) => sum + getPlanMonthlyTarget(item, month), 0);
+}
+
 export default function MonthlyPlanPage() {
   const isAuthenticated = useAuth();
   const [state, setState] = useState<DashboardState | null>(null);
@@ -115,6 +126,7 @@ export default function MonthlyPlanPage() {
       const nextEntries = [...monthlyPlans];
 
       MANAGED_PLAN_ITEMS.forEach((item, index) => {
+        const monthlyTarget = getPlanMonthlyTarget(item, state.baseMonth);
         const existingIndex = nextEntries.findIndex((entry) =>
           entry.month === state.baseMonth &&
           (entry.planKey === item.key ||
@@ -129,7 +141,7 @@ export default function MonthlyPlanPage() {
           const existing = nextEntries[existingIndex];
           const shouldResetTarget =
             !existing.planKey ||
-            (item.key === 'husband-cash' && existing.targetAmount === 600_000) ||
+            (item.key === 'husband-cash' && existing.targetAmount !== monthlyTarget) ||
             existing.title !== item.title;
 
           if (shouldResetTarget) {
@@ -137,7 +149,7 @@ export default function MonthlyPlanPage() {
               ...existing,
               planKey: item.key,
               title: item.title,
-              targetAmount: item.monthlyTarget,
+              targetAmount: monthlyTarget,
               notes: existing.notes || '',
               as_of_date: today,
               last_modified_by: currentUser,
@@ -154,7 +166,7 @@ export default function MonthlyPlanPage() {
           category: item.category,
           title: item.title,
           month: state.baseMonth,
-          targetAmount: item.monthlyTarget,
+          targetAmount: monthlyTarget,
           actualAmount: 0,
           isCompleted: false,
           notes: '',
@@ -215,12 +227,13 @@ export default function MonthlyPlanPage() {
             entry.title === item.title
           ))
       );
+      const annualTarget = getPlanAnnualTarget(item, year);
       const actual = matchingEntries.reduce((sum, entry) => {
         if ((entry.actualAmount ?? 0) > 0) return sum + (entry.actualAmount ?? 0);
         return sum + (entry.isCompleted ? entry.targetAmount : 0);
       }, 0);
-      const pct = item.annualTarget > 0 ? Math.min(100, (actual / item.annualTarget) * 100) : 0;
-      return { ...item, actual, pct, remaining: Math.max(0, item.annualTarget - actual) };
+      const pct = annualTarget > 0 ? Math.min(100, (actual / annualTarget) * 100) : 0;
+      return { ...item, annualTarget, actual, pct, remaining: Math.max(0, annualTarget - actual) };
     });
   }, [monthlyPlans, state]);
 
@@ -233,7 +246,8 @@ export default function MonthlyPlanPage() {
     const nextEntries: MonthlyPlanEntry[] = [
       ...monthlyPlans.filter((entry) => entry.month !== state.baseMonth || !isManagedPlanEntry(entry)),
       ...template.map((entry, index) => {
-        const { owner, category, title, monthlyTarget } = entry;
+        const { owner, category, title } = entry;
+        const monthlyTarget = getPlanMonthlyTarget(entry, state.baseMonth);
         return {
           id: `plan-${state.baseMonth}-${index}-${Date.now()}`,
           planKey: entry.key,
