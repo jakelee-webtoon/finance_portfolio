@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
 import TopBar from '@/components/TopBar';
 import Navigation from '@/components/Navigation';
 import Table, { Column } from '@/components/Table';
@@ -26,6 +27,8 @@ import {
 
 type Owner = 'husband' | 'wife' | 'joint';
 type Exchange = 'KRX' | 'NASDAQ' | 'NYSE' | 'other';
+
+const ETF_CATEGORY_COLORS = ['#2563EB', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#06B6D4', '#64748B'];
 
 export default function IsaPage() {
   const isAuthenticated = useAuth();
@@ -527,18 +530,56 @@ export default function IsaPage() {
               {categoryRows.length === 0 ? (
                 <div className="py-12 text-center text-sm text-gray-400 italic">ETF를 추가하면 분류별 비중이 표시됩니다.</div>
               ) : (
-                <div className="space-y-3">
-                  {categoryRows.map((row) => (
-                    <div key={row.label}>
-                      <div className="flex justify-between text-sm mb-1">
-                        <span className="font-semibold text-gray-700">{row.label}</span>
-                        <span className="text-gray-500">{formatKrw(row.value)} · {row.pct.toFixed(1)}%</span>
-                      </div>
-                      <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                        <div className="h-full bg-blue-500 rounded-full" style={{ width: `${Math.min(100, row.pct)}%` }} />
-                      </div>
+                <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(260px,1fr)_minmax(240px,320px)] lg:items-center">
+                  <div className="relative h-[280px] min-w-0">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={categoryRows}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={64}
+                          outerRadius={104}
+                          paddingAngle={3}
+                          dataKey="value"
+                          nameKey="label"
+                          minAngle={2}
+                        >
+                          {categoryRows.map((row, index) => (
+                            <Cell key={row.label} fill={ETF_CATEGORY_COLORS[index % ETF_CATEGORY_COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                          formatter={(value: number, _name, item) => {
+                            const row = item.payload as { pct?: number };
+                            return [`${formatKrw(value)} · ${(row.pct || 0).toFixed(1)}%`, '평가금액'];
+                          }}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                      <span className="text-xs font-semibold text-gray-400">총 평가금액</span>
+                      <span className="text-sm font-bold text-gray-900">{formatKrw(summary.currentValue)}</span>
                     </div>
-                  ))}
+                  </div>
+                  <div className="space-y-2">
+                    {categoryRows.map((row, index) => (
+                      <div key={row.label} className="flex items-center justify-between gap-3 rounded-lg bg-gray-50 px-3 py-2">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span
+                            className="h-2.5 w-2.5 shrink-0 rounded-full"
+                            style={{ backgroundColor: ETF_CATEGORY_COLORS[index % ETF_CATEGORY_COLORS.length] }}
+                          />
+                          <span className="truncate text-sm font-semibold text-gray-700">{row.label}</span>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <div className="text-sm font-bold text-gray-900">{row.pct.toFixed(1)}%</div>
+                          <div className="text-xs text-gray-500">{formatKrw(row.value)}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
