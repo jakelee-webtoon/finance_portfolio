@@ -23,7 +23,6 @@ export async function GET(request: NextRequest) {
           'Accept': 'application/json',
         },
         cache: 'no-store', // fetch 캐시 비활성화
-        next: { revalidate: 0 }, // Next.js 캐시 비활성화
       }
     );
 

@@ -8,6 +8,15 @@ export interface StockQuote {
   changePercent: number;
 }
 
+export interface EtfSearchResult {
+  symbol: string;
+  yahooSymbol: string;
+  name: string;
+  exchange: 'KRX' | 'NASDAQ' | 'NYSE' | 'other';
+  currency: string;
+  price?: number;
+}
+
 // 심볼로 거래소와 통화 자동 감지
 export function detectExchangeAndCurrency(symbol: string): { 
   exchange: 'KRX' | 'NASDAQ' | 'NYSE' | 'other'; 
@@ -117,6 +126,23 @@ export async function getStockPrice(symbol: string, forceRefresh: boolean = fals
     return null;
   } catch (error) {
     return null;
+  }
+}
+
+export async function searchEtfs(query: string): Promise<EtfSearchResult[]> {
+  const trimmedQuery = query.trim();
+  if (trimmedQuery.length < 2) return [];
+
+  try {
+    const response = await fetch(`/api/stock/search?q=${encodeURIComponent(trimmedQuery)}`);
+    if (!response.ok) return [];
+
+    const data = await response.json();
+    if (!Array.isArray(data.results)) return [];
+
+    return data.results;
+  } catch {
+    return [];
   }
 }
 

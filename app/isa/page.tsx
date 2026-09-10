@@ -7,7 +7,7 @@ import Table, { Column } from '@/components/Table';
 import { DashboardState, StockHolding } from '@/types';
 import { getDashboardState, getStockHoldings, setStockHoldings, syncFromFirebase } from '@/lib/store';
 import { getExchangeRates } from '@/lib/exchangeRate';
-import { getStockPrice, getStockQuotes } from '@/lib/stockApi';
+import { EtfSearchResult, getStockPrice, getStockQuotes, searchEtfs } from '@/lib/stockApi';
 import { useAuth } from '@/hooks/useAuth';
 import {
   ISA_ANNUAL_CONTRIBUTION_LIMIT,
@@ -34,6 +34,9 @@ export default function IsaPage() {
   const [exchangeRates, setExchangeRates] = useState<Record<string, number> | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [searchResults, setSearchResults] = useState<EtfSearchResult[]>([]);
+  const [isSearchingEtf, setIsSearchingEtf] = useState(false);
+  const [searchMessage, setSearchMessage] = useState('');
 
   const getInitialFormData = useCallback(() => ({
     symbol: '',
@@ -48,6 +51,11 @@ export default function IsaPage() {
   }), []);
 
   const [formData, setFormData] = useState(getInitialFormData());
+
+  const resetEtfSearch = () => {
+    setSearchResults([]);
+    setSearchMessage('');
+  };
 
   useEffect(() => {
     if (isAuthenticated !== true) return;
@@ -205,7 +213,59 @@ export default function IsaPage() {
     setIsFormOpen(false);
   };
 
+  const handleEtfSearch = async () => {
+    const query = [formData.symbol, formData.name].map((value) => value.trim()).filter(Boolean).join(' ');
+    if (query.length < 2) {
+      setSearchMessage('ETF 코드나 이름을 2글자 이상 입력해 주세요.');
+      setSearchResults([]);
+      return;
+    }
+
+    setIsSearchingEtf(true);
+    setSearchMessage('');
+    const results = await searchEtfs(query);
+    setSearchResults(results);
+    setSearchMessage(results.length === 0 ? '검색 결과가 없습니다. 직접 입력하거나 다른 이름/코드로 조회해 주세요.' : '');
+    setIsSearchingEtf(false);
+  };
+
+  const inferProvider = (name: string): NonNullable<StockHolding['provider']> => {
+    const upperName = name.toUpperCase();
+    if (upperName.includes('TIGER')) return 'TIGER';
+    if (upperName.includes('KODEX')) return 'KODEX';
+    if (upperName.includes('ACE')) return 'ACE';
+    if (upperName.includes('SOL')) return 'SOL';
+    if (upperName.includes('KBSTAR')) return 'KBSTAR';
+    if (upperName.includes('HANARO')) return 'HANARO';
+    return 'other';
+  };
+
+  const inferEtfCategory = (name: string): NonNullable<StockHolding['etfCategory']> => {
+    const normalizedName = name.replace(/\s/g, '').toLowerCase();
+    if (/s&p|sp500|snp|스탠다드|미국500/.test(normalizedName)) return 'sp500';
+    if (/nasdaq|나스닥/.test(normalizedName)) return 'nasdaq100';
+    if (/dividend|배당/.test(normalizedName)) return 'dividend';
+    if (/bond|채권|국채/.test(normalizedName)) return 'bond';
+    if (/kospi|kosdaq|코스피|코스닥/.test(normalizedName)) return 'domestic_index';
+    if (/sector|섹터|반도체|은행|바이오|헬스케어|자동차/.test(normalizedName)) return 'sector';
+    return 'other';
+  };
+
+  const handleSelectEtf = (result: EtfSearchResult) => {
+    setFormData((prev) => ({
+      ...prev,
+      symbol: result.symbol.toUpperCase(),
+      name: result.name,
+      currentPrice: result.price !== undefined ? String(result.price) : prev.currentPrice,
+      provider: inferProvider(result.name),
+      etfCategory: inferEtfCategory(result.name),
+    }));
+    setSearchResults([]);
+    setSearchMessage(result.price !== undefined ? 'ETF 정보와 현재가를 반영했습니다.' : 'ETF 정보를 반영했습니다. 현재가는 저장 시 한 번 더 조회됩니다.');
+  };
+
   const handleEdit = (holding: StockHolding) => {
+    resetEtfSearch();
     setFormData({
       symbol: holding.symbol,
       name: holding.name,
@@ -343,6 +403,7 @@ export default function IsaPage() {
               onClick={() => {
                 setFormData(getInitialFormData());
                 setEditingId(null);
+                resetEtfSearch();
                 setIsFormOpen(true);
               }}
               className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-semibold"
@@ -490,11 +551,39 @@ export default function IsaPage() {
                 <form onSubmit={handleSubmit} className="space-y-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <Field label="ETF 코드 *">
-                      <input required value={formData.symbol} onChange={(e) => setFormData({ ...formData, symbol: e.target.value.toUpperCase() })} className="input" placeholder="예: 360750" />
+                      <input required value={formData.symbol} onChange={(e) => { setFormData({ ...formData, symbol: e.target.value.toUpperCase() }); resetEtfSearch(); }} className="input" placeholder="예: 360750" />
                     </Field>
                     <Field label="ETF명 *">
-                      <input required value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} className="input" placeholder="예: TIGER 미국S&P500" />
+                      <input required value={formData.name} onChange={(e) => { setFormData({ ...formData, name: e.target.value }); resetEtfSearch(); }} className="input" placeholder="예: TIGER 미국S&P500" />
                     </Field>
+                    <div className="sm:col-span-2">
+                      <button type="button" onClick={handleEtfSearch} disabled={isSearchingEtf} className="w-full border border-blue-500 text-blue-600 py-2 rounded-lg hover:bg-blue-50 transition-colors disabled:cursor-not-allowed disabled:opacity-60">
+                        {isSearchingEtf ? '조회 중...' : 'ETF 조회'}
+                      </button>
+                      {searchMessage && (
+                        <div className="mt-2 text-sm text-indigo-700">{searchMessage}</div>
+                      )}
+                      {searchResults.length > 0 && (
+                        <div className="mt-2 overflow-hidden rounded-lg border border-gray-200 bg-white">
+                          {searchResults.map((result) => (
+                            <button
+                              key={result.yahooSymbol}
+                              type="button"
+                              onClick={() => handleSelectEtf(result)}
+                              className="flex w-full items-center justify-between gap-3 border-b border-gray-100 px-3 py-2 text-left text-sm last:border-b-0 hover:bg-blue-50"
+                            >
+                              <span className="min-w-0">
+                                <span className="block truncate font-semibold text-gray-900">{result.name}</span>
+                                <span className="block text-xs text-gray-500">{result.symbol} · {result.exchange}</span>
+                              </span>
+                              <span className="shrink-0 text-xs font-semibold text-gray-700">
+                                {result.price !== undefined ? formatKrw(result.price) : '가격 없음'}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                     <Field label="수량 *">
                       <input required type="number" min="0" step="0.01" value={formData.quantity} onChange={(e) => setFormData({ ...formData, quantity: e.target.value })} className="input" />
                     </Field>
@@ -544,7 +633,7 @@ export default function IsaPage() {
                     <button type="submit" className="flex-1 bg-blue-500 text-white py-2 rounded-lg hover:bg-blue-600 transition-colors">
                       {editingId ? '수정' : '추가'}
                     </button>
-                    <button type="button" onClick={() => { setIsFormOpen(false); setEditingId(null); setFormData(getInitialFormData()); }} className="flex-1 bg-gray-500 text-white py-2 rounded-lg hover:bg-gray-600 transition-colors">
+                    <button type="button" onClick={() => { setIsFormOpen(false); setEditingId(null); setFormData(getInitialFormData()); resetEtfSearch(); }} className="flex-1 bg-gray-500 text-white py-2 rounded-lg hover:bg-gray-600 transition-colors">
                       취소
                     </button>
                   </div>
