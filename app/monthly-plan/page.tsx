@@ -80,7 +80,12 @@ const GOAL_PLAN_KEYS = new Set([
 
 function getPlanMonthlyTarget(item: (typeof MANAGED_PLAN_ITEMS)[number], month: string): number {
   if (item.key === 'husband-cash' && month >= '2026-09') return 600_000;
+  if (item.key === 'wife-saving' && month === '2026-08') return 1_300_000;
   return item.monthlyTarget;
+}
+
+function hasVariableMonthlyTarget(item: (typeof MANAGED_PLAN_ITEMS)[number]): boolean {
+  return item.key === 'husband-cash' || item.key === 'wife-saving';
 }
 
 function getPlanAnnualTarget(item: (typeof MANAGED_PLAN_ITEMS)[number], year: string): number {
@@ -141,7 +146,7 @@ export default function MonthlyPlanPage() {
           const existing = nextEntries[existingIndex];
           const shouldResetTarget =
             !existing.planKey ||
-            (item.key === 'husband-cash' && existing.targetAmount !== monthlyTarget) ||
+            (hasVariableMonthlyTarget(item) && existing.targetAmount !== monthlyTarget) ||
             existing.title !== item.title;
 
           if (shouldResetTarget) {
@@ -355,7 +360,7 @@ export default function MonthlyPlanPage() {
                       entries={currentMonthPlans.filter((entry) => entry.owner === owner)}
                       onToggle={(entry) => updateMonthlyPlanEntry(entry.id, {
                         isCompleted: !entry.isCompleted,
-                        actualAmount: !entry.isCompleted && (entry.actualAmount ?? 0) === 0 ? entry.targetAmount : entry.actualAmount,
+                        actualAmount: !entry.isCompleted ? entry.targetAmount : entry.actualAmount,
                       })}
                       onAmountChange={(entry, field, amount) => updateMonthlyPlanEntry(entry.id, { [field]: amount })}
                       onNotesChange={(entry, notes) => updateMonthlyPlanEntry(entry.id, { notes })}
