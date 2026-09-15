@@ -3,6 +3,18 @@ import { mockAssets, mockIncome, mockTransactions, mockPortfolios, mockLiabiliti
 
 const STORAGE_KEY = 'finance-dashboard-state';
 
+const isMockIncomeItem = (income: Income): boolean => {
+  return mockIncome.some(mock =>
+    income.id === mock.id &&
+    income.source === mock.source &&
+    income.amount === mock.amount &&
+    income.owner === mock.owner &&
+    income.category === mock.category
+  );
+};
+
+const withoutMockIncome = (income: Income[]): Income[] => income.filter(item => !isMockIncomeItem(item));
+
 // Firebase 사용 여부 확인 (하드코딩된 경우 항상 true)
 const useFirebase = (): boolean => {
   if (typeof window === 'undefined') return false;
@@ -109,11 +121,10 @@ export async function syncFromFirebase(): Promise<void> {
     // Income
     try {
       const income = await firestore.getIncome();
-      if (income.length > 0) {
-        localStorage.setItem('finance-income', JSON.stringify(income));
-      }
+      localStorage.setItem('finance-income', JSON.stringify(withoutMockIncome(income)));
     } catch (error) {
-      // 에러 무시
+      const stored = localStorage.getItem('finance-income');
+      localStorage.setItem('finance-income', JSON.stringify(stored ? withoutMockIncome(JSON.parse(stored)) : []));
     }
     
     // Liabilities
@@ -221,9 +232,13 @@ export async function setAssets(assets: Asset[]): Promise<void> {
 
 // 동기 버전 (기존 코드 호환성 유지 - 기본 export)
 export function getIncome(): Income[] {
-  if (typeof window === 'undefined') return mockIncome;
+  if (typeof window === 'undefined') return [];
   const stored = localStorage.getItem('finance-income');
-  return stored ? JSON.parse(stored) : mockIncome;
+  if (!stored) return [];
+
+  const income = withoutMockIncome(JSON.parse(stored));
+  localStorage.setItem('finance-income', JSON.stringify(income));
+  return income;
 }
 
 export async function setIncome(income: Income[]): Promise<void> {
