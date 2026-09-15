@@ -5,21 +5,19 @@ import {
   getDoc, 
   getDocs, 
   setDoc, 
-  updateDoc, 
-  deleteDoc,
   query,
-  where,
   orderBy,
   Timestamp,
-  DocumentData,
-  QuerySnapshot,
-  writeBatch
+  writeBatch,
+  type Firestore
 } from 'firebase/firestore';
 import { db } from './firebase';
 
 // db가 null이면 함수들이 에러를 반환하도록 처리
 // (런타임에만 체크, 빌드 시 에러 방지)
-import { DashboardState, Asset, Income, Transaction, Portfolio, Liability, StockHolding, Apartment, Salary, LedgerEntry, MonthlyPlanEntry } from '@/types';
+import { DashboardState, Asset, Income, Liability, StockHolding, Apartment, Salary, LedgerEntry, MonthlyPlanEntry } from '@/types';
+
+type FirestoreEntity = { id: string };
 
 // 사용자 ID 가져오기 (현재는 단일 사용자 가정, 나중에 인증 추가)
 const getUserId = (): string => {
@@ -55,6 +53,94 @@ const dateToTimestamp = (date: string | Date): Timestamp => {
   return Timestamp.fromDate(dateObj);
 };
 
+const readLocalStorage = <T>(key: string, fallback: T): T => {
+  const stored = localStorage.getItem(key);
+  return stored ? JSON.parse(stored) : fallback;
+};
+
+const writeLocalStorage = <T>(key: string, value: T): void => {
+  localStorage.setItem(key, JSON.stringify(value));
+};
+
+const stripUndefinedFields = <T extends FirestoreEntity>(item: T): Record<string, unknown> => {
+  const data = { ...item } as Record<string, unknown>;
+  delete data.id;
+  return Object.fromEntries(
+    Object.entries(data).filter(([, value]) => value !== undefined)
+  );
+};
+
+const prepareFirestoreData = <T extends FirestoreEntity>(
+  item: T,
+  dateFields: readonly string[] = []
+): Record<string, unknown> => {
+  const data = stripUndefinedFields(item);
+
+  dateFields.forEach(field => {
+    const value = data[field];
+    if (typeof value === 'string' || value instanceof Date) {
+      data[field] = dateToTimestamp(value);
+    }
+  });
+
+  return data;
+};
+
+const replaceCollection = async <T extends FirestoreEntity>(
+  firestore: Firestore,
+  collectionPath: string,
+  items: T[],
+  dateFields: readonly string[] = []
+): Promise<number> => {
+  const batch = writeBatch(firestore);
+  const existingSnapshot = await getDocs(query(collection(firestore, collectionPath)));
+  const existingIds = new Set(existingSnapshot.docs.map(snapshotDoc => snapshotDoc.id));
+  const newIds = new Set(items.map(item => item.id));
+
+  existingIds.forEach(id => {
+    if (!newIds.has(id)) {
+      batch.delete(doc(firestore, collectionPath, id));
+    }
+  });
+
+  items.forEach(item => {
+    batch.set(
+      doc(firestore, collectionPath, item.id),
+      prepareFirestoreData(item, dateFields)
+    );
+  });
+
+  await batch.commit();
+  return existingIds.size - newIds.size;
+};
+
+const saveCollection = async <T extends FirestoreEntity>(
+  items: T[],
+  options: {
+    collectionName: string;
+    storageKey: string;
+    label: string;
+    dateFields?: readonly string[];
+  }
+): Promise<void> => {
+  if (typeof window === 'undefined') return;
+  if (!db) {
+    writeLocalStorage(options.storageKey, items);
+    return;
+  }
+
+  try {
+    const collectionPath = getCollectionPath(options.collectionName);
+    const deletedCount = await replaceCollection(db, collectionPath, items, options.dateFields);
+    console.log(`[Firestore] ${items.length} ${options.label} saved to Firebase (deleted ${deletedCount}): ${collectionPath}`);
+    writeLocalStorage(options.storageKey, items);
+  } catch (error) {
+    writeLocalStorage(options.storageKey, items);
+    console.error(`[Firestore] Failed to save ${options.label}:`, error);
+    throw error;
+  }
+};
+
 // Dashboard State
 export async function getDashboardState(): Promise<DashboardState> {
   if (typeof window === 'undefined') {
@@ -88,15 +174,11 @@ export async function getDashboardState(): Promise<DashboardState> {
     return defaultState;
   } catch (error) {
     // 에러 발생 시 localStorage에서 가져오기 (fallback)
-    const stored = localStorage.getItem('finance-dashboard-state');
-    if (stored) {
-      return JSON.parse(stored);
-    }
-    return {
+    return readLocalStorage('finance-dashboard-state', {
       householdName: '우리집',
       baseMonth: new Date().toISOString().slice(0, 7),
       scope: 'combined',
-    };
+    });
   }
 }
 
@@ -128,8 +210,7 @@ export async function setDashboardState(state: DashboardState): Promise<void> {
 export async function getAssets(): Promise<Asset[]> {
   if (typeof window === 'undefined') return [];
   if (!db) {
-    const stored = localStorage.getItem('finance-assets');
-    return stored ? JSON.parse(stored) : [];
+    return readLocalStorage('finance-assets', []);
   }
   
   try {
@@ -142,77 +223,24 @@ export async function getAssets(): Promise<Asset[]> {
     } as Asset));
   } catch (error) {
     // Fallback to localStorage
-    const stored = localStorage.getItem('finance-assets');
-    return stored ? JSON.parse(stored) : [];
+    return readLocalStorage('finance-assets', []);
   }
 }
 
 export async function setAssets(assets: Asset[]): Promise<void> {
-  if (typeof window === 'undefined') return;
-  if (!db) {
-    localStorage.setItem('finance-assets', JSON.stringify(assets));
-    return;
-  }
-  
-  try {
-    const firestore = db; // Type narrowing
-    const batch = writeBatch(firestore);
-    const collectionPath = getCollectionPath('assets');
-    
-    // 기존 Firestore 데이터 가져오기
-    const existingQuery = query(collection(firestore, collectionPath));
-    const existingSnapshot = await getDocs(existingQuery);
-    const existingIds = new Set(existingSnapshot.docs.map(doc => doc.id));
-    const newIds = new Set(assets.map(asset => asset.id));
-    
-    // 삭제된 항목들을 Firestore에서 제거
-    existingIds.forEach(id => {
-      if (!newIds.has(id)) {
-        const docRef = doc(firestore, collectionPath, id);
-        batch.delete(docRef);
-      }
-    });
-    
-    // 새로운/업데이트된 항목들을 저장
-    assets.forEach(asset => {
-      const docRef = doc(firestore, collectionPath, asset.id);
-      const { id, ...data } = asset;
-      
-      // undefined 필드 제거 (Firestore는 undefined를 허용하지 않음)
-      const cleanData: any = {};
-      Object.keys(data).forEach(key => {
-        const value = (data as any)[key];
-        if (value !== undefined) {
-          cleanData[key] = value;
-        }
-      });
-      
-      batch.set(docRef, {
-        ...cleanData,
-        as_of_date: dateToTimestamp(cleanData.as_of_date),
-      });
-    });
-    
-    await batch.commit();
-    console.log(`[Firestore] ${assets.length} Assets saved to Firebase (deleted ${existingIds.size - newIds.size}): ${getCollectionPath('assets')}`);
-    
-    // localStorage에도 저장 (fallback)
-    localStorage.setItem('finance-assets', JSON.stringify(assets));
-  } catch (error) {
-    // 에러 발생 시 localStorage에만 저장
-    localStorage.setItem('finance-assets', JSON.stringify(assets));
-    console.error(`[Firestore] Failed to save Assets:`, error);
-    // 에러를 다시 throw하여 마이그레이션 함수에서 감지할 수 있도록
-    throw error;
-  }
+  await saveCollection(assets, {
+    collectionName: 'assets',
+    storageKey: 'finance-assets',
+    label: 'Assets',
+    dateFields: ['as_of_date'],
+  });
 }
 
 // Stock Holdings
 export async function getStockHoldings(): Promise<StockHolding[]> {
   if (typeof window === 'undefined') return [];
   if (!db) {
-    const stored = localStorage.getItem('finance-stock-holdings');
-    return stored ? JSON.parse(stored) : [];
+    return readLocalStorage('finance-stock-holdings', []);
   }
   
   try {
@@ -241,77 +269,24 @@ export async function getStockHoldings(): Promise<StockHolding[]> {
   } catch (error) {
     console.error('[Firestore] Failed to get stock holdings:', error);
     // Fallback to localStorage
-    const stored = localStorage.getItem('finance-stock-holdings');
-    return stored ? JSON.parse(stored) : [];
+    return readLocalStorage('finance-stock-holdings', []);
   }
 }
 
 export async function setStockHoldings(holdings: StockHolding[]): Promise<void> {
-  if (typeof window === 'undefined') return;
-  if (!db) {
-    localStorage.setItem('finance-stock-holdings', JSON.stringify(holdings));
-    return;
-  }
-  
-  try {
-    const firestore = db; // Type narrowing
-    const batch = writeBatch(firestore);
-    const collectionPath = getCollectionPath('stockHoldings');
-    
-    // 기존 Firestore 데이터 가져오기
-    const existingQuery = query(collection(firestore, collectionPath));
-    const existingSnapshot = await getDocs(existingQuery);
-    const existingIds = new Set(existingSnapshot.docs.map(doc => doc.id));
-    const newIds = new Set(holdings.map(holding => holding.id));
-    
-    // 삭제된 항목들을 Firestore에서 제거
-    existingIds.forEach(id => {
-      if (!newIds.has(id)) {
-        const docRef = doc(firestore, collectionPath, id);
-        batch.delete(docRef);
-      }
-    });
-    
-    // 새로운/업데이트된 항목들을 저장
-    holdings.forEach(holding => {
-      const docRef = doc(firestore, collectionPath, holding.id);
-      const { id, ...data } = holding;
-      
-      // undefined 필드 제거 (Firestore는 undefined를 허용하지 않음)
-      const cleanData: any = {};
-      Object.keys(data).forEach(key => {
-        const value = (data as any)[key];
-        if (value !== undefined) {
-          cleanData[key] = value;
-        }
-      });
-      
-      batch.set(docRef, {
-        ...cleanData,
-        as_of_date: dateToTimestamp(cleanData.as_of_date),
-      });
-    });
-    
-    await batch.commit();
-    console.log(`[Firestore] ${holdings.length} Stock Holdings saved to Firebase (deleted ${existingIds.size - newIds.size}): ${getCollectionPath('stockHoldings')}`);
-    
-    // localStorage에도 저장 (fallback)
-    localStorage.setItem('finance-stock-holdings', JSON.stringify(holdings));
-  } catch (error) {
-    // 에러 발생 시 localStorage에만 저장
-    localStorage.setItem('finance-stock-holdings', JSON.stringify(holdings));
-    console.error(`[Firestore] Failed to save Stock Holdings:`, error);
-    // 에러를 다시 throw하여 마이그레이션 함수에서 감지할 수 있도록
-    throw error;
-  }
+  await saveCollection(holdings, {
+    collectionName: 'stockHoldings',
+    storageKey: 'finance-stock-holdings',
+    label: 'Stock Holdings',
+    dateFields: ['as_of_date'],
+  });
 }
 
 // Salaries
 export async function getSalaries(): Promise<Salary[]> {
   if (typeof window === 'undefined') return [];
   if (!db) {
-    const stored = localStorage.getItem('finance-salaries');
-    return stored ? JSON.parse(stored) : [];
+    return readLocalStorage('finance-salaries', []);
   }
   
   try {
@@ -323,74 +298,23 @@ export async function getSalaries(): Promise<Salary[]> {
     } as Salary));
   } catch (error) {
     // Fallback to localStorage
-    const stored = localStorage.getItem('finance-salaries');
-    return stored ? JSON.parse(stored) : [];
+    return readLocalStorage('finance-salaries', []);
   }
 }
 
 export async function setSalaries(salaries: Salary[]): Promise<void> {
-  if (typeof window === 'undefined') return;
-  if (!db) {
-    localStorage.setItem('finance-salaries', JSON.stringify(salaries));
-    return;
-  }
-  
-  try {
-    const firestore = db; // Type narrowing
-    const batch = writeBatch(firestore);
-    const collectionPath = getCollectionPath('salaries');
-    
-    // 기존 Firestore 데이터 가져오기
-    const existingQuery = query(collection(firestore, collectionPath));
-    const existingSnapshot = await getDocs(existingQuery);
-    const existingIds = new Set(existingSnapshot.docs.map(doc => doc.id));
-    const newIds = new Set(salaries.map(salary => salary.id));
-    
-    // 삭제된 항목들을 Firestore에서 제거
-    existingIds.forEach(id => {
-      if (!newIds.has(id)) {
-        const docRef = doc(firestore, collectionPath, id);
-        batch.delete(docRef);
-      }
-    });
-    
-    // 새로운/업데이트된 항목들을 저장
-    salaries.forEach(salary => {
-      const docRef = doc(firestore, collectionPath, salary.id);
-      const { id, ...data } = salary;
-      
-      // undefined 필드 제거 (Firestore는 undefined를 허용하지 않음)
-      const cleanData: any = {};
-      Object.keys(data).forEach(key => {
-        const value = (data as any)[key];
-        if (value !== undefined) {
-          cleanData[key] = value;
-        }
-      });
-      
-      batch.set(docRef, cleanData);
-    });
-    
-    await batch.commit();
-    console.log(`[Firestore] ${salaries.length} Salaries saved to Firebase (deleted ${existingIds.size - newIds.size}): ${getCollectionPath('salaries')}`);
-    
-    // localStorage에도 저장 (fallback)
-    localStorage.setItem('finance-salaries', JSON.stringify(salaries));
-  } catch (error) {
-    // 에러 발생 시 localStorage에만 저장
-    localStorage.setItem('finance-salaries', JSON.stringify(salaries));
-    console.error(`[Firestore] Failed to save Salaries:`, error);
-    // 에러를 다시 throw하여 마이그레이션 함수에서 감지할 수 있도록
-    throw error;
-  }
+  await saveCollection(salaries, {
+    collectionName: 'salaries',
+    storageKey: 'finance-salaries',
+    label: 'Salaries',
+  });
 }
 
 // Apartments
 export async function getApartments(): Promise<Apartment[]> {
   if (typeof window === 'undefined') return [];
   if (!db) {
-    const stored = localStorage.getItem('finance-apartments');
-    return stored ? JSON.parse(stored) : [];
+    return readLocalStorage('finance-apartments', []);
   }
   
   try {
@@ -403,77 +327,24 @@ export async function getApartments(): Promise<Apartment[]> {
     } as Apartment));
   } catch (error) {
     // Fallback to localStorage
-    const stored = localStorage.getItem('finance-apartments');
-    return stored ? JSON.parse(stored) : [];
+    return readLocalStorage('finance-apartments', []);
   }
 }
 
 export async function setApartments(apartments: Apartment[]): Promise<void> {
-  if (typeof window === 'undefined') return;
-  if (!db) {
-    localStorage.setItem('finance-apartments', JSON.stringify(apartments));
-    return;
-  }
-  
-  try {
-    const firestore = db; // Type narrowing
-    const batch = writeBatch(firestore);
-    const collectionPath = getCollectionPath('apartments');
-    
-    // 기존 Firestore 데이터 가져오기
-    const existingQuery = query(collection(firestore, collectionPath));
-    const existingSnapshot = await getDocs(existingQuery);
-    const existingIds = new Set(existingSnapshot.docs.map(doc => doc.id));
-    const newIds = new Set(apartments.map(apartment => apartment.id));
-    
-    // 삭제된 항목들을 Firestore에서 제거
-    existingIds.forEach(id => {
-      if (!newIds.has(id)) {
-        const docRef = doc(firestore, collectionPath, id);
-        batch.delete(docRef);
-      }
-    });
-    
-    // 새로운/업데이트된 항목들을 저장
-    apartments.forEach(apartment => {
-      const docRef = doc(firestore, collectionPath, apartment.id);
-      const { id, ...data } = apartment;
-      
-      // undefined 필드 제거 (Firestore는 undefined를 허용하지 않음)
-      const cleanData: any = {};
-      Object.keys(data).forEach(key => {
-        const value = (data as any)[key];
-        if (value !== undefined) {
-          cleanData[key] = value;
-        }
-      });
-      
-      batch.set(docRef, {
-        ...cleanData,
-        as_of_date: dateToTimestamp(cleanData.as_of_date),
-      });
-    });
-    
-    await batch.commit();
-    console.log(`[Firestore] ${apartments.length} Apartments saved to Firebase (deleted ${existingIds.size - newIds.size}): ${getCollectionPath('apartments')}`);
-    
-    // localStorage에도 저장 (fallback)
-    localStorage.setItem('finance-apartments', JSON.stringify(apartments));
-  } catch (error) {
-    // 에러 발생 시 localStorage에만 저장
-    localStorage.setItem('finance-apartments', JSON.stringify(apartments));
-    console.error(`[Firestore] Failed to save Apartments:`, error);
-    // 에러를 다시 throw하여 마이그레이션 함수에서 감지할 수 있도록
-    throw error;
-  }
+  await saveCollection(apartments, {
+    collectionName: 'apartments',
+    storageKey: 'finance-apartments',
+    label: 'Apartments',
+    dateFields: ['as_of_date'],
+  });
 }
 
 // Income
 export async function getIncome(): Promise<Income[]> {
   if (typeof window === 'undefined') return [];
   if (!db) {
-    const stored = localStorage.getItem('finance-income');
-    return stored ? JSON.parse(stored) : [];
+    return readLocalStorage('finance-income', []);
   }
   
   try {
@@ -486,77 +357,24 @@ export async function getIncome(): Promise<Income[]> {
     } as Income));
   } catch (error) {
     // Fallback to localStorage
-    const stored = localStorage.getItem('finance-income');
-    return stored ? JSON.parse(stored) : [];
+    return readLocalStorage('finance-income', []);
   }
 }
 
 export async function setIncome(income: Income[]): Promise<void> {
-  if (typeof window === 'undefined') return;
-  if (!db) {
-    localStorage.setItem('finance-income', JSON.stringify(income));
-    return;
-  }
-  
-  try {
-    const firestore = db; // Type narrowing
-    const batch = writeBatch(firestore);
-    const collectionPath = getCollectionPath('income');
-    
-    // 기존 Firestore 데이터 가져오기
-    const existingQuery = query(collection(firestore, collectionPath));
-    const existingSnapshot = await getDocs(existingQuery);
-    const existingIds = new Set(existingSnapshot.docs.map(doc => doc.id));
-    const newIds = new Set(income.map(item => item.id));
-    
-    // 삭제된 항목들을 Firestore에서 제거
-    existingIds.forEach(id => {
-      if (!newIds.has(id)) {
-        const docRef = doc(firestore, collectionPath, id);
-        batch.delete(docRef);
-      }
-    });
-    
-    // 새로운/업데이트된 항목들을 저장
-    income.forEach(item => {
-      const docRef = doc(firestore, collectionPath, item.id);
-      const { id, ...data } = item;
-      
-      // undefined 필드 제거 (Firestore는 undefined를 허용하지 않음)
-      const cleanData: any = {};
-      Object.keys(data).forEach(key => {
-        const value = (data as any)[key];
-        if (value !== undefined) {
-          cleanData[key] = value;
-        }
-      });
-      
-      batch.set(docRef, {
-        ...cleanData,
-        as_of_date: dateToTimestamp(cleanData.as_of_date),
-      });
-    });
-    
-    await batch.commit();
-    console.log(`[Firestore] ${income.length} Income saved to Firebase (deleted ${existingIds.size - newIds.size}): ${getCollectionPath('income')}`);
-    
-    // localStorage에도 저장 (fallback)
-    localStorage.setItem('finance-income', JSON.stringify(income));
-  } catch (error) {
-    // 에러 발생 시 localStorage에만 저장
-    localStorage.setItem('finance-income', JSON.stringify(income));
-    console.error(`[Firestore] Failed to save Income:`, error);
-    // 에러를 다시 throw하여 마이그레이션 함수에서 감지할 수 있도록
-    throw error;
-  }
+  await saveCollection(income, {
+    collectionName: 'income',
+    storageKey: 'finance-income',
+    label: 'Income',
+    dateFields: ['as_of_date'],
+  });
 }
 
 // Liabilities
 export async function getLiabilities(): Promise<Liability[]> {
   if (typeof window === 'undefined') return [];
   if (!db) {
-    const stored = localStorage.getItem('finance-liabilities');
-    return stored ? JSON.parse(stored) : [];
+    return readLocalStorage('finance-liabilities', []);
   }
   
   try {
@@ -569,77 +387,24 @@ export async function getLiabilities(): Promise<Liability[]> {
     } as Liability));
   } catch (error) {
     // Fallback to localStorage
-    const stored = localStorage.getItem('finance-liabilities');
-    return stored ? JSON.parse(stored) : [];
+    return readLocalStorage('finance-liabilities', []);
   }
 }
 
 export async function setLiabilities(liabilities: Liability[]): Promise<void> {
-  if (typeof window === 'undefined') return;
-  if (!db) {
-    localStorage.setItem('finance-liabilities', JSON.stringify(liabilities));
-    return;
-  }
-  
-  try {
-    const firestore = db; // Type narrowing
-    const batch = writeBatch(firestore);
-    const collectionPath = getCollectionPath('liabilities');
-    
-    // 기존 Firestore 데이터 가져오기
-    const existingQuery = query(collection(firestore, collectionPath));
-    const existingSnapshot = await getDocs(existingQuery);
-    const existingIds = new Set(existingSnapshot.docs.map(doc => doc.id));
-    const newIds = new Set(liabilities.map(liability => liability.id));
-    
-    // 삭제된 항목들을 Firestore에서 제거
-    existingIds.forEach(id => {
-      if (!newIds.has(id)) {
-        const docRef = doc(firestore, collectionPath, id);
-        batch.delete(docRef);
-      }
-    });
-    
-    // 새로운/업데이트된 항목들을 저장
-    liabilities.forEach(liability => {
-      const docRef = doc(firestore, collectionPath, liability.id);
-      const { id, ...data } = liability;
-      
-      // undefined 필드 제거 (Firestore는 undefined를 허용하지 않음)
-      const cleanData: any = {};
-      Object.keys(data).forEach(key => {
-        const value = (data as any)[key];
-        if (value !== undefined) {
-          cleanData[key] = value;
-        }
-      });
-      
-      batch.set(docRef, {
-        ...cleanData,
-        as_of_date: dateToTimestamp(cleanData.as_of_date),
-      });
-    });
-    
-    await batch.commit();
-    console.log(`[Firestore] ${liabilities.length} Liabilities saved to Firebase (deleted ${existingIds.size - newIds.size}): ${getCollectionPath('liabilities')}`);
-    
-    // localStorage에도 저장 (fallback)
-    localStorage.setItem('finance-liabilities', JSON.stringify(liabilities));
-  } catch (error) {
-    // 에러 발생 시 localStorage에만 저장
-    localStorage.setItem('finance-liabilities', JSON.stringify(liabilities));
-    console.error(`[Firestore] Failed to save Liabilities:`, error);
-    // 에러를 다시 throw하여 마이그레이션 함수에서 감지할 수 있도록
-    throw error;
-  }
+  await saveCollection(liabilities, {
+    collectionName: 'liabilities',
+    storageKey: 'finance-liabilities',
+    label: 'Liabilities',
+    dateFields: ['as_of_date'],
+  });
 }
 
 // 가계부 항목
 export async function getLedgerEntries(): Promise<LedgerEntry[]> {
   if (typeof window === 'undefined') return [];
   if (!db) {
-    const stored = localStorage.getItem('finance-ledger-entries');
-    return stored ? JSON.parse(stored) : [];
+    return readLocalStorage('finance-ledger-entries', []);
   }
   
   try {
@@ -656,78 +421,24 @@ export async function getLedgerEntries(): Promise<LedgerEntry[]> {
     } as LedgerEntry));
   } catch (error) {
     // Fallback to localStorage
-    const stored = localStorage.getItem('finance-ledger-entries');
-    return stored ? JSON.parse(stored) : [];
+    return readLocalStorage('finance-ledger-entries', []);
   }
 }
 
 export async function setLedgerEntries(entries: LedgerEntry[]): Promise<void> {
-  if (typeof window === 'undefined') return;
-  if (!db) {
-    localStorage.setItem('finance-ledger-entries', JSON.stringify(entries));
-    return;
-  }
-  
-  try {
-    const firestore = db; // Type narrowing
-    const batch = writeBatch(firestore);
-    const collectionPath = getCollectionPath('ledgerEntries');
-    
-    // 기존 Firestore 데이터 가져오기
-    const existingQuery = query(collection(firestore, collectionPath));
-    const existingSnapshot = await getDocs(existingQuery);
-    const existingIds = new Set(existingSnapshot.docs.map(doc => doc.id));
-    const newIds = new Set(entries.map(entry => entry.id));
-    
-    // 삭제된 항목들을 Firestore에서 제거
-    existingIds.forEach(id => {
-      if (!newIds.has(id)) {
-        const docRef = doc(firestore, collectionPath, id);
-        batch.delete(docRef);
-      }
-    });
-    
-    // 새로운/업데이트된 항목들을 저장
-    entries.forEach(entry => {
-      const docRef = doc(firestore, collectionPath, entry.id);
-      const { id, ...data } = entry;
-      
-      // undefined 필드 제거 (Firestore는 undefined를 허용하지 않음)
-      const cleanData: any = {};
-      Object.keys(data).forEach(key => {
-        const value = (data as any)[key];
-        if (value !== undefined) {
-          cleanData[key] = value;
-        }
-      });
-      
-      batch.set(docRef, {
-        ...cleanData,
-        date: dateToTimestamp(cleanData.date),
-        as_of_date: dateToTimestamp(cleanData.as_of_date),
-      });
-    });
-    
-    await batch.commit();
-    console.log(`[Firestore] ${entries.length} Ledger Entries saved to Firebase (deleted ${existingIds.size - newIds.size}): ${getCollectionPath('ledgerEntries')}`);
-    
-    // localStorage에도 저장 (fallback)
-    localStorage.setItem('finance-ledger-entries', JSON.stringify(entries));
-  } catch (error) {
-    // 에러 발생 시 localStorage에만 저장
-    localStorage.setItem('finance-ledger-entries', JSON.stringify(entries));
-    console.error(`[Firestore] Failed to save Ledger Entries:`, error);
-    // 에러를 다시 throw하여 마이그레이션 함수에서 감지할 수 있도록
-    throw error;
-  }
+  await saveCollection(entries, {
+    collectionName: 'ledgerEntries',
+    storageKey: 'finance-ledger-entries',
+    label: 'Ledger Entries',
+    dateFields: ['date', 'as_of_date'],
+  });
 }
 
 // 월간 계획
 export async function getMonthlyPlanEntries(): Promise<MonthlyPlanEntry[]> {
   if (typeof window === 'undefined') return [];
   if (!db) {
-    const stored = localStorage.getItem('finance-monthly-plan-entries');
-    return stored ? JSON.parse(stored) : [];
+    return readLocalStorage('finance-monthly-plan-entries', []);
   }
 
   try {
@@ -742,52 +453,15 @@ export async function getMonthlyPlanEntries(): Promise<MonthlyPlanEntry[]> {
       as_of_date: timestampToDate(doc.data().as_of_date).toISOString().split('T')[0],
     } as MonthlyPlanEntry));
   } catch (error) {
-    const stored = localStorage.getItem('finance-monthly-plan-entries');
-    return stored ? JSON.parse(stored) : [];
+    return readLocalStorage('finance-monthly-plan-entries', []);
   }
 }
 
 export async function setMonthlyPlanEntries(entries: MonthlyPlanEntry[]): Promise<void> {
-  if (typeof window === 'undefined') return;
-  if (!db) {
-    localStorage.setItem('finance-monthly-plan-entries', JSON.stringify(entries));
-    return;
-  }
-
-  try {
-    const firestore = db;
-    const batch = writeBatch(firestore);
-    const collectionPath = getCollectionPath('monthlyPlanEntries');
-    const existingSnapshot = await getDocs(query(collection(firestore, collectionPath)));
-    const existingIds = new Set(existingSnapshot.docs.map(doc => doc.id));
-    const newIds = new Set(entries.map(entry => entry.id));
-
-    existingIds.forEach(id => {
-      if (!newIds.has(id)) {
-        batch.delete(doc(firestore, collectionPath, id));
-      }
-    });
-
-    entries.forEach(entry => {
-      const docRef = doc(firestore, collectionPath, entry.id);
-      const { id, ...data } = entry;
-      const cleanData: any = {};
-      Object.keys(data).forEach(key => {
-        const value = (data as any)[key];
-        if (value !== undefined) cleanData[key] = value;
-      });
-
-      batch.set(docRef, {
-        ...cleanData,
-        as_of_date: dateToTimestamp(cleanData.as_of_date),
-      });
-    });
-
-    await batch.commit();
-    localStorage.setItem('finance-monthly-plan-entries', JSON.stringify(entries));
-  } catch (error) {
-    localStorage.setItem('finance-monthly-plan-entries', JSON.stringify(entries));
-    console.error('[Firestore] Failed to save Monthly Plan Entries:', error);
-    throw error;
-  }
+  await saveCollection(entries, {
+    collectionName: 'monthlyPlanEntries',
+    storageKey: 'finance-monthly-plan-entries',
+    label: 'Monthly Plan Entries',
+    dateFields: ['as_of_date'],
+  });
 }

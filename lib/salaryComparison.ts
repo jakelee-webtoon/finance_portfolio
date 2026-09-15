@@ -125,37 +125,7 @@ export function calculateComparison(
   const p75Remaining = Math.max(0, stats.p75 - mySalary);
   const bandInOut = mySalary >= stats.p25 && mySalary <= stats.p75 ? 'IN' : 'OUT';
 
-  // 백분위수 계산 (상위 몇%로 표시)
-  // 백분위는 "하위 X% 이하"를 의미하므로, 상위 X% = 하위 (100-X)% 이하
-  let topPercent: number;
-  
-  if (mySalary <= stats.min) {
-    // 최소값 이하 → 상위 100%
-    topPercent = 100;
-  } else if (mySalary <= stats.p25) {
-    // min ~ p25 구간: 상위 75~100%
-    // 선형 보간: (mySalary - min) / (p25 - min) * 25 + 75
-    const ratio = (mySalary - stats.min) / (stats.p25 - stats.min);
-    topPercent = 75 + ratio * 25;
-  } else if (mySalary <= stats.median) {
-    // p25 ~ median 구간: 상위 50~75%
-    // 선형 보간: (mySalary - p25) / (median - p25) * 25 + 50
-    const ratio = (mySalary - stats.p25) / (stats.median - stats.p25);
-    topPercent = 50 + ratio * 25;
-  } else if (mySalary <= stats.p75) {
-    // median ~ p75 구간: 상위 25~50%
-    // 선형 보간: (mySalary - median) / (p75 - median) * 25 + 25
-    const ratio = (mySalary - stats.median) / (stats.p75 - stats.median);
-    topPercent = 25 + ratio * 25;
-  } else if (mySalary <= stats.max) {
-    // p75 ~ max 구간: 상위 0~25%
-    // 선형 보간: (mySalary - p75) / (max - p75) * 25 + 0
-    const ratio = (mySalary - stats.p75) / (stats.max - stats.p75);
-    topPercent = 25 * (1 - ratio);
-  } else {
-    // 최대값 초과 → 상위 0%
-    topPercent = 0;
-  }
+  const topPercent = calculateTopPercentile(mySalary, stats);
   
   // 소수점 첫째 자리까지 반올림
   const roundedTopPercent = Math.round(topPercent * 10) / 10;
@@ -170,4 +140,36 @@ export function calculateComparison(
     bandInOut,
     percentile,
   };
+}
+
+function interpolateTopPercent(
+  value: number,
+  lowerValue: number,
+  upperValue: number,
+  lowerTopPercent: number,
+  upperTopPercent: number
+): number {
+  if (upperValue === lowerValue) return upperTopPercent;
+  const ratio = (value - lowerValue) / (upperValue - lowerValue);
+  return lowerTopPercent + ratio * (upperTopPercent - lowerTopPercent);
+}
+
+export function calculateTopPercentile(
+  mySalary: number,
+  stats: Pick<NaverSalaryStats, 'min' | 'p25' | 'median' | 'p75' | 'max'>
+): number {
+  if (mySalary <= stats.min) return 100;
+  if (mySalary <= stats.p25) {
+    return interpolateTopPercent(mySalary, stats.min, stats.p25, 100, 75);
+  }
+  if (mySalary <= stats.median) {
+    return interpolateTopPercent(mySalary, stats.p25, stats.median, 75, 50);
+  }
+  if (mySalary <= stats.p75) {
+    return interpolateTopPercent(mySalary, stats.median, stats.p75, 50, 25);
+  }
+  if (mySalary <= stats.max) {
+    return interpolateTopPercent(mySalary, stats.p75, stats.max, 25, 0);
+  }
+  return 0;
 }
