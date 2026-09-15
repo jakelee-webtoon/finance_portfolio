@@ -16,6 +16,7 @@ import {
   ISA_SEPARATE_TAX_RATE,
   ISA_TOTAL_CONTRIBUTION_LIMIT,
   formatKrw,
+  getEtfCategoryPerformance,
   getEtfCategoryLabel,
   getHoldingCurrentValueKrw,
   getHoldingGainLossKrw,
@@ -150,17 +151,11 @@ export default function IsaPage() {
   }, [annualContributionLimit, filteredEtfs, exchangeRates, taxFreeLimit, totalContributionLimit]);
 
   const categoryRows = useMemo(() => {
-    if (!exchangeRates || summary.currentValue <= 0) return [];
-    const byCategory = filteredEtfs.reduce((acc, holding) => {
-      const label = getEtfCategoryLabel(holding.etfCategory);
-      acc[label] = (acc[label] || 0) + getHoldingCurrentValueKrw(holding, exchangeRates);
-      return acc;
-    }, {} as Record<string, number>);
+    return getEtfCategoryPerformance(filteredEtfs, exchangeRates);
+  }, [filteredEtfs, exchangeRates]);
 
-    return Object.entries(byCategory)
-      .sort((a, b) => b[1] - a[1])
-      .map(([label, value]) => ({ label, value, pct: (value / summary.currentValue) * 100 }));
-  }, [filteredEtfs, exchangeRates, summary.currentValue]);
+  const leadingCategory = categoryRows.find((row) => row.gainLoss !== 0);
+  const maxAbsCategoryGainLoss = Math.max(...categoryRows.map((row) => Math.abs(row.gainLoss)), 0);
 
   const currentUser: 'husband' | 'wife' = state?.scope === 'wife' ? 'wife' : 'husband';
 
@@ -524,7 +519,14 @@ export default function IsaPage() {
 
             <div className="col-span-12 lg:col-span-8 bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-bold text-gray-900">ETF 구성</h2>
+                <div>
+                  <h2 className="text-lg font-bold text-gray-900">ETF 구성과 성과</h2>
+                  {leadingCategory && (
+                    <p className="mt-1 text-sm text-gray-500">
+                      {leadingCategory.gainLoss > 0 ? '상승 주도' : '하락 영향'}: <span className={leadingCategory.gainLoss > 0 ? 'font-bold text-emerald-600' : 'font-bold text-rose-600'}>{leadingCategory.label}</span>
+                    </p>
+                  )}
+                </div>
                 <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-lg">{filteredEtfs.length}개 보유</span>
               </div>
               {categoryRows.length === 0 ? (
@@ -541,7 +543,7 @@ export default function IsaPage() {
                           innerRadius={64}
                           outerRadius={104}
                           paddingAngle={3}
-                          dataKey="value"
+                          dataKey="currentValue"
                           nameKey="label"
                           minAngle={2}
                         >
@@ -552,8 +554,8 @@ export default function IsaPage() {
                         <Tooltip
                           contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
                           formatter={(value: number, _name, item) => {
-                            const row = item.payload as { pct?: number };
-                            return [`${formatKrw(value)} · ${(row.pct || 0).toFixed(1)}%`, '평가금액'];
+                            const row = item.payload as { allocationPct?: number };
+                            return [`${formatKrw(value)} · ${(row.allocationPct || 0).toFixed(1)}%`, '평가금액'];
                           }}
                         />
                       </PieChart>
@@ -565,17 +567,32 @@ export default function IsaPage() {
                   </div>
                   <div className="space-y-2">
                     {categoryRows.map((row, index) => (
-                      <div key={row.label} className="flex items-center justify-between gap-3 rounded-lg bg-gray-50 px-3 py-2">
-                        <div className="flex min-w-0 items-center gap-2">
-                          <span
-                            className="h-2.5 w-2.5 shrink-0 rounded-full"
-                            style={{ backgroundColor: ETF_CATEGORY_COLORS[index % ETF_CATEGORY_COLORS.length] }}
-                          />
-                          <span className="truncate text-sm font-semibold text-gray-700">{row.label}</span>
+                      <div key={row.label} className="rounded-lg bg-gray-50 px-3 py-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <span
+                              className="h-2.5 w-2.5 shrink-0 rounded-full"
+                              style={{ backgroundColor: ETF_CATEGORY_COLORS[index % ETF_CATEGORY_COLORS.length] }}
+                            />
+                            <div className="min-w-0">
+                              <div className="truncate text-sm font-bold text-gray-800">{row.label}</div>
+                              <div className="text-xs text-gray-500">{row.holdingsCount}개 · 비중 {row.allocationPct.toFixed(1)}%</div>
+                            </div>
+                          </div>
+                          <div className="shrink-0 text-right">
+                            <div className={`text-sm font-black ${row.gainLoss >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                              {row.returnPct >= 0 ? '+' : ''}{row.returnPct.toFixed(2)}%
+                            </div>
+                            <div className={`text-xs font-semibold ${row.gainLoss >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                              {row.gainLoss >= 0 ? '+' : ''}{formatKrw(row.gainLoss)}
+                            </div>
+                          </div>
                         </div>
-                        <div className="shrink-0 text-right">
-                          <div className="text-sm font-bold text-gray-900">{row.pct.toFixed(1)}%</div>
-                          <div className="text-xs text-gray-500">{formatKrw(row.value)}</div>
+                        <div className="mt-3 h-2 overflow-hidden rounded-full bg-white">
+                          <div
+                            className={`h-full rounded-full ${row.gainLoss >= 0 ? 'bg-emerald-500' : 'bg-rose-500'}`}
+                            style={{ width: `${maxAbsCategoryGainLoss > 0 ? Math.max(6, (Math.abs(row.gainLoss) / maxAbsCategoryGainLoss) * 100) : 0}%` }}
+                          />
                         </div>
                       </div>
                     ))}

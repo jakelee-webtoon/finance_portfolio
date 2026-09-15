@@ -14,6 +14,7 @@ const {
 } = require('../lib/salaryFormat.ts');
 const {
   getHoldingCurrentValueKrw,
+  getEtfCategoryPerformance,
   getHoldingGainLossKrw,
   getHoldingPurchaseValueKrw,
   isIsaEtfHolding,
@@ -92,4 +93,42 @@ test('investment helpers classify holdings and convert to KRW', () => {
   assert.equal(getHoldingPurchaseValueKrw(holding, rates), 1_350_000);
   assert.equal(getHoldingCurrentValueKrw(holding, rates), 1_620_000);
   assert.equal(getHoldingGainLossKrw(holding, rates), 270_000);
+});
+
+test('ETF category performance groups ISA holdings by category', () => {
+  const rates = { USD_TO_KRW: 1350, EUR_TO_KRW: 1450 };
+  const baseHolding = {
+    id: 'base',
+    symbol: '360750',
+    name: 'TIGER 미국S&P500',
+    quantity: 10,
+    purchasePrice: 10_000,
+    currentPrice: 11_000,
+    owner: 'joint',
+    currency: 'KRW',
+    exchange: 'KRX',
+    type: 'etf',
+    accountType: 'isa',
+    source_type: 'manual',
+    as_of_date: '2026-09-15',
+    last_modified_by: 'husband',
+  };
+
+  const rows = getEtfCategoryPerformance([
+    { ...baseHolding, id: 'sp500-1', etfCategory: 'sp500' },
+    { ...baseHolding, id: 'sp500-2', etfCategory: 'sp500', quantity: 5, purchasePrice: 20_000, currentPrice: 19_000 },
+    { ...baseHolding, id: 'nasdaq-1', etfCategory: 'nasdaq100', purchasePrice: 10_000, currentPrice: 12_000 },
+  ], rates);
+
+  const sp500 = rows.find((row) => row.category === 'sp500');
+  const nasdaq = rows.find((row) => row.category === 'nasdaq100');
+
+  assert.equal(rows.length, 2);
+  assert.equal(sp500.label, 'S&P500');
+  assert.equal(sp500.currentValue, 205_000);
+  assert.equal(sp500.purchaseValue, 200_000);
+  assert.equal(sp500.gainLoss, 5_000);
+  assert.equal(sp500.holdingsCount, 2);
+  assert.equal(nasdaq.gainLoss, 20_000);
+  assert.ok(Math.abs(nasdaq.returnPct - 20) < Number.EPSILON * 64);
 });

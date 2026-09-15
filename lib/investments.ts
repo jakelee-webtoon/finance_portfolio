@@ -34,6 +34,59 @@ export function getHoldingGainLossKrw(holding: StockHolding, exchangeRates: Reco
   return getHoldingCurrentValueKrw(holding, exchangeRates) - getHoldingPurchaseValueKrw(holding, exchangeRates);
 }
 
+export interface EtfCategoryPerformance {
+  category: NonNullable<StockHolding['etfCategory']>;
+  label: string;
+  currentValue: number;
+  purchaseValue: number;
+  gainLoss: number;
+  returnPct: number;
+  allocationPct: number;
+  holdingsCount: number;
+}
+
+export function getEtfCategoryPerformance(
+  holdings: StockHolding[],
+  exchangeRates: Record<string, number> | null
+): EtfCategoryPerformance[] {
+  if (!exchangeRates) return [];
+
+  const totals = holdings.reduce((acc, holding) => {
+    const category = holding.etfCategory || 'other';
+    const currentValue = getHoldingCurrentValueKrw(holding, exchangeRates);
+    const purchaseValue = getHoldingPurchaseValueKrw(holding, exchangeRates);
+
+    if (!acc[category]) {
+      acc[category] = {
+        category,
+        label: getEtfCategoryLabel(category),
+        currentValue: 0,
+        purchaseValue: 0,
+        gainLoss: 0,
+        returnPct: 0,
+        allocationPct: 0,
+        holdingsCount: 0,
+      };
+    }
+
+    acc[category].currentValue += currentValue;
+    acc[category].purchaseValue += purchaseValue;
+    acc[category].gainLoss += currentValue - purchaseValue;
+    acc[category].holdingsCount += 1;
+    return acc;
+  }, {} as Record<NonNullable<StockHolding['etfCategory']>, EtfCategoryPerformance>);
+
+  const totalCurrentValue = Object.values(totals).reduce((sum, row) => sum + row.currentValue, 0);
+
+  return Object.values(totals)
+    .map((row) => ({
+      ...row,
+      returnPct: row.purchaseValue > 0 ? (row.gainLoss / row.purchaseValue) * 100 : 0,
+      allocationPct: totalCurrentValue > 0 ? (row.currentValue / totalCurrentValue) * 100 : 0,
+    }))
+    .sort((a, b) => Math.abs(b.gainLoss) - Math.abs(a.gainLoss));
+}
+
 export function getEtfCategoryLabel(category?: StockHolding['etfCategory']): string {
   const labels: Record<string, string> = {
     sp500: 'S&P500',
