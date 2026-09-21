@@ -17,8 +17,53 @@ export default function SalaryStatsTable({
 }: SalaryStatsTableProps) {
   const comparisons = stats.map((stat) => calculateComparison(mySalary, stat));
 
+  const getPercentiles = (stat: NaverSalaryStats) => ({
+    p90: stat.p90 ?? Math.round(stat.p75 + (stat.max - stat.p75) * (90 - 75) / (100 - 75)),
+    p95: stat.p95 ?? Math.round(stat.p75 + (stat.max - stat.p75) * (95 - 75) / (100 - 75)),
+  });
+
   return (
-    <div className="overflow-x-auto">
+    <>
+      <div className="space-y-3 sm:hidden">
+        {comparisons.map((comp) => {
+          const { stats: stat, medianGapPct, percentile } = comp;
+          const { p90, p95 } = getPercentiles(stat);
+          const values = [
+            ['MIN', stat.min],
+            ['하위 25%', stat.p25],
+            ['중위', stat.median],
+            ['평균', stat.avg],
+            ['상위 25%', stat.p75],
+            ['상위 10%', p90],
+            ['상위 5%', p95],
+            ['MAX', stat.max],
+          ] as const;
+
+          return (
+            <article key={`${stat.org}-${stat.scope}`} className="rounded-lg border border-gray-200 bg-white p-4">
+              <div className="mb-3 flex items-start justify-between gap-3 border-b border-gray-100 pb-3">
+                <div className="font-bold text-gray-900">{orgLabels[stat.org]}</div>
+                <div className={`text-right text-sm font-semibold ${medianGapPct >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  <div>중위 대비 {formatPercentage(medianGapPct)}</div>
+                  {percentile && <div className="mt-0.5 text-xs font-normal text-gray-500">{percentile}</div>}
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+                {values.map(([label, value]) => (
+                  <div key={label}>
+                    <div className="text-[11px] font-semibold text-gray-400">{label}</div>
+                    <div className={`mt-1 text-sm text-gray-700 ${label === '중위' ? 'font-bold' : 'font-medium'}`}>
+                      {formatNumber(value, unit)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </article>
+          );
+        })}
+      </div>
+
+      <div className="hidden overflow-x-auto sm:block">
       <table className="w-full text-sm">
         <thead className="bg-gray-50 sticky top-0">
           <tr>
@@ -58,10 +103,7 @@ export default function SalaryStatsTable({
           {comparisons.map((comp) => {
             const { stats: stat, medianGapPct, percentile } = comp;
             
-            // P90, P95 계산 (P75와 Max 사이를 선형 보간)
-            // P75 = 75%, Max = 100%로 가정하고 선형 보간
-            const p90 = stat.p90 ?? Math.round(stat.p75 + (stat.max - stat.p75) * (90 - 75) / (100 - 75));
-            const p95 = stat.p95 ?? Math.round(stat.p75 + (stat.max - stat.p75) * (95 - 75) / (100 - 75));
+            const { p90, p95 } = getPercentiles(stat);
             
             return (
               <tr key={`${stat.org}-${stat.scope}`} className="hover:bg-gray-50">
@@ -111,6 +153,7 @@ export default function SalaryStatsTable({
           })}
         </tbody>
       </table>
-    </div>
+      </div>
+    </>
   );
 }

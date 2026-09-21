@@ -859,7 +859,7 @@ export default function RSUPage() {
       <div className="min-h-screen bg-gray-50">
         <TopBar />
         <Navigation />
-        <div className="p-6">로딩 중...</div>
+        <div className="px-3 py-4 sm:p-6">로딩 중...</div>
       </div>
     );
   }
@@ -868,9 +868,9 @@ export default function RSUPage() {
     <div className="min-h-screen bg-gray-50">
       <TopBar />
       <Navigation />
-      <div className="p-6">
+      <div className="px-3 py-4 sm:p-6">
         <div className="max-w-7xl mx-auto">
-          <div className="flex items-center justify-between mb-6">
+          <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h1 className="text-2xl font-bold text-gray-900">RSU/옵션</h1>
             <div className="flex gap-2">
               <button
@@ -903,7 +903,7 @@ export default function RSUPage() {
 
           {/* 통계 카드 */}
           <div className="mb-8">
-            <div className="grid grid-cols-12 gap-4">
+            <div className="mobile-metrics grid grid-cols-12 gap-4">
               {/* 카드 1: 현재 평가 금액 (미실현) */}
               <div className="col-span-12 md:col-span-3 bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
                 <div className="flex items-center justify-between mb-3">
@@ -989,9 +989,9 @@ export default function RSUPage() {
                   return (
                     <div>
                       <div className="text-lg font-bold text-gray-900">{nextVesting.name}</div>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className="text-sm text-purple-600 font-bold">{diffDays === 0 ? '오늘' : `${diffDays}일 남음`}</span>
-                        <span className="text-xs text-gray-400">({nextVesting.vestingDate})</span>
+                      <div className="mt-1 flex flex-col items-start gap-0.5 sm:flex-row sm:items-center sm:gap-2">
+                        <span className="whitespace-nowrap text-sm font-bold text-purple-600">{diffDays === 0 ? '오늘' : `${diffDays}일 남음`}</span>
+                        <span className="whitespace-nowrap text-xs text-gray-400">({nextVesting.vestingDate})</span>
                       </div>
                     </div>
                   );
@@ -1132,7 +1132,7 @@ export default function RSUPage() {
                   </div>
 
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         소유자 *

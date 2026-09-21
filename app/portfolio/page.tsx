@@ -602,7 +602,7 @@ export default function PortfolioPage() {
       <div className="min-h-screen bg-gray-50">
         <TopBar />
         <Navigation />
-        <div className="p-6">로딩 중...</div>
+        <div className="px-3 py-4 sm:p-6">로딩 중...</div>
       </div>
     );
   }
@@ -611,9 +611,9 @@ export default function PortfolioPage() {
     <div className="min-h-screen bg-gray-50">
       <TopBar />
       <Navigation />
-      <div className="p-6">
+      <div className="px-3 py-4 sm:p-6">
         <div className="max-w-7xl mx-auto">
-          <div className="flex items-center justify-between mb-6">
+          <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h1 className="text-2xl font-bold text-gray-900">포트폴리오</h1>
             <button
               onClick={() => {
@@ -661,7 +661,7 @@ export default function PortfolioPage() {
 
           {/* 통계 카드 */}
           {activeTab === 'assets' ? (
-            <div className="grid grid-cols-12 gap-4 mb-8">
+            <div className="mobile-metrics grid grid-cols-12 gap-4 mb-8">
               <div className="col-span-12 md:col-span-4 bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
                 <div className="flex items-center justify-between mb-3">
                   <div className="p-2 bg-emerald-50 rounded-lg text-emerald-600">
@@ -709,7 +709,7 @@ export default function PortfolioPage() {
               </div>
             </div>
           ) : (
-            <div className="grid grid-cols-12 gap-4 mb-8">
+            <div className="mobile-metrics grid grid-cols-12 gap-4 mb-8">
               <div className="col-span-12 md:col-span-6 bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
                 <div className="flex items-center justify-between mb-3">
                   <div className="p-2 bg-rose-50 rounded-lg text-rose-600">
@@ -814,7 +814,7 @@ export default function PortfolioPage() {
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         소유자 *

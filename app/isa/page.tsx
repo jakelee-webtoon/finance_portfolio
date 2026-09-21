@@ -423,7 +423,7 @@ export default function IsaPage() {
       <div className="min-h-screen bg-gray-50">
         <TopBar />
         <Navigation />
-        <div className="p-6">로딩 중...</div>
+        <div className="px-3 py-4 sm:p-6">로딩 중...</div>
       </div>
     );
   }
@@ -432,7 +432,7 @@ export default function IsaPage() {
     <div className="min-h-screen bg-gray-50">
       <TopBar />
       <Navigation />
-      <div className="p-6">
+      <div className="px-3 py-4 sm:p-6">
         <div className="max-w-7xl mx-auto">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
             <div>
@@ -470,7 +470,7 @@ export default function IsaPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-12 gap-4 mb-8">
+          <div className="mobile-metrics grid grid-cols-12 gap-4 mb-8">
             <div className="col-span-12 lg:col-span-6 bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
               <div className="flex items-center justify-between mb-3">
                 <h2 className="text-lg font-bold text-gray-900">ISA 계좌란?</h2>

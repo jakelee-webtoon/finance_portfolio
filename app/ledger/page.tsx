@@ -371,7 +371,7 @@ export default function LedgerPage() {
       <div className="min-h-screen bg-gray-50">
         <TopBar />
         <Navigation />
-        <div className="p-6">로딩 중...</div>
+        <div className="px-3 py-4 sm:p-6">로딩 중...</div>
       </div>
     );
   }
@@ -382,9 +382,9 @@ export default function LedgerPage() {
     <div className="min-h-screen bg-gray-50">
       <TopBar />
       <Navigation />
-      <div className="p-6">
+      <div className="px-3 py-4 sm:p-6">
         <div className="max-w-7xl mx-auto">
-          <div className="flex items-center justify-between mb-6">
+          <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h1 className="text-2xl font-bold text-gray-900">{monthLabel}</h1>
             <button
               onClick={() => {
@@ -399,9 +399,9 @@ export default function LedgerPage() {
             </button>
           </div>
 
-          <div className="grid grid-cols-12 gap-4">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
             {/* 4개 컬럼: 고정비, 변동비, 수입, 저축 */}
-            <div className="col-span-8 grid grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:col-span-8 xl:grid-cols-4">
               {/* 고정비 */}
               <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
                 <h2 className="text-lg font-semibold text-gray-900 mb-3">고정비</h2>
@@ -592,7 +592,7 @@ export default function LedgerPage() {
             </div>
 
             {/* 우측: 지출 평가 + 파이 차트 */}
-            <div className="col-span-4 space-y-4">
+            <div className="space-y-4 lg:col-span-4">
               {/* 지출 평가 */}
               <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
                 <h2 className="text-lg font-semibold text-gray-900 mb-3">지출평가</h2>

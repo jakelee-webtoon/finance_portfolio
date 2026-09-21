@@ -66,14 +66,49 @@ export default function Table<T extends Record<string, any>>({
     }
   };
 
+  const handleMobileSort = (value: string) => {
+    if (!value) {
+      setSortColumn(null);
+      setSortDirection(null);
+      return;
+    }
+
+    const separatorIndex = value.lastIndexOf(':');
+    setSortColumn(value.slice(0, separatorIndex));
+    setSortDirection(value.slice(separatorIndex + 1) as Exclude<SortDirection, null>);
+  };
+
   const formatNumber = (value: number) => {
     return new Intl.NumberFormat('ko-KR').format(value);
   };
 
+  const renderValue = (row: T, column: Column<T>) => {
+    const value = row[column.key as keyof T];
+    if (column.render) return column.render(value, row);
+    if (typeof value === 'number') return formatNumber(value);
+    return String(value || '');
+  };
+
+  const sortableColumns = columns.filter((column) => column.sortable);
+  const mobileSortValue = sortColumn && sortDirection ? `${String(sortColumn)}:${sortDirection}` : '';
+  const wrappingLabels = new Set([
+    '주소',
+    '내용',
+    '비고',
+    'ETF명',
+    '주식명',
+    '자산명',
+    '부채명',
+    '아파트명',
+    '항목명',
+    '현금명',
+    '수입원',
+  ]);
+
   return (
-    <div className={`bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden max-w-full min-w-0 ${className}`}>
+    <div className={`min-w-0 max-w-full sm:overflow-hidden sm:rounded-lg sm:border sm:border-gray-100 sm:bg-white sm:shadow-sm ${className}`}>
       {searchable && (
-        <div className="p-4 border-b border-gray-100 bg-gray-50/30">
+        <div className="hidden border-b border-gray-100 bg-gray-50/30 p-4 sm:block">
           <div className="relative">
             <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -91,14 +126,112 @@ export default function Table<T extends Record<string, any>>({
         </div>
       )}
 
-      <div className="overflow-x-auto">
-        <table className="w-full border-collapse">
+      {(searchable || sortableColumns.length > 0) && (
+        <div className="mb-3 grid grid-cols-[minmax(0,1fr)_auto] gap-2 sm:hidden">
+          {searchable ? (
+            <div className="relative">
+              <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400" aria-hidden="true">⌕</span>
+              <input
+                type="text"
+                placeholder={searchPlaceholder}
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                className="h-10 w-full rounded-md border border-gray-200 bg-white pl-9 pr-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+              />
+            </div>
+          ) : (
+            <div />
+          )}
+          {sortableColumns.length > 0 && (
+            <select
+              aria-label="정렬 기준"
+              value={mobileSortValue}
+              onChange={(event) => handleMobileSort(event.target.value)}
+              className="h-10 max-w-[8.5rem] rounded-md border border-gray-200 bg-white px-2 text-sm text-gray-700 focus:border-blue-500 focus:outline-none"
+            >
+              <option value="">기본 정렬</option>
+              {sortableColumns.flatMap((column) => [
+                <option key={`${String(column.key)}-asc`} value={`${String(column.key)}:asc`}>{column.label} ↑</option>,
+                <option key={`${String(column.key)}-desc`} value={`${String(column.key)}:desc`}>{column.label} ↓</option>,
+              ])}
+            </select>
+          )}
+        </div>
+      )}
+
+      <div className="space-y-3 sm:hidden">
+        {sortedData.length === 0 ? (
+          <div className="rounded-lg border border-gray-200 bg-white px-4 py-10 text-center text-sm text-gray-400">
+            데이터가 없습니다
+          </div>
+        ) : (
+          sortedData.map((row, rowIndex) => {
+            const actionColumn = columns.find((column) => column.label === '작업' || column.label === '관리');
+            const identityColumns = columns.filter((column) => column !== actionColumn).slice(0, 2);
+            const dataColumns = columns.filter((column) => column !== actionColumn).slice(2);
+            const summaryColumns = dataColumns.slice(0, 4);
+            const detailColumns = dataColumns.slice(4);
+
+            const renderMobileField = (column: Column<T>) => (
+              <div key={String(column.key)} className="min-w-0">
+                <div className="text-[11px] font-semibold text-gray-400">{column.label}</div>
+                <div className={`mt-1 min-w-0 text-sm font-medium text-gray-700 ${
+                  wrappingLabels.has(column.label) ? '[overflow-wrap:anywhere]' : 'whitespace-nowrap'
+                }`}>
+                  {renderValue(row, column)}
+                </div>
+              </div>
+            );
+
+            return (
+              <article key={String(row.id ?? rowIndex)} className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+                <div className="border-b border-gray-100 pb-3">
+                  <div className="text-base font-bold text-gray-900">
+                    {identityColumns[0] ? renderValue(row, identityColumns[0]) : `항목 ${rowIndex + 1}`}
+                  </div>
+                  {identityColumns[1] && (
+                    <div className="mt-0.5 text-sm text-gray-500 [overflow-wrap:anywhere]">
+                      {renderValue(row, identityColumns[1])}
+                    </div>
+                  )}
+                </div>
+
+                {summaryColumns.length > 0 && (
+                  <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3">
+                    {summaryColumns.map(renderMobileField)}
+                  </div>
+                )}
+
+                {detailColumns.length > 0 && (
+                  <details className="mt-3 border-t border-gray-100 pt-2">
+                    <summary className="cursor-pointer list-none py-1 text-xs font-semibold text-blue-600">
+                      상세 정보 보기
+                    </summary>
+                    <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-3">
+                      {detailColumns.map(renderMobileField)}
+                    </div>
+                  </details>
+                )}
+
+                {actionColumn && (
+                  <div className="mt-3 border-t border-gray-100 pt-3 [&>div]:flex-wrap">
+                    {renderValue(row, actionColumn)}
+                  </div>
+                )}
+              </article>
+            );
+          })
+        )}
+      </div>
+
+      <div className="hidden overflow-x-auto sm:block">
+        <table className="w-max min-w-full border-collapse">
           <thead>
             <tr className="bg-gray-50/80">
               {columns.map((column) => (
                 <th
                   key={String(column.key)}
-                  className={`px-6 py-4 text-left text-[11px] font-bold text-gray-500 uppercase tracking-widest border-b border-gray-100 ${
+                  className={`whitespace-nowrap px-3 py-3 text-left text-[11px] font-bold text-gray-500 uppercase tracking-widest border-b border-gray-100 xl:px-4 ${
                     column.sortable ? 'cursor-pointer hover:bg-gray-100 transition-colors' : ''
                   }`}
                   onClick={() => column.sortable && handleSort(column.key)}
@@ -119,7 +252,7 @@ export default function Table<T extends Record<string, any>>({
           <tbody className="divide-y divide-gray-50">
             {sortedData.length === 0 ? (
               <tr>
-                <td colSpan={columns.length} className="px-6 py-12 text-center text-gray-400 text-sm italic">
+                <td colSpan={columns.length} className="px-4 py-12 text-center text-gray-400 text-sm italic">
                   데이터가 없습니다
                 </td>
               </tr>
@@ -127,14 +260,9 @@ export default function Table<T extends Record<string, any>>({
               sortedData.map((row, idx) => (
                 <tr key={idx} className="group hover:bg-blue-50/30 transition-colors">
                   {columns.map((column) => {
-                    const value = row[column.key as keyof T];
                     return (
-                      <td key={String(column.key)} className="px-6 py-4 text-sm text-gray-600 font-medium">
-                        {column.render
-                          ? column.render(value, row)
-                          : typeof value === 'number'
-                          ? formatNumber(value)
-                          : String(value || '')}
+                      <td key={String(column.key)} className="whitespace-nowrap px-3 py-3 text-sm text-gray-600 font-medium xl:px-4 [&_button]:whitespace-nowrap">
+                        {renderValue(row, column)}
                       </td>
                     );
                   })}

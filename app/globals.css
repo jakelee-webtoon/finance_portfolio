@@ -19,6 +19,7 @@ html {
   overflow-x: clip;
   max-width: 100%;
   overscroll-behavior-x: none;
+  overflow-anchor: none;
 }
 
 body {
@@ -30,6 +31,113 @@ body {
   overscroll-behavior-x: none;
   /* Pretendard 미로딩 시 첫 렌더 지연 방지 — 시스템 폰트 우선 */
   font-family: -apple-system, BlinkMacSystemFont, system-ui, 'Segoe UI', Roboto, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif;
+}
+
+.top-navigation {
+  top: var(--topbar-height, 8rem);
+  transition: top 200ms ease-out;
+}
+
+html[data-mobile-topbar='hidden'] .top-navigation {
+  top: 0;
+}
+
+@media (min-width: 1024px) {
+  .top-navigation {
+    top: var(--topbar-height, 73px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .top-navigation {
+    transition: none;
+  }
+}
+
+@media (max-width: 639px) {
+  .mobile-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+  }
+
+  .mobile-metrics > * {
+    grid-column: span 1 / span 1;
+    min-width: 0;
+    padding: 1rem;
+    border-radius: 0.5rem;
+  }
+
+  .mobile-metrics > :last-child:nth-child(odd) {
+    grid-column: span 2 / span 2;
+  }
+
+  .mobile-metrics .text-2xl,
+  .mobile-metrics .text-xl,
+  .mobile-metrics .text-3xl {
+    font-size: 1rem;
+    line-height: 1.4;
+    letter-spacing: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .mobile-metrics .mb-3 {
+    margin-bottom: 0.5rem;
+  }
+
+  .mobile-card-table,
+  .mobile-card-table tbody,
+  .mobile-card-table tr,
+  .mobile-card-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .mobile-card-table thead {
+    display: none;
+  }
+
+  .mobile-card-table tbody {
+    padding: 0.75rem;
+    background: #f8fafc;
+  }
+
+  .mobile-card-table tbody tr {
+    margin-bottom: 0.75rem;
+    overflow: hidden;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.5rem;
+    background: #ffffff;
+  }
+
+  .mobile-card-table tbody tr:last-child {
+    margin-bottom: 0;
+  }
+
+  .mobile-card-table tbody td {
+    display: grid;
+    grid-template-columns: 5.25rem minmax(0, 1fr);
+    gap: 0.75rem;
+    align-items: start;
+    padding: 0.65rem 0.875rem;
+    white-space: nowrap;
+    border-bottom: 1px solid #f3f4f6;
+  }
+
+  .mobile-card-table tbody td:last-child {
+    border-bottom: 0;
+  }
+
+  .mobile-card-table tbody td[data-label='비고'] {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .mobile-card-table tbody td::before {
+    content: attr(data-label);
+    color: #9ca3af;
+    font-size: 0.6875rem;
+    font-weight: 600;
+  }
 }
 
 @layer components {

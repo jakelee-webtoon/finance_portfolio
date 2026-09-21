@@ -301,7 +301,7 @@ export default function MonthlyPlanPage() {
       <div className="min-h-screen bg-gray-50">
         <TopBar />
         <Navigation />
-        <div className="p-6">로딩 중...</div>
+        <div className="px-3 py-4 sm:p-6">로딩 중...</div>
       </div>
     );
   }
@@ -317,7 +317,7 @@ export default function MonthlyPlanPage() {
             <p className="text-sm text-gray-500 mt-1">{state.baseMonth} 기준 투자, 저축, 현금 확보 실행표</p>
           </div>
 
-          <div className="grid grid-cols-12 gap-4 mb-6">
+          <div className="mobile-metrics grid grid-cols-12 gap-4 mb-6">
             <CompactMetric label="월간 목표" value={formatKrw(planSummary.target)} />
             <CompactMetric label="월간 실적" value={formatKrw(planSummary.actual)} />
             <CompactMetric label="완료율" value={`${planSummary.completionRate.toFixed(0)}%`} />
@@ -511,7 +511,7 @@ function CompactMetric({ label, value, tone = 'gray' }: { label: string; value: 
   return (
     <div className="col-span-12 sm:col-span-6 lg:col-span-3 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
       <div className="text-xs font-medium text-gray-500">{label}</div>
-      <div className={`mt-2 text-2xl font-bold tracking-tight ${toneClass}`}>{value}</div>
+      <div className={`mt-2 text-lg font-bold sm:text-2xl ${toneClass}`}>{value}</div>
     </div>
   );
 }

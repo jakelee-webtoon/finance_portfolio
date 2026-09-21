@@ -18,7 +18,46 @@ export default function SalaryGapTable({
   const comparisons = stats.map((stat) => calculateComparison(mySalary, stat));
 
   return (
-    <div className="overflow-x-auto">
+    <>
+      <div className="space-y-3 sm:hidden">
+        {comparisons.map((comp) => {
+          const { org, medianGapAmount, medianGapPct, p75Remaining, bandInOut } = comp;
+          const gapTone = medianGapAmount >= 0 ? 'text-green-600' : 'text-red-600';
+
+          return (
+            <article key={`${org}-${comp.stats.scope}`} className="rounded-lg border border-gray-200 bg-white p-4">
+              <div className="mb-3 flex items-center justify-between border-b border-gray-100 pb-3">
+                <div className="font-bold text-gray-900">{orgLabels[org]}</div>
+                <span className={`rounded px-2 py-1 text-xs font-medium ${
+                  bandInOut === 'IN' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'
+                }`}>
+                  {bandInOut === 'IN' ? '밴드 내' : '밴드 외'}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <div className="text-[11px] font-semibold text-gray-400">중위 대비 금액</div>
+                  <div className={`mt-1 text-sm font-bold ${gapTone}`}>
+                    {medianGapAmount >= 0 ? '+' : ''}{formatNumber(medianGapAmount, unit)}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[11px] font-semibold text-gray-400">중위 대비 비율</div>
+                  <div className={`mt-1 text-sm font-bold ${gapTone}`}>{formatPercentage(medianGapPct)}</div>
+                </div>
+                <div className="col-span-2">
+                  <div className="text-[11px] font-semibold text-gray-400">상위 25%까지</div>
+                  <div className={`mt-1 text-sm font-semibold ${p75Remaining > 0 ? 'text-orange-600' : 'text-green-600'}`}>
+                    {p75Remaining > 0 ? formatNumber(p75Remaining, unit) : '달성'}
+                  </div>
+                </div>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+
+      <div className="hidden overflow-x-auto sm:block">
       <table className="w-full text-sm">
         <thead className="bg-gray-50 sticky top-0">
           <tr>
@@ -93,6 +132,7 @@ export default function SalaryGapTable({
           })}
         </tbody>
       </table>
-    </div>
+      </div>
+    </>
   );
 }

@@ -3,7 +3,11 @@
 import { useState, useEffect } from 'react';
 import { getExchangeRates } from '@/lib/exchangeRate';
 
-export default function ExchangeRateDisplay() {
+interface ExchangeRateDisplayProps {
+  compact?: boolean;
+}
+
+export default function ExchangeRateDisplay({ compact = false }: ExchangeRateDisplayProps) {
   const [rates, setRates] = useState<Record<string, number> | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -37,8 +41,12 @@ export default function ExchangeRateDisplay() {
   return (
     <div className="text-xs text-gray-500 flex flex-wrap items-center gap-x-2 gap-y-0.5 tabular-nums">
       <span className="whitespace-nowrap">USD/KRW {rates.USD_TO_KRW?.toFixed(2)}</span>
-      <span className="text-gray-300 hidden sm:inline">|</span>
-      <span className="whitespace-nowrap sm:inline">KRW/USD {rates.KRW_TO_USD?.toFixed(4)}</span>
+      {!compact && (
+        <>
+          <span className="text-gray-300 hidden sm:inline">|</span>
+          <span className="whitespace-nowrap sm:inline">KRW/USD {rates.KRW_TO_USD?.toFixed(4)}</span>
+        </>
+      )}
     </div>
   );
 }

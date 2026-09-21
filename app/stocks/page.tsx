@@ -551,7 +551,7 @@ export default function StocksPage() {
       <div className="min-h-screen bg-gray-50">
         <TopBar />
         <Navigation />
-        <div className="p-6">로딩 중...</div>
+        <div className="px-3 py-4 sm:p-6">로딩 중...</div>
       </div>
     );
   }
@@ -560,9 +560,9 @@ export default function StocksPage() {
     <div className="min-h-screen bg-gray-50">
       <TopBar />
       <Navigation />
-      <div className="p-6">
+      <div className="px-3 py-4 sm:p-6">
         <div className="max-w-7xl mx-auto">
-          <div className="flex items-center justify-between mb-6">
+          <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h1 className="text-2xl font-bold text-gray-900">주식</h1>
             <div className="flex gap-2">
               <button
@@ -584,7 +584,7 @@ export default function StocksPage() {
           </div>
 
           {/* 시장 지수 */}
-          <div className="grid grid-cols-12 gap-4 mb-8">
+          <div className="mobile-metrics grid grid-cols-12 gap-4 mb-8">
             {Object.values(marketIndices).map((index) => {
               const isPositive = index.change >= 0;
               return (
@@ -624,7 +624,7 @@ export default function StocksPage() {
           </div>
 
           {/* 통계 카드 */}
-          <div className="grid grid-cols-12 gap-4 mb-8">
+          <div className="mobile-metrics grid grid-cols-12 gap-4 mb-8">
             <div className="col-span-12 md:col-span-4 bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
               <div className="flex items-center justify-between mb-3">
                 <div className="p-2 bg-blue-50 rounded-lg text-blue-600">
@@ -730,7 +730,7 @@ export default function StocksPage() {
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         수량 *
@@ -764,7 +764,7 @@ export default function StocksPage() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         소유자 *

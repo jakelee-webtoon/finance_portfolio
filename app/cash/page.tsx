@@ -274,7 +274,7 @@ export default function CashPage() {
       <div className="min-h-screen bg-gray-50">
         <TopBar />
         <Navigation />
-        <div className="p-6">로딩 중...</div>
+        <div className="px-3 py-4 sm:p-6">로딩 중...</div>
       </div>
     );
   }
@@ -283,9 +283,9 @@ export default function CashPage() {
     <div className="min-h-screen bg-gray-50">
       <TopBar />
       <Navigation />
-      <div className="p-6">
+      <div className="px-3 py-4 sm:p-6">
         <div className="max-w-7xl mx-auto">
-          <div className="flex items-center justify-between mb-6">
+          <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h1 className="text-2xl font-bold text-gray-900">현금</h1>
             <button
               onClick={() => setIsFormOpen(true)}
@@ -296,7 +296,7 @@ export default function CashPage() {
           </div>
 
           {/* 통계 카드 */}
-          <div className="grid grid-cols-12 gap-4 mb-6">
+          <div className="mobile-metrics grid grid-cols-12 gap-4 mb-6">
             <div className="col-span-12 md:col-span-4 bg-white rounded-lg shadow-sm border border-gray-200 p-4">
               <div className="text-sm text-gray-600 mb-1">총 현금</div>
               <div className="text-2xl font-bold text-gray-900">
@@ -350,7 +350,7 @@ export default function CashPage() {
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         소유자 *

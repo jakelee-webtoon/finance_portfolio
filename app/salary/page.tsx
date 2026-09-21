@@ -427,7 +427,7 @@ export default function SalaryPage() {
       <div className="min-h-screen bg-gray-50">
         <TopBar />
         <Navigation />
-        <div className="p-6">로딩 중...</div>
+        <div className="px-3 py-4 sm:p-6">로딩 중...</div>
       </div>
     );
   }
@@ -436,9 +436,9 @@ export default function SalaryPage() {
     <div className="min-h-screen bg-gray-50">
       <TopBar />
       <Navigation />
-      <div className="p-6">
+      <div className="px-3 py-4 sm:p-6">
         <div className="max-w-7xl mx-auto">
-          <div className="flex items-center justify-between mb-6">
+          <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h1 className="text-2xl font-bold text-gray-900">연봉</h1>
             <button
               onClick={() => {
@@ -459,7 +459,7 @@ export default function SalaryPage() {
           </div>
 
           {/* 최상단: 생애 총 소득, 최근 소득 */}
-          <div className="grid grid-cols-12 gap-4 mb-6">
+          <div className="mobile-metrics grid grid-cols-12 gap-4 mb-6">
             <div className="col-span-12 md:col-span-6 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
               <div className="text-sm text-gray-600 mb-1">생애 총 소득</div>
               <div className="text-3xl font-bold text-gray-900">
@@ -686,8 +686,8 @@ export default function SalaryPage() {
             <div className="p-4 border-b border-gray-200">
               <h2 className="text-lg font-semibold text-gray-900">연봉 목록</h2>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full">
+            <div>
+              <table className="mobile-card-table w-full">
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">연도</th>
@@ -729,8 +729,8 @@ export default function SalaryPage() {
                       
                       return (
                         <tr key={salary.id} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{salary.year}</td>
-                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                          <td data-label="연도" className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{salary.year}</td>
+                          <td data-label="금액" className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
                             {new Intl.NumberFormat('ko-KR').format(Math.floor(displayAmount))}원
                             {salary.currency !== 'KRW' && (
                               <span className="text-xs text-gray-500 ml-1">
@@ -738,7 +738,7 @@ export default function SalaryPage() {
                               </span>
                             )}
                           </td>
-                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                          <td data-label="상승률" className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
                             {hasChangePercent ? (
                               <span className={changePercent >= 0 ? 'text-green-600' : 'text-red-600'}>
                                 {changePercent >= 0 ? '+' : ''}{Number(changePercent).toFixed(1)}%
@@ -747,14 +747,14 @@ export default function SalaryPage() {
                               <span className="text-gray-400">-</span>
                             )}
                           </td>
-                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                          <td data-label="연차" className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
                             {salary.yearsOfExperience ? `${salary.yearsOfExperience}년차` : '-'}
                           </td>
-                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                          <td data-label="소유자" className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
                             {salary.owner === 'husband' ? '남편' : salary.owner === 'wife' ? '아내' : '공동'}
                           </td>
-                          <td className="px-4 py-3 text-sm text-gray-500">{salary.notes || '-'}</td>
-                          <td className="px-4 py-3 whitespace-nowrap text-sm">
+                          <td data-label="비고" className="px-4 py-3 text-sm text-gray-500">{salary.notes || '-'}</td>
+                          <td data-label="작업" className="px-4 py-3 whitespace-nowrap text-sm">
                             <div className="flex gap-2">
                               <button
                                 onClick={() => handleEdit(salary)}

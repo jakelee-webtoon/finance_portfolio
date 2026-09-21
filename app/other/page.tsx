@@ -261,7 +261,7 @@ export default function OtherPage() {
           </div>
 
           {/* KPI 카드 */}
-          <div className="grid grid-cols-12 gap-4 mb-6">
+          <div className="mobile-metrics grid grid-cols-12 gap-4 mb-6">
             <div className="col-span-12 sm:col-span-6 lg:col-span-3 bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
               <div className="text-sm text-gray-500 mb-1 font-medium">기타 자산 합계</div>
               <div className="text-2xl font-bold text-gray-900 tabular-nums">
