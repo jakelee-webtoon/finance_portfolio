@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
 import TopBar from '@/components/TopBar';
 import Navigation from '@/components/Navigation';
@@ -10,6 +10,7 @@ import { getDashboardState, getStockHoldings, setStockHoldings, syncFromFirebase
 import { getExchangeRates } from '@/lib/exchangeRate';
 import { EtfSearchResult, getStockPrice, getStockQuotes, searchEtfs } from '@/lib/stockApi';
 import { useAuth } from '@/hooks/useAuth';
+import { useToast } from '@/components/Toast';
 import {
   ISA_ANNUAL_CONTRIBUTION_LIMIT,
   ISA_BASIC_TAX_FREE_LIMIT,
@@ -33,6 +34,7 @@ const ETF_CATEGORY_COLORS = ['#2563EB', '#10B981', '#F59E0B', '#EF4444', '#8B5CF
 
 export default function IsaPage() {
   const isAuthenticated = useAuth();
+  const { showToast } = useToast();
   const [state, setState] = useState<DashboardState | null>(null);
   const [holdings, setHoldings] = useState<StockHolding[]>([]);
   const [exchangeRates, setExchangeRates] = useState<Record<string, number> | null>(null);
@@ -40,7 +42,10 @@ export default function IsaPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [searchResults, setSearchResults] = useState<EtfSearchResult[]>([]);
   const [isSearchingEtf, setIsSearchingEtf] = useState(false);
+  const [isUpdatingPrices, setIsUpdatingPrices] = useState(false);
   const [searchMessage, setSearchMessage] = useState('');
+  const priceUpdateIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const priceUpdateInProgressRef = useRef(false);
 
   const getInitialFormData = useCallback(() => ({
     symbol: '',
@@ -84,30 +89,67 @@ export default function IsaPage() {
     };
   }, []);
 
-  useEffect(() => {
-    if (!exchangeRates) return;
+  const updateIsaPrices = useCallback(async (forceRefresh: boolean = false, fromUserAction: boolean = false) => {
+    if (priceUpdateInProgressRef.current) return;
+    priceUpdateInProgressRef.current = true;
+    setIsUpdatingPrices(true);
 
-    const updatePrices = async () => {
+    try {
       const allHoldings = getStockHoldings();
       const etfs = allHoldings.filter(isIsaEtfHolding);
       if (etfs.length === 0) return;
 
-      const quotes = await getStockQuotes(etfs.map((holding) => holding.symbol));
+      const quotes = forceRefresh
+        ? Object.fromEntries(
+            await Promise.all(
+              etfs.map(async (holding) => {
+                const price = await getStockPrice(holding.symbol, true);
+                return [holding.symbol, price];
+              })
+            )
+          )
+        : await getStockQuotes(etfs.map((holding) => holding.symbol));
+
       const updatedAllHoldings = allHoldings.map((holding) => {
         if (!isIsaEtfHolding(holding)) return holding;
-        const quote = quotes[holding.symbol];
-        return quote && quote.price !== holding.currentPrice ? { ...holding, currentPrice: quote.price } : holding;
+        const quoteOrPrice = quotes[holding.symbol];
+        const price = typeof quoteOrPrice === 'number' ? quoteOrPrice : quoteOrPrice?.price;
+        return price !== undefined && price !== null && price !== holding.currentPrice
+          ? { ...holding, currentPrice: price }
+          : holding;
       });
 
       const hasChanges = updatedAllHoldings.some((holding, index) => holding.currentPrice !== allHoldings[index]?.currentPrice);
       if (hasChanges) {
         setHoldings(updatedAllHoldings);
         await setStockHoldings(updatedAllHoldings);
+        if (fromUserAction) showToast('ISA ETF 가격이 업데이트되었습니다.');
+      } else if (forceRefresh && fromUserAction) {
+        showToast('최신 가격입니다.');
+      }
+    } finally {
+      priceUpdateInProgressRef.current = false;
+      setIsUpdatingPrices(false);
+    }
+  }, [showToast]);
+
+  useEffect(() => {
+    if (!exchangeRates) return;
+
+    void updateIsaPrices(false, false);
+
+    if (priceUpdateIntervalRef.current) return;
+    priceUpdateIntervalRef.current = setInterval(() => {
+      void updateIsaPrices(false, false);
+    }, 60000);
+
+    return () => {
+      if (priceUpdateIntervalRef.current) {
+        clearInterval(priceUpdateIntervalRef.current);
+        priceUpdateIntervalRef.current = null;
       }
     };
-
-    updatePrices();
-  }, [exchangeRates]);
+  }, [exchangeRates, updateIsaPrices]);
 
   const filteredEtfs = useMemo(() => {
     if (!state) return [];
@@ -397,17 +439,35 @@ export default function IsaPage() {
               <h1 className="text-2xl font-bold text-gray-900">ISA</h1>
               <p className="text-sm text-gray-500 mt-1">ETF는 모두 중개형 ISA 계좌 자산으로 관리합니다.</p>
             </div>
-            <button
-              onClick={() => {
-                setFormData(getInitialFormData());
-                setEditingId(null);
-                resetEtfSearch();
-                setIsFormOpen(true);
-              }}
-              className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-semibold"
-            >
-              + ISA ETF 추가
-            </button>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <button
+                onClick={() => {
+                  void updateIsaPrices(true, true);
+                }}
+                disabled={isUpdatingPrices}
+                className={`px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors font-semibold flex items-center justify-center gap-2 ${isUpdatingPrices ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                {isUpdatingPrices ? (
+                  <>
+                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
+                    업데이트 중...
+                  </>
+                ) : (
+                  <>🔄 가격 새로고침</>
+                )}
+              </button>
+              <button
+                onClick={() => {
+                  setFormData(getInitialFormData());
+                  setEditingId(null);
+                  resetEtfSearch();
+                  setIsFormOpen(true);
+                }}
+                className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors font-semibold"
+              >
+                + ISA ETF 추가
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-12 gap-4 mb-8">
