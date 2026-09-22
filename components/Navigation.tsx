@@ -26,9 +26,22 @@ export default function Navigation() {
     pathname === item.href || (item.href === '/dashboard' && (pathname === '/' || pathname === ''))
   ) ?? navItems[0];
 
+  const primaryNavItems = [
+    { href: '/dashboard', label: '홈', icon: '⌂' },
+    { href: '/portfolio', label: '자산', icon: '▥' },
+    { href: '/monthly-plan', label: '플랜', icon: '✓' },
+    { href: '/ledger', label: '가계부', icon: '▤' },
+  ];
+  const isPrimaryRoute = primaryNavItems.some((item) => item.href === currentItem.href);
+
   useEffect(() => {
     setIsMenuOpen(false);
   }, [pathname]);
+
+  useEffect(() => {
+    document.body.classList.add('has-mobile-navigation');
+    return () => document.body.classList.remove('has-mobile-navigation');
+  }, []);
 
   useEffect(() => {
     if (!isMenuOpen) return;
@@ -37,8 +50,13 @@ export default function Navigation() {
       if (event.key === 'Escape') setIsMenuOpen(false);
     };
 
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
   }, [isMenuOpen]);
 
   return (
@@ -47,56 +65,12 @@ export default function Navigation() {
         <button
           type="button"
           aria-label="메뉴 닫기"
-          className="fixed inset-0 z-30 bg-black/20 md:hidden"
+          className="fixed inset-0 z-[55] bg-gray-950/35 backdrop-blur-[1px] md:hidden"
           onClick={() => setIsMenuOpen(false)}
         />
       )}
-      <nav className="top-navigation relative sticky z-40 max-w-full min-w-0 border-b border-gray-200 bg-white/95 backdrop-blur-md">
-        <div className="flex h-12 items-center justify-between px-3 md:hidden">
-          <div className="min-w-0">
-            <div className="text-[11px] font-medium text-gray-400">현재 메뉴</div>
-            <div className="truncate text-sm font-bold text-gray-900">{currentItem.label}</div>
-          </div>
-          <button
-            type="button"
-            aria-expanded={isMenuOpen}
-            aria-controls="mobile-navigation-menu"
-            onClick={() => setIsMenuOpen((open) => !open)}
-            className="flex h-9 items-center gap-2 rounded-md border border-gray-200 bg-white px-3 text-sm font-semibold text-gray-700 shadow-sm"
-          >
-            <span aria-hidden="true" className="text-lg leading-none">{isMenuOpen ? '×' : '☰'}</span>
-            메뉴
-          </button>
-        </div>
-
-        {isMenuOpen && (
-          <div
-            id="mobile-navigation-menu"
-            className="absolute inset-x-0 top-full border-b border-gray-200 bg-white p-3 shadow-lg md:hidden"
-          >
-            <div className="mx-auto grid max-w-lg grid-cols-2 gap-2">
-              {navItems.map((item) => {
-                const isActive = currentItem.href === item.href;
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={`flex min-h-11 items-center justify-between rounded-md px-3 py-2.5 text-sm font-semibold transition-colors ${
-                      isActive
-                        ? 'bg-blue-50 text-blue-700'
-                        : 'bg-gray-50 text-gray-700 hover:bg-gray-100'
-                    }`}
-                  >
-                    {item.label}
-                    {isActive && <span className="h-1.5 w-1.5 rounded-full bg-blue-500" aria-hidden="true" />}
-                  </Link>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        <div className="hidden overflow-x-auto no-scrollbar overscroll-x-contain touch-pan-x px-2 md:block sm:px-4">
+      <nav className="top-navigation sticky z-40 hidden max-w-full min-w-0 border-b border-gray-200 bg-white/95 backdrop-blur-md md:block">
+        <div className="overflow-x-auto no-scrollbar overscroll-x-contain touch-pan-x px-2 sm:px-4">
           <div className="mx-auto flex max-w-7xl min-w-max space-x-1">
             {navItems.map((item) => (
               <Link
@@ -112,6 +86,79 @@ export default function Navigation() {
               </Link>
             ))}
           </div>
+        </div>
+      </nav>
+
+      {isMenuOpen && (
+        <section
+          id="mobile-navigation-menu"
+          className="fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-[60] rounded-t-2xl bg-white px-4 pb-5 pt-3 shadow-2xl md:hidden"
+          aria-label="전체 메뉴"
+        >
+          <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-gray-200" aria-hidden="true" />
+          <div className="mb-3 flex items-center justify-between px-1">
+            <div>
+              <h2 className="text-xl font-extrabold text-gray-950">전체 메뉴</h2>
+              <p className="mt-0.5 text-sm text-gray-500">{currentItem.label} 보는 중</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsMenuOpen(false)}
+              className="flex h-11 w-11 items-center justify-center rounded-full bg-gray-100 text-2xl leading-none text-gray-600"
+              aria-label="메뉴 닫기"
+            >
+              ×
+            </button>
+          </div>
+          <div className="mx-auto grid max-w-lg grid-cols-3 gap-2">
+            {navItems.map((item) => {
+              const isActive = currentItem.href === item.href;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`flex min-h-12 items-center justify-center rounded-lg px-2 py-3 text-sm font-bold transition-colors ${
+                    isActive ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 active:bg-gray-200'
+                  }`}
+                >
+                  {item.label}
+                </Link>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      <nav className="fixed inset-x-0 bottom-0 z-[70] border-t border-gray-200 bg-white/95 pb-[env(safe-area-inset-bottom)] shadow-[0_-6px_24px_rgba(15,23,42,0.08)] backdrop-blur-xl md:hidden" aria-label="주요 메뉴">
+        <div className="mx-auto grid h-[4.5rem] max-w-lg grid-cols-5 px-1">
+          {primaryNavItems.map((item) => {
+            const isActive = currentItem.href === item.href;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`flex min-w-0 flex-col items-center justify-center gap-0.5 text-[13px] font-bold ${
+                  isActive ? 'text-blue-600' : 'text-gray-400'
+                }`}
+                aria-current={isActive ? 'page' : undefined}
+              >
+                <span aria-hidden="true" className="text-[22px] font-normal leading-6">{item.icon}</span>
+                <span>{item.label}</span>
+              </Link>
+            );
+          })}
+          <button
+            type="button"
+            aria-expanded={isMenuOpen}
+            aria-controls="mobile-navigation-menu"
+            onClick={() => setIsMenuOpen((open) => !open)}
+            className={`flex min-w-0 flex-col items-center justify-center gap-0.5 text-[13px] font-bold ${
+              !isPrimaryRoute || isMenuOpen ? 'text-blue-600' : 'text-gray-400'
+            }`}
+          >
+            <span aria-hidden="true" className="text-[24px] font-normal leading-6">{isMenuOpen ? '×' : '⋯'}</span>
+            <span>전체</span>
+          </button>
         </div>
       </nav>
     </>

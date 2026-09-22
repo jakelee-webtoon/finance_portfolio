@@ -425,17 +425,20 @@ export default function DashboardPage() {
           <h1 className="text-2xl font-bold text-gray-900 mb-6">대시보드</h1>
 
           {/* KPI Cards */}
-          <div className="mobile-metrics grid grid-cols-12 gap-4 mb-8">
-            <div className="col-span-12 sm:col-span-6 lg:col-span-3 bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
+          <div className="dashboard-metrics mobile-metrics grid grid-cols-12 gap-4 mb-8">
+            <div className="order-1 col-span-12 sm:col-span-6 lg:col-span-3 bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
               <div className="flex items-center justify-between mb-3">
-                <div className="p-2 bg-blue-50 rounded-lg text-blue-600">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
+                <div className="flex min-w-0 items-center gap-2">
+                  <div className="p-2 bg-blue-50 rounded-lg text-blue-600">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <div className="whitespace-nowrap text-base font-bold text-gray-700 md:hidden">총 자산</div>
                 </div>
-                <span className="text-xs font-medium text-blue-500 bg-blue-50 px-2 py-1 rounded-full">자산</span>
+                <span className="hidden text-xs font-medium text-blue-500 bg-blue-50 px-2 py-1 rounded-full md:inline-flex">자산</span>
               </div>
-              <div className="text-sm text-gray-500 mb-1 font-medium">총 자산</div>
+              <div className="mb-1 hidden text-sm font-medium text-gray-500 md:block">총 자산</div>
               <div className="text-2xl font-bold text-gray-900 tracking-tight">
                 {new Intl.NumberFormat('ko-KR').format(totalAssets)}원
               </div>
@@ -445,18 +448,21 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            <div className="col-span-12 sm:col-span-6 lg:col-span-3 bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
+            <div className="order-4 md:order-2 col-span-12 sm:col-span-6 lg:col-span-3 bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
               <div className="flex items-center justify-between mb-3">
-                <div className="p-2 bg-emerald-50 rounded-lg text-emerald-600">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
+                <div className="flex min-w-0 items-center gap-2">
+                  <div className="p-2 bg-emerald-50 rounded-lg text-emerald-600">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <div className="whitespace-nowrap text-base font-bold text-gray-700 md:hidden">순자산</div>
                 </div>
-                <span className={`text-xs font-medium px-2 py-1 rounded-full ${netWorth >= 0 ? 'text-emerald-500 bg-emerald-50' : 'text-rose-500 bg-red-50'}`}>
+                <span className={`hidden text-xs font-medium px-2 py-1 rounded-full md:inline-flex ${netWorth >= 0 ? 'text-emerald-500 bg-emerald-50' : 'text-rose-500 bg-red-50'}`}>
                   {netWorth >= 0 ? '플러스' : '마이너스'}
                 </span>
               </div>
-              <div className="text-sm text-gray-500 mb-1 font-medium">순자산</div>
+              <div className="mb-1 hidden text-sm font-medium text-gray-500 md:block">순자산</div>
               <div className={`text-2xl font-bold tracking-tight ${netWorth >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
                 {new Intl.NumberFormat('ko-KR').format(netWorth)}원
               </div>
@@ -466,16 +472,19 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            <div className="col-span-12 sm:col-span-6 lg:col-span-3 bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
+            <div className="order-2 md:order-3 col-span-12 sm:col-span-6 lg:col-span-3 bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
               <div className="flex items-center justify-between mb-3">
-                <div className="p-2 bg-rose-50 rounded-lg text-rose-600">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 17h8m0 0V9m0 8l-8-8-4 4-6-6" />
-                  </svg>
+                <div className="flex min-w-0 items-center gap-2">
+                  <div className="p-2 bg-rose-50 rounded-lg text-rose-600">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 17h8m0 0V9m0 8l-8-8-4 4-6-6" />
+                    </svg>
+                  </div>
+                  <div className="whitespace-nowrap text-base font-bold text-gray-700 md:hidden">총 부채</div>
                 </div>
-                <span className="text-xs font-medium text-rose-500 bg-red-50 px-2 py-1 rounded-full">부채</span>
+                <span className="hidden text-xs font-medium text-rose-500 bg-red-50 px-2 py-1 rounded-full md:inline-flex">부채</span>
               </div>
-              <div className="text-sm text-gray-500 mb-1 font-medium">총 부채</div>
+              <div className="mb-1 hidden text-sm font-medium text-gray-500 md:block">총 부채</div>
               <div className="text-2xl font-bold text-rose-600 tracking-tight">
                 {new Intl.NumberFormat('ko-KR').format(totalLiabilities)}원
               </div>
@@ -485,16 +494,19 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            <div className="col-span-12 sm:col-span-6 lg:col-span-3 bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
+            <div className="order-3 md:order-4 col-span-12 sm:col-span-6 lg:col-span-3 bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
               <div className="flex items-center justify-between mb-3">
-                <div className="p-2 bg-amber-50 rounded-lg text-amber-600">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                  </svg>
+                <div className="flex min-w-0 items-center gap-2">
+                  <div className="p-2 bg-amber-50 rounded-lg text-amber-600">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                    </svg>
+                  </div>
+                  <div className="whitespace-nowrap text-base font-bold text-gray-700 md:hidden">기타 자산</div>
                 </div>
-                <span className="text-xs font-medium text-amber-500 bg-amber-50 px-2 py-1 rounded-full">기타</span>
+                <span className="hidden text-xs font-medium text-amber-500 bg-amber-50 px-2 py-1 rounded-full md:inline-flex">기타</span>
               </div>
-              <div className="text-sm text-gray-500 mb-1 font-medium">기타 자산</div>
+              <div className="mb-1 hidden text-sm font-medium text-gray-500 md:block">기타 자산</div>
               <div className="text-2xl font-bold text-gray-700 tracking-tight">
                 {new Intl.NumberFormat('ko-KR').format(otherAssets)}원
               </div>
@@ -504,16 +516,19 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            <div className="col-span-12 sm:col-span-6 lg:col-span-3 bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
+            <div className="order-5 col-span-12 sm:col-span-6 lg:col-span-3 bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
               <div className="flex items-center justify-between mb-3">
-                <div className="p-2 bg-indigo-50 rounded-lg text-indigo-600">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 3v18m4-14H7a4 4 0 000 8h10a4 4 0 010 8H9" />
-                  </svg>
+                <div className="flex min-w-0 items-center gap-2">
+                  <div className="p-2 bg-indigo-50 rounded-lg text-indigo-600">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 3v18m4-14H7a4 4 0 000 8h10a4 4 0 010 8H9" />
+                    </svg>
+                  </div>
+                  <div className="whitespace-nowrap text-base font-bold text-gray-700 md:hidden">ISA ETF</div>
                 </div>
-                <span className="text-xs font-medium text-indigo-500 bg-indigo-50 px-2 py-1 rounded-full">ISA</span>
+                <span className="hidden text-xs font-medium text-indigo-500 bg-indigo-50 px-2 py-1 rounded-full md:inline-flex">ISA</span>
               </div>
-              <div className="text-sm text-gray-500 mb-1 font-medium">ISA ETF</div>
+              <div className="mb-1 hidden text-sm font-medium text-gray-500 md:block">ISA ETF</div>
               <div className="text-2xl font-bold text-gray-900 tracking-tight">
                 {formatKrw(isaEtfValue)}
               </div>

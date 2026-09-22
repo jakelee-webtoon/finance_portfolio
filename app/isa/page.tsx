@@ -11,6 +11,7 @@ import { getExchangeRates } from '@/lib/exchangeRate';
 import { EtfSearchResult, getStockPrice, getStockQuotes, searchEtfs } from '@/lib/stockApi';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/Toast';
+import MobileHelp from '@/components/MobileHelp';
 import {
   ISA_ANNUAL_CONTRIBUTION_LIMIT,
   ISA_BASIC_TAX_FREE_LIMIT,
@@ -436,8 +437,13 @@ export default function IsaPage() {
         <div className="max-w-7xl mx-auto">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">ISA</h1>
-              <p className="text-sm text-gray-500 mt-1">ETF는 모두 중개형 ISA 계좌 자산으로 관리합니다.</p>
+              <div className="flex items-center gap-2">
+                <h1 className="text-2xl font-bold text-gray-900">ISA</h1>
+                <MobileHelp label="ISA 관리 방식">
+                  ETF는 모두 중개형 ISA 계좌 자산으로 관리합니다.
+                </MobileHelp>
+              </div>
+              <p className="mt-1 hidden text-sm text-gray-500 md:block">ETF는 모두 중개형 ISA 계좌 자산으로 관리합니다.</p>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row">
               <button

@@ -136,7 +136,7 @@ export default function Table<T extends Record<string, any>>({
                 placeholder={searchPlaceholder}
                 value={searchTerm}
                 onChange={(event) => setSearchTerm(event.target.value)}
-                className="h-10 w-full rounded-md border border-gray-200 bg-white pl-9 pr-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                className="h-11 w-full rounded-lg border border-gray-200 bg-white pl-9 pr-3 text-base focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
               />
             </div>
           ) : (
@@ -147,7 +147,7 @@ export default function Table<T extends Record<string, any>>({
               aria-label="정렬 기준"
               value={mobileSortValue}
               onChange={(event) => handleMobileSort(event.target.value)}
-              className="h-10 max-w-[8.5rem] rounded-md border border-gray-200 bg-white px-2 text-sm text-gray-700 focus:border-blue-500 focus:outline-none"
+              className="h-11 max-w-[9rem] rounded-lg border border-gray-200 bg-white px-2 text-sm font-semibold text-gray-700 focus:border-blue-500 focus:outline-none"
             >
               <option value="">기본 정렬</option>
               {sortableColumns.flatMap((column) => [
@@ -172,39 +172,45 @@ export default function Table<T extends Record<string, any>>({
             const summaryColumns = dataColumns.slice(0, 4);
             const detailColumns = dataColumns.slice(4);
 
-            const renderMobileField = (column: Column<T>) => (
-              <div key={String(column.key)} className="min-w-0">
-                <div className="text-[11px] font-semibold text-gray-400">{column.label}</div>
-                <div className={`mt-1 min-w-0 text-sm font-medium text-gray-700 ${
-                  wrappingLabels.has(column.label) ? '[overflow-wrap:anywhere]' : 'whitespace-nowrap'
-                }`}>
-                  {renderValue(row, column)}
+            const renderMobileField = (column: Column<T>) => {
+              return (
+                <div key={String(column.key)} className="min-w-0">
+                  <div className="shrink-0 text-[13px] font-bold text-gray-400">{column.label}</div>
+                  <div className={`mt-1 min-w-0 text-base font-semibold leading-6 text-gray-700 ${
+                    wrappingLabels.has(column.label) ? '[overflow-wrap:anywhere]' : 'whitespace-nowrap'
+                  }`}>
+                    {renderValue(row, column)}
+                  </div>
                 </div>
-              </div>
-            );
+              );
+            };
 
             return (
               <article key={String(row.id ?? rowIndex)} className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
                 <div className="border-b border-gray-100 pb-3">
-                  <div className="text-base font-bold text-gray-900">
+                  <div className="text-lg font-extrabold leading-6 text-gray-950">
                     {identityColumns[0] ? renderValue(row, identityColumns[0]) : `항목 ${rowIndex + 1}`}
                   </div>
                   {identityColumns[1] && (
-                    <div className="mt-0.5 text-sm text-gray-500 [overflow-wrap:anywhere]">
+                    <div className="mt-1 text-sm font-medium leading-5 text-gray-500 [overflow-wrap:anywhere]">
                       {renderValue(row, identityColumns[1])}
                     </div>
                   )}
                 </div>
 
                 {summaryColumns.length > 0 && (
-                  <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3">
+                  <div className={`mt-3 grid gap-y-3 ${
+                    summaryColumns.length === 3
+                      ? 'grid-cols-[minmax(0,1.4fr)_minmax(0,0.65fr)_minmax(0,1fr)] gap-x-2 [&>div>div:last-child]:text-[14px]'
+                      : 'grid-cols-2 gap-x-4'
+                  }`}>
                     {summaryColumns.map(renderMobileField)}
                   </div>
                 )}
 
                 {detailColumns.length > 0 && (
                   <details className="mt-3 border-t border-gray-100 pt-2">
-                    <summary className="cursor-pointer list-none py-1 text-xs font-semibold text-blue-600">
+                    <summary className="flex min-h-11 cursor-pointer list-none items-center text-sm font-bold text-blue-600">
                       상세 정보 보기
                     </summary>
                     <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-3">
@@ -214,7 +220,7 @@ export default function Table<T extends Record<string, any>>({
                 )}
 
                 {actionColumn && (
-                  <div className="mt-3 border-t border-gray-100 pt-3 [&>div]:flex-wrap">
+                  <div className="mt-3 border-t border-gray-100 pt-3 [&_button]:min-h-11 [&_button]:px-4 [&_button]:text-sm [&>div]:flex-wrap">
                     {renderValue(row, actionColumn)}
                   </div>
                 )}

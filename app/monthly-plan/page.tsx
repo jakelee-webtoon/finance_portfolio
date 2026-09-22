@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import TopBar from '@/components/TopBar';
 import Navigation from '@/components/Navigation';
+import MobileHelp from '@/components/MobileHelp';
 import { DashboardState, MonthlyPlanEntry, PlanCategory } from '@/types';
 import {
   getDashboardState,
@@ -313,8 +314,13 @@ export default function MonthlyPlanPage() {
       <div className="px-3 py-4 sm:p-6">
         <div className="max-w-7xl mx-auto">
           <div className="mb-6">
-            <h1 className="text-2xl font-bold text-gray-900">월간플랜</h1>
-            <p className="text-sm text-gray-500 mt-1">{state.baseMonth} 기준 투자, 저축, 현금 확보 실행표</p>
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-bold text-gray-900">월간플랜</h1>
+              <MobileHelp label="월간플랜 기준">
+                {state.baseMonth} 기준 투자, 저축, 현금 확보 실행표입니다.
+              </MobileHelp>
+            </div>
+            <p className="mt-1 hidden text-sm text-gray-500 md:block">{state.baseMonth} 기준 투자, 저축, 현금 확보 실행표</p>
           </div>
 
           <div className="mobile-metrics grid grid-cols-12 gap-4 mb-6">
