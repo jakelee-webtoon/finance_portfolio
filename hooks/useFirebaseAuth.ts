@@ -13,6 +13,18 @@ const getErrorCode = (error: unknown): string =>
     ? String(error.code)
     : 'auth/initialization-failed';
 
+const LEGACY_AUTH_KEYS = [
+  'finance-app-password',
+  'finance-session-authenticated',
+] as const;
+
+function clearLegacyAuthStorage(): void {
+  LEGACY_AUTH_KEYS.forEach((key) => {
+    window.localStorage.removeItem(key);
+    window.sessionStorage.removeItem(key);
+  });
+}
+
 export function useFirebaseAuth() {
   const currentUser = auth?.currentUser ?? null;
   const [user, setUser] = useState<User | null>(currentUser);
@@ -20,6 +32,8 @@ export function useFirebaseAuth() {
   const [errorCode, setErrorCode] = useState('');
 
   useEffect(() => {
+    clearLegacyAuthStorage();
+
     if (!auth) {
       setLoading(false);
       return;

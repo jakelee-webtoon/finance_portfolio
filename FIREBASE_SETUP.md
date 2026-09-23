@@ -99,3 +99,7 @@ users/default/.../*
 
 Google 로그인과 Firestore 규칙이 안정적으로 동작하는 것을 확인한 다음, 별도 단계에서
 기존 `default` 경로와 로컬 비밀번호 관련 레거시 데이터를 정리합니다.
+
+앱은 인증 초기화 시 예전 브라우저 인증에 사용했던 `finance-app-password`와
+`finance-session-authenticated` 값을 `localStorage`와 `sessionStorage`에서 자동으로
+삭제합니다.
