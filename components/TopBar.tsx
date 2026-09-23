@@ -78,7 +78,6 @@ export default function TopBar() {
       mobileMedia.removeEventListener('change', handleViewportChange);
       resizeObserver.disconnect();
       if (frameId !== null) window.cancelAnimationFrame(frameId);
-      root.style.removeProperty('--topbar-height');
       delete root.dataset.mobileTopbar;
     };
   }, [state !== null]);

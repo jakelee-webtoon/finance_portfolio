@@ -14,8 +14,9 @@ const getErrorCode = (error: unknown): string =>
     : 'auth/initialization-failed';
 
 export function useFirebaseAuth() {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(isFirebaseConfigured);
+  const currentUser = auth?.currentUser ?? null;
+  const [user, setUser] = useState<User | null>(currentUser);
+  const [loading, setLoading] = useState(isFirebaseConfigured && !currentUser);
   const [errorCode, setErrorCode] = useState('');
 
   useEffect(() => {

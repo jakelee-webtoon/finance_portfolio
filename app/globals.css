@@ -185,7 +185,6 @@ body {
 
 .top-navigation {
   top: var(--topbar-height, 8rem);
-  transition: top 200ms ease-out;
 }
 
 html[data-mobile-topbar='hidden'] .top-navigation {
@@ -194,7 +193,7 @@ html[data-mobile-topbar='hidden'] .top-navigation {
 
 @media (min-width: 1024px) {
   .top-navigation {
-    top: var(--topbar-height, 73px);
+    top: var(--topbar-height, 69px);
   }
 
   .isa-holdings-table table {
@@ -233,12 +232,6 @@ html[data-mobile-topbar='hidden'] .top-navigation {
   .isa-holdings-table td:nth-child(11) button {
     padding-right: 0.5rem;
     padding-left: 0.5rem;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .top-navigation {
-    transition: none;
   }
 }
 
