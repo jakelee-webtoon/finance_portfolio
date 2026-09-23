@@ -9,7 +9,7 @@ import { Asset, DashboardState, Liability, StockHolding } from '@/types';
 import { getDashboardState, getAssets, getLiabilities, getStockHoldings, setDashboardState, syncFromFirebase } from '@/lib/store';
 import { getExchangeRates } from '@/lib/exchangeRate';
 import { useAuth } from '@/hooks/useAuth';
-import { formatKrw, getHoldingCurrentValueKrw, isIsaEtfHolding } from '@/lib/investments';
+import { getHoldingCurrentValueKrw, isIsaEtfHolding } from '@/lib/investments';
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'];
 
@@ -105,6 +105,47 @@ export default function DashboardPage() {
     if (!exchangeRates) return 0;
     return Math.floor(filteredIsaEtfs.reduce((sum, holding) => sum + getHoldingCurrentValueKrw(holding, exchangeRates), 0));
   }, [filteredIsaEtfs, exchangeRates]);
+
+  // 목록 표시용 행만 합칩니다. ISA 평가액은 totalAssets에서 별도로 한 번만 계산합니다.
+  const dashboardNetWorthAssets = useMemo(() => {
+    if (!exchangeRates) return filteredNetWorthAssets;
+
+    const isaByOwner = new Map<Asset['owner'], Asset>();
+    filteredIsaEtfs.forEach((holding) => {
+      const currentValue = Math.floor(getHoldingCurrentValueKrw(holding, exchangeRates));
+      const existing = isaByOwner.get(holding.owner);
+
+      if (existing) {
+        existing.amount += currentValue;
+        if (holding.as_of_date > existing.as_of_date) {
+          existing.as_of_date = holding.as_of_date;
+          existing.last_modified_by = holding.last_modified_by;
+        }
+        return;
+      }
+
+      isaByOwner.set(holding.owner, {
+        id: `dashboard-isa-${holding.owner}`,
+        name: 'ISA ETF',
+        category: 'stocks',
+        amount: currentValue,
+        owner: holding.owner,
+        currency: 'KRW',
+        source_type: 'auto',
+        as_of_date: holding.as_of_date,
+        last_modified_by: holding.last_modified_by,
+      });
+    });
+
+    const toKrw = (asset: Asset) => {
+      if (asset.currency === 'USD') return asset.amount * exchangeRates.USD_TO_KRW;
+      if (asset.currency === 'EUR') return asset.amount * exchangeRates.EUR_TO_KRW;
+      return asset.amount;
+    };
+
+    return [...filteredNetWorthAssets, ...isaByOwner.values()]
+      .sort((a, b) => toKrw(b) - toKrw(a));
+  }, [exchangeRates, filteredIsaEtfs, filteredNetWorthAssets]);
 
   // 총자산 (category=other 제외)
   const totalAssets = useMemo(() => {
@@ -426,7 +467,7 @@ export default function DashboardPage() {
 
           {/* KPI Cards */}
           <div className="dashboard-metrics mobile-metrics grid grid-cols-12 gap-4 mb-8">
-            <div className="order-1 col-span-12 sm:col-span-6 lg:col-span-3 bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
+            <div className="mobile-metric-wide order-1 col-span-12 sm:col-span-6 lg:col-span-3 bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex min-w-0 items-center gap-2">
                   <div className="p-2 bg-blue-50 rounded-lg text-blue-600">
@@ -448,7 +489,7 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            <div className="order-4 md:order-2 col-span-12 sm:col-span-6 lg:col-span-3 bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
+            <div className="order-2 col-span-12 sm:col-span-6 lg:col-span-3 bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex min-w-0 items-center gap-2">
                   <div className="p-2 bg-emerald-50 rounded-lg text-emerald-600">
@@ -472,7 +513,7 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            <div className="order-2 md:order-3 col-span-12 sm:col-span-6 lg:col-span-3 bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
+            <div className="mobile-metric-wide order-4 col-span-12 sm:col-span-6 lg:col-span-3 bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex min-w-0 items-center gap-2">
                   <div className="p-2 bg-rose-50 rounded-lg text-rose-600">
@@ -494,7 +535,7 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            <div className="order-3 md:order-4 col-span-12 sm:col-span-6 lg:col-span-3 bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
+            <div className="order-3 col-span-12 sm:col-span-6 lg:col-span-3 bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex min-w-0 items-center gap-2">
                   <div className="p-2 bg-amber-50 rounded-lg text-amber-600">
@@ -516,27 +557,6 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            <div className="order-5 col-span-12 sm:col-span-6 lg:col-span-3 bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex min-w-0 items-center gap-2">
-                  <div className="p-2 bg-indigo-50 rounded-lg text-indigo-600">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 3v18m4-14H7a4 4 0 000 8h10a4 4 0 010 8H9" />
-                    </svg>
-                  </div>
-                  <div className="whitespace-nowrap text-base font-bold text-gray-700 md:hidden">ISA ETF</div>
-                </div>
-                <span className="hidden text-xs font-medium text-indigo-500 bg-indigo-50 px-2 py-1 rounded-full md:inline-flex">ISA</span>
-              </div>
-              <div className="mb-1 hidden text-sm font-medium text-gray-500 md:block">ISA ETF</div>
-              <div className="text-2xl font-bold text-gray-900 tracking-tight">
-                {formatKrw(isaEtfValue)}
-              </div>
-              <div className="text-xs text-gray-400 mt-2 flex items-center">
-                <span className="inline-block w-1 h-1 bg-gray-300 rounded-full mr-1.5"></span>
-                총자산에 반영
-              </div>
-            </div>
           </div>
 
           {/* Charts and Tables Row — items-start: 한 열만 길어질 때 다른 카드가 늘어나지 않음 */}
@@ -736,10 +756,10 @@ export default function DashboardPage() {
                     </p>
                   </div>
                   <div className="p-1 bg-white/60">
-                    {filteredNetWorthAssets.length === 0 ? (
+                    {dashboardNetWorthAssets.length === 0 ? (
                       <p className="text-sm text-gray-400 italic text-center py-8">표시할 항목이 없습니다.</p>
                     ) : (
-                      <Table data={filteredNetWorthAssets.slice(0, 5)} columns={assetTableColumns} />
+                      <Table data={dashboardNetWorthAssets.slice(0, 5)} columns={assetTableColumns} />
                     )}
                   </div>
                 </div>

@@ -32,6 +32,41 @@ type Owner = 'husband' | 'wife' | 'joint';
 type Exchange = 'KRX' | 'NASDAQ' | 'NYSE' | 'other';
 
 const ETF_CATEGORY_COLORS = ['#2563EB', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#06B6D4', '#64748B'];
+const PIE_LABEL_RADIAN = Math.PI / 180;
+
+function renderPieCategoryLabel({
+  cx,
+  cy,
+  midAngle,
+  innerRadius,
+  outerRadius,
+  payload,
+}: {
+  cx: number;
+  cy: number;
+  midAngle: number;
+  innerRadius: number;
+  outerRadius: number;
+  payload: { label: string };
+}) {
+  const radius = innerRadius + (outerRadius - innerRadius) * 0.52;
+  const x = cx + radius * Math.cos(-midAngle * PIE_LABEL_RADIAN);
+  const y = cy + radius * Math.sin(-midAngle * PIE_LABEL_RADIAN);
+
+  return (
+    <text
+      x={x}
+      y={y}
+      fill="#ffffff"
+      textAnchor="middle"
+      dominantBaseline="central"
+      fontSize={13}
+      fontWeight={800}
+    >
+      {payload.label}
+    </text>
+  );
+}
 
 export default function IsaPage() {
   const isAuthenticated = useAuth();
@@ -331,7 +366,12 @@ export default function IsaPage() {
 
   const columns: Column<StockHolding>[] = useMemo(() => [
     { key: 'symbol', label: '코드', sortable: true },
-    { key: 'name', label: 'ETF명', sortable: true },
+    {
+      key: 'name',
+      label: 'ETF명',
+      sortable: true,
+      render: (value) => <span className="block sm:truncate" title={String(value)}>{value}</span>,
+    },
     {
       key: 'etfCategory',
       label: '분류',
@@ -476,7 +516,7 @@ export default function IsaPage() {
             </div>
           </div>
 
-          <div className="mobile-metrics grid grid-cols-12 gap-4 mb-8">
+          <div className="isa-overview-metrics mobile-metrics grid grid-cols-12 gap-4 mb-8">
             <div className="col-span-12 lg:col-span-6 bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
               <div className="flex items-center justify-between mb-3">
                 <h2 className="text-lg font-bold text-gray-900">ISA 계좌란?</h2>
@@ -488,7 +528,29 @@ export default function IsaPage() {
               </div>
             </div>
             <div className="col-span-12 sm:col-span-6 lg:col-span-3 bg-indigo-50 rounded-2xl border border-indigo-100 p-5">
-              <div className="text-xs font-bold text-indigo-500 mb-2">납입한도</div>
+              <div className="mb-2 flex items-center gap-1.5 text-xs font-bold text-indigo-500">
+                <span>납입한도</span>
+                {state.scope === 'combined' && (
+                  <span className="group/limit relative inline-flex">
+                    <button
+                      type="button"
+                      aria-label="합산 납입한도 설명"
+                      aria-describedby="combined-isa-limit-help"
+                      title="1인당 연 2,000만원이며, 합산 화면에서는 부부 총 4,000만원으로 표시됩니다. 실제 ISA 계좌와 한도는 각자 별도로 운영됩니다."
+                      className="flex h-5 w-5 items-center justify-center rounded-full bg-indigo-100 text-[11px] font-black text-indigo-700 outline-none ring-indigo-300 hover:bg-indigo-200 focus:ring-2"
+                    >
+                      ?
+                    </button>
+                    <span
+                      id="combined-isa-limit-help"
+                      role="tooltip"
+                      className="pointer-events-none absolute bottom-full left-0 z-30 mb-2 hidden w-72 rounded-lg bg-gray-950 px-3 py-2.5 text-left text-xs font-medium leading-relaxed text-white shadow-xl group-hover/limit:block group-focus-within/limit:block"
+                    >
+                      1인당 연 2,000만원이며, 합산 화면에서는 부부 총 4,000만원으로 표시됩니다. 실제 ISA 계좌와 한도는 각자 별도로 운영됩니다.
+                    </span>
+                  </span>
+                )}
+              </div>
               <div className="text-xl font-black text-indigo-900">{formatKrw(annualContributionLimit)}</div>
               <div className="text-xs text-indigo-700/80 mt-1">
                 {state.scope === 'combined' ? '부부 합산 기준' : '개인 기준'} · 총 {formatKrw(totalContributionLimit)}
@@ -612,6 +674,8 @@ export default function IsaPage() {
                           dataKey="currentValue"
                           nameKey="label"
                           minAngle={2}
+                          label={renderPieCategoryLabel}
+                          labelLine={false}
                         >
                           {categoryRows.map((row, index) => (
                             <Cell key={row.label} fill={ETF_CATEGORY_COLORS[index % ETF_CATEGORY_COLORS.length]} />
@@ -766,7 +830,7 @@ export default function IsaPage() {
             </div>
           )}
 
-          <Table data={filteredEtfs} columns={columns} searchable searchPlaceholder="ETF 코드, 이름, 분류 검색..." />
+          <Table className="isa-holdings-table" data={filteredEtfs} columns={columns} searchable searchPlaceholder="ETF 코드, 이름, 분류 검색..." />
         </div>
       </div>
     </div>

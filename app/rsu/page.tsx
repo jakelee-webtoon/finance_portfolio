@@ -902,10 +902,10 @@ export default function RSUPage() {
           </div>
 
           {/* 통계 카드 */}
-          <div className="mb-8">
-            <div className="mobile-metrics grid grid-cols-12 gap-4">
+          <div className="mb-0 sm:mb-8">
+            <div className="rsu-metrics mobile-metrics grid grid-cols-12 gap-4">
               {/* 카드 1: 현재 평가 금액 (미실현) */}
-              <div className="col-span-12 md:col-span-3 bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
+              <div className="order-3 md:order-1 col-span-12 md:col-span-3 bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
                 <div className="flex items-center justify-between mb-3">
                   <div className="p-2 bg-blue-50 rounded-lg text-blue-600">
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -914,7 +914,10 @@ export default function RSUPage() {
                   </div>
                   <span className="text-[10px] font-bold text-blue-500 bg-blue-50 px-2 py-0.5 rounded-full uppercase">Current</span>
                 </div>
-                <div className="text-xs text-gray-500 font-medium mb-1">현재 평가 금액 (미실현)</div>
+                <div className="text-xs text-gray-500 font-medium mb-1">
+                  <span className="md:hidden">현재 평가금액</span>
+                  <span className="hidden md:inline">현재 평가 금액 (미실현)</span>
+                </div>
                 <div className="text-2xl font-bold text-blue-600 tracking-tight">
                   {new Intl.NumberFormat('ko-KR').format(currentUnrealizedValue.krw)}원
                 </div>
@@ -926,7 +929,7 @@ export default function RSUPage() {
               </div>
 
               {/* 카드 2: 실현 손익 */}
-              <div className="col-span-12 md:col-span-3 bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
+              <div className="order-2 col-span-12 md:col-span-3 bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
                 <div className="flex items-center justify-between mb-3">
                   <div className="p-2 bg-emerald-50 rounded-lg text-emerald-600">
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -943,7 +946,7 @@ export default function RSUPage() {
               </div>
 
               {/* 카드 3: 누적 RSU 금액 */}
-              <div className="col-span-12 md:col-span-3 bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
+              <div className="rsu-metric-wide order-1 md:order-3 col-span-12 md:col-span-3 bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
                 <div className="flex items-center justify-between mb-3">
                   <div className="p-2 bg-amber-50 rounded-lg text-amber-600">
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -962,15 +965,18 @@ export default function RSUPage() {
               </div>
 
               {/* 카드 4: Vesting 일정 */}
-              <div className="col-span-12 md:col-span-3 bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
+              <div className="rsu-metric-wide rsu-vesting-card order-4 col-span-12 md:col-span-3 bg-white rounded-2xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
                 <div className="flex items-center justify-between mb-3">
-                  <div className="p-2 bg-purple-50 rounded-lg text-purple-600">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
+                  <div className="flex items-center gap-2">
+                    <div className="p-2 bg-purple-50 rounded-lg text-purple-600">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                    </div>
+                    <div className="whitespace-nowrap text-base font-bold text-gray-700 md:hidden">Vesting 일정 요약</div>
                   </div>
                 </div>
-                <div className="text-xs text-gray-500 font-medium mb-2">Vesting 일정 요약</div>
+                <div className="mb-2 hidden text-xs font-medium text-gray-500 md:block">Vesting 일정 요약</div>
                 {(() => {
                   const todayDate = new Date();
                   todayDate.setHours(0, 0, 0, 0);
@@ -987,9 +993,9 @@ export default function RSUPage() {
                   const diffDays = Math.ceil((d.getTime() - todayDate.getTime()) / (1000 * 60 * 60 * 24));
 
                   return (
-                    <div>
-                      <div className="text-lg font-bold text-gray-900">{nextVesting.name}</div>
-                      <div className="mt-1 flex flex-col items-start gap-0.5 sm:flex-row sm:items-center sm:gap-2">
+                    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                      <div className="whitespace-nowrap text-lg font-bold text-gray-900">{nextVesting.name}</div>
+                      <div className="flex items-center gap-2">
                         <span className="whitespace-nowrap text-sm font-bold text-purple-600">{diffDays === 0 ? '오늘' : `${diffDays}일 남음`}</span>
                         <span className="whitespace-nowrap text-xs text-gray-400">({nextVesting.vestingDate})</span>
                       </div>
@@ -1001,11 +1007,11 @@ export default function RSUPage() {
           </div>
 
           {/* 두 번째 줄: 구분선 + 보유 주식 주가 + 환율 */}
-          <div className="border-t border-gray-200 pt-4">
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-              <div className="flex flex-wrap items-center gap-6">
+          <div className="rsu-price-section border-t-0 pt-0 sm:border-t sm:border-gray-200 sm:pt-4">
+            <div className="rsu-price-card bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+              <div className="flex flex-wrap items-center gap-3 sm:gap-6">
                 {/* 보유 주식 주가 */}
-                <div className="flex flex-wrap gap-4 flex-1">
+                <div className="flex flex-wrap gap-3 sm:gap-4 flex-1">
                   {filteredHoldings.length > 0 ? (
                     (() => {
                       // 주식명(symbol 또는 name)별로 그룹화하여 중복 제거
@@ -1032,7 +1038,7 @@ export default function RSUPage() {
                         }
                         
                         return (
-                          <div key={holding.symbol || holding.name} className="flex items-center gap-2">
+                          <div key={holding.symbol || holding.name} className="flex items-center gap-2 whitespace-nowrap">
                             <span className="text-sm font-semibold text-gray-700">{holding.symbol || holding.name}</span>
                             <span className="text-lg font-bold text-gray-900">
                               {currentPrice > 0 ? (
@@ -1063,10 +1069,10 @@ export default function RSUPage() {
                 </div>
                 
                 {/* 구분선 */}
-                <div className="h-8 w-px bg-gray-300"></div>
+                <div className="hidden h-8 w-px bg-gray-300 sm:block"></div>
                 
                 {/* 환율 */}
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 whitespace-nowrap">
                   <span className="text-sm font-semibold text-gray-700">환율</span>
                   <span className="text-lg font-bold text-gray-900">
                     {exchangeRates ? (

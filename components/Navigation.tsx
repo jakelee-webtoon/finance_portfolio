@@ -28,9 +28,9 @@ export default function Navigation() {
 
   const primaryNavItems = [
     { href: '/dashboard', label: '홈', icon: '⌂' },
-    { href: '/portfolio', label: '자산', icon: '▥' },
+    { href: '/isa', label: 'ISA', icon: '$' },
+    { href: '/rsu', label: 'RSU', icon: 'R' },
     { href: '/monthly-plan', label: '플랜', icon: '✓' },
-    { href: '/ledger', label: '가계부', icon: '▤' },
   ];
   const isPrimaryRoute = primaryNavItems.some((item) => item.href === currentItem.href);
 
@@ -129,7 +129,7 @@ export default function Navigation() {
         </section>
       )}
 
-      <nav className="fixed inset-x-0 bottom-0 z-[70] border-t border-gray-200 bg-white/95 pb-[env(safe-area-inset-bottom)] shadow-[0_-6px_24px_rgba(15,23,42,0.08)] backdrop-blur-xl md:hidden" aria-label="주요 메뉴">
+      <nav className="mobile-bottom-navigation fixed inset-x-0 bottom-0 z-[70] border-t border-gray-200 bg-white/95 pb-[env(safe-area-inset-bottom)] shadow-[0_-6px_24px_rgba(15,23,42,0.08)] backdrop-blur-xl md:hidden" aria-label="주요 메뉴">
         <div className="mx-auto grid h-[4.5rem] max-w-lg grid-cols-5 px-1">
           {primaryNavItems.map((item) => {
             const isActive = currentItem.href === item.href;

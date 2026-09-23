@@ -33,6 +33,7 @@ export default function SalaryPage() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isComparisonModalOpen, setIsComparisonModalOpen] = useState(false);
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [formData, setFormData] = useState({
     year: new Date().getFullYear().toString(),
     amount: '',
@@ -41,6 +42,14 @@ export default function SalaryPage() {
     yearsOfExperience: '',
     notes: '',
   });
+
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 639px)');
+    const updateViewport = () => setIsMobileViewport(media.matches);
+    updateViewport();
+    media.addEventListener('change', updateViewport);
+    return () => media.removeEventListener('change', updateViewport);
+  }, []);
 
   useEffect(() => {
     if (isAuthenticated !== true) return;
@@ -260,6 +269,7 @@ export default function SalaryPage() {
     // index를 사용해서 yearlyIncomeData에서 데이터 가져오기
     const dataItem = yearlyIncomeData[index];
     if (!dataItem) return null;
+    if (isMobileViewport && index !== yearlyIncomeData.length - 1) return null;
     
     const changePercent = dataItem.changePercent;
     const amount = dataItem.amount; // 항상 전체 합계 사용
@@ -489,21 +499,30 @@ export default function SalaryPage() {
           </div>
 
           {/* 연간 총소득 막대그래프 */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">연간 총소득</h2>
+          <div className="mb-6 rounded-lg border border-gray-200 bg-white px-2 py-4 shadow-sm sm:p-6">
+            <h2 className="mb-2 px-2 text-lg font-semibold text-gray-900 sm:mb-4 sm:px-0">연간 총소득</h2>
             {yearlyIncomeData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={400}>
-                <BarChart data={yearlyIncomeData} margin={{ top: 60, right: 30, left: 60, bottom: 30 }}>
-                  <CartesianGrid strokeDasharray="3 3" />
+              <ResponsiveContainer width="100%" height={isMobileViewport ? 360 : 400}>
+                <BarChart
+                  data={yearlyIncomeData}
+                  margin={isMobileViewport
+                    ? { top: 48, right: 2, left: 0, bottom: 8 }
+                    : { top: 60, right: 30, left: 60, bottom: 30 }}
+                  barCategoryGap={isMobileViewport ? '18%' : '10%'}
+                >
+                  <CartesianGrid strokeDasharray="3 3" vertical={!isMobileViewport} />
                   <XAxis 
                     dataKey="year" 
-                    tick={{ fill: '#6B7280' }}
-                    label={{ value: '연도', position: 'bottom', offset: 10, style: { textAnchor: 'middle', fill: '#6B7280' } }}
+                    interval={isMobileViewport ? 1 : 0}
+                    tick={{ fill: '#6B7280', fontSize: isMobileViewport ? 12 : 14 }}
+                    tickMargin={isMobileViewport ? 8 : 5}
+                    label={isMobileViewport ? undefined : { value: '연도', position: 'bottom', offset: 10, style: { textAnchor: 'middle', fill: '#6B7280' } }}
                   />
                   <YAxis 
-                    width={80}
-                    tick={{ fill: '#6B7280' }}
-                    label={{ value: '금액 (원)', angle: -90, position: 'insideLeft', offset: -10, style: { textAnchor: 'middle', fill: '#6B7280' } }}
+                    width={isMobileViewport ? 52 : 80}
+                    tickCount={isMobileViewport ? 5 : undefined}
+                    tick={{ fill: '#6B7280', fontSize: isMobileViewport ? 12 : 14 }}
+                    label={isMobileViewport ? undefined : { value: '금액 (원)', angle: -90, position: 'insideLeft', offset: -10, style: { textAnchor: 'middle', fill: '#6B7280' } }}
                     tickFormatter={(value) => {
                       if (value >= 100000000) {
                         return `${(value / 100000000).toFixed(1)}억`;
@@ -539,8 +558,8 @@ export default function SalaryPage() {
                   {state?.scope === 'combined' ? (
                     <>
                       {/* 합산 모드: 스택 바 차트 */}
-                      <Bar dataKey="husband" stackId="income" fill="#3B82F6" radius={[0, 0, 0, 0]} name="남편" />
-                      <Bar dataKey="wife" stackId="income" fill="#EC4899" radius={[4, 4, 0, 0]} name="아내">
+                      <Bar dataKey="husband" stackId="income" fill="#3B82F6" radius={[0, 0, 0, 0]} name="남편" maxBarSize={isMobileViewport ? 28 : undefined} />
+                      <Bar dataKey="wife" stackId="income" fill="#EC4899" radius={[4, 4, 0, 0]} name="아내" maxBarSize={isMobileViewport ? 28 : undefined}>
                         {/* 합계 라벨 (맨 위 바에 표시) */}
                         <LabelList 
                           content={renderCustomLabel}
@@ -550,7 +569,7 @@ export default function SalaryPage() {
                   ) : (
                     <>
                       {/* 단일 모드: 기존 바 차트 */}
-                      <Bar dataKey="amount" fill="#3B82F6" radius={[4, 4, 0, 0]}>
+                      <Bar dataKey="amount" fill="#3B82F6" radius={[4, 4, 0, 0]} maxBarSize={isMobileViewport ? 28 : undefined}>
                         <LabelList 
                           content={renderCustomLabel}
                         />

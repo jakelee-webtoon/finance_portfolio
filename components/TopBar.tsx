@@ -21,7 +21,7 @@ export default function TopBar() {
     if (!topBar) return;
 
     const root = document.documentElement;
-    const mobileMedia = window.matchMedia('(max-width: 1023px)');
+    const mobileMedia = window.matchMedia('(max-width: 767px)');
     let lastScrollY = Math.max(window.scrollY, 0);
     let frameId: number | null = null;
 
@@ -136,10 +136,10 @@ export default function TopBar() {
     <>
       <div
         ref={topBarRef}
-        className={`sticky top-0 z-50 w-full max-w-[100vw] min-w-0 overflow-x-clip border-b border-gray-200 bg-white/95 shadow-sm backdrop-blur-md transition-[transform,margin-bottom] duration-150 ease-out motion-reduce:transition-none lg:mb-0 lg:translate-y-0 ${
+        data-mobile-topbar-shell
+        className={`fixed inset-x-0 top-0 z-50 w-full max-w-[100vw] min-w-0 overflow-x-clip border-b border-gray-200 bg-white/95 shadow-sm backdrop-blur-md transition-transform duration-150 ease-out motion-reduce:transition-none md:sticky md:inset-x-auto md:translate-y-0 ${
           isMobileHidden && !isSettingsOpen ? '-translate-y-full' : 'translate-y-0'
         }`}
-        style={{ marginBottom: isMobileHidden && !isSettingsOpen ? 'calc(var(--topbar-height) * -1)' : 0 }}
       >
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-3 px-4 md:hidden">
           <button
@@ -238,6 +238,7 @@ export default function TopBar() {
         </div>
         </div>
       </div>
+      <div className="h-16 md:hidden" aria-hidden="true" />
 
       {isSettingsOpen && (
         <div className="fixed inset-0 z-[80] md:hidden" role="dialog" aria-modal="true" aria-labelledby="mobile-settings-title">

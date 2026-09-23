@@ -19,6 +19,7 @@ html {
   overflow-x: clip;
   max-width: 100%;
   overscroll-behavior-x: none;
+  overscroll-behavior-y: none;
   overflow-anchor: none;
 }
 
@@ -29,6 +30,7 @@ body {
   max-width: 100%;
   min-height: 100dvh;
   overscroll-behavior-x: none;
+  overscroll-behavior-y: none;
   /* Pretendard 미로딩 시 첫 렌더 지연 방지 — 시스템 폰트 우선 */
   font-family: -apple-system, BlinkMacSystemFont, system-ui, 'Segoe UI', Roboto, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif;
 }
@@ -42,6 +44,74 @@ body {
     font-size: 17px;
     word-break: keep-all;
     overflow-wrap: break-word;
+    min-height: 100svh;
+  }
+
+  button,
+  a,
+  summary {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+
+  .mobile-bottom-navigation {
+    backface-visibility: hidden;
+    background-color: #ffffff;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    contain: layout paint;
+    transform: translateZ(0);
+  }
+
+  [data-mobile-topbar-shell] {
+    backface-visibility: hidden;
+    will-change: transform;
+  }
+
+  .monthly-amount-input {
+    appearance: textfield;
+    padding-left: 0.5rem;
+    padding-right: 1.5rem;
+    font-size: 0.9375rem;
+  }
+
+  .monthly-amount-suffix {
+    right: 0.5rem;
+    font-size: 0.75rem;
+  }
+
+  .rounded-2xl,
+  .rounded-xl {
+    border-radius: 0.5rem;
+  }
+
+  .p-5,
+  .p-6 {
+    padding: 1rem;
+  }
+
+  .px-5 {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .gap-6 {
+    gap: 1rem;
+  }
+
+  .mb-8 {
+    margin-bottom: 1.5rem;
+  }
+
+  .mb-6 {
+    margin-bottom: 1.25rem;
+  }
+
+  .input,
+  input,
+  select,
+  textarea {
+    min-height: 2.75rem;
   }
 
   .text-sm {
@@ -107,6 +177,12 @@ body {
   }
 }
 
+.monthly-amount-input::-webkit-inner-spin-button,
+.monthly-amount-input::-webkit-outer-spin-button {
+  margin: 0;
+  appearance: none;
+}
+
 .top-navigation {
   top: var(--topbar-height, 8rem);
   transition: top 200ms ease-out;
@@ -119,6 +195,44 @@ html[data-mobile-topbar='hidden'] .top-navigation {
 @media (min-width: 1024px) {
   .top-navigation {
     top: var(--topbar-height, 73px);
+  }
+
+  .isa-holdings-table table {
+    width: 100%;
+    min-width: 100%;
+    table-layout: fixed;
+  }
+
+  .isa-holdings-table th,
+  .isa-holdings-table td {
+    padding-right: 0.55rem;
+    padding-left: 0.55rem;
+  }
+
+  .isa-holdings-table th:nth-child(1) { width: 6%; }
+  .isa-holdings-table th:nth-child(2) { width: 24%; }
+  .isa-holdings-table th:nth-child(3) { width: 7%; }
+  .isa-holdings-table th:nth-child(4) { width: 6%; }
+  .isa-holdings-table th:nth-child(5) { width: 5%; }
+  .isa-holdings-table th:nth-child(6) { width: 8%; }
+  .isa-holdings-table th:nth-child(7) { width: 8%; }
+  .isa-holdings-table th:nth-child(8) { width: 9%; }
+  .isa-holdings-table th:nth-child(9) { width: 10%; }
+  .isa-holdings-table th:nth-child(10) { width: 6%; }
+  .isa-holdings-table th:nth-child(11) { width: 11%; }
+
+  .isa-holdings-table td:nth-child(2) {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .isa-holdings-table td:nth-child(11) > div {
+    gap: 0.25rem;
+  }
+
+  .isa-holdings-table td:nth-child(11) button {
+    padding-right: 0.5rem;
+    padding-left: 0.5rem;
   }
 }
 
@@ -164,6 +278,15 @@ html[data-mobile-topbar='hidden'] .top-navigation {
     font-size: 1.8125rem;
   }
 
+  .mobile-metrics > :not(:first-child) .text-2xl,
+  .mobile-metrics > :not(:first-child) .text-xl,
+  .mobile-metrics > :not(:first-child) .text-3xl,
+  .mobile-metrics > :not(:first-child) .text-4xl {
+    font-size: 1rem;
+    line-height: 1.5;
+    white-space: nowrap;
+  }
+
   .mobile-metrics .text-xs,
   .mobile-metrics .text-\[10px\],
   .mobile-metrics .text-\[11px\] {
@@ -182,6 +305,48 @@ html[data-mobile-topbar='hidden'] .top-navigation {
     font-size: 1.25rem;
     line-height: 1.5;
     white-space: nowrap;
+  }
+
+  .mobile-metrics.dashboard-metrics > :not(.mobile-metric-wide) {
+    grid-column: span 1 / span 1;
+  }
+
+  .mobile-metrics.dashboard-metrics > .mobile-metric-wide {
+    grid-column: span 2 / span 2;
+  }
+
+  .mobile-metrics.rsu-metrics > :not(.rsu-metric-wide) {
+    grid-column: span 1 / span 1;
+  }
+
+  .mobile-metrics.rsu-metrics > .rsu-metric-wide {
+    grid-column: span 2 / span 2;
+  }
+
+  .isa-overview-metrics > :not(:first-child) .text-xl {
+    font-size: 0.9375rem;
+  }
+
+  .rsu-metrics > :not(.rsu-metric-wide) .text-2xl,
+  .rsu-metrics > :not(.rsu-metric-wide) .text-xl,
+  .rsu-metrics > :not(.rsu-metric-wide) .text-3xl,
+  .rsu-metrics > :not(.rsu-metric-wide) .text-4xl {
+    font-size: 1.125rem;
+    line-height: 1.5;
+    white-space: nowrap;
+  }
+
+  .rsu-vesting-card {
+    border-bottom-width: 0;
+    border-bottom-right-radius: 0;
+    border-bottom-left-radius: 0;
+    box-shadow: none;
+  }
+
+  .rsu-price-card {
+    border-top-width: 0;
+    border-top-right-radius: 0;
+    border-top-left-radius: 0;
   }
 
   .dashboard-metrics > :not(:first-child) {
