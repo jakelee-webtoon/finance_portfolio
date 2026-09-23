@@ -15,6 +15,7 @@ export function isIsaEtfHolding(holding: StockHolding): boolean {
 }
 
 export function toKrwAmount(amount: number, currency: string | undefined, exchangeRates: Record<string, number> | null): number {
+  if (!Number.isFinite(amount)) return 0;
   if (!exchangeRates) return amount;
   if (currency === 'USD') return amount * exchangeRates.USD_TO_KRW;
   if (currency === 'EUR') return amount * exchangeRates.EUR_TO_KRW;
@@ -22,7 +23,7 @@ export function toKrwAmount(amount: number, currency: string | undefined, exchan
 }
 
 export function getHoldingCurrentValueKrw(holding: StockHolding, exchangeRates: Record<string, number> | null): number {
-  const currentPrice = holding.currentPrice || holding.purchasePrice;
+  const currentPrice = holding.currentPrice ?? holding.purchasePrice;
   return toKrwAmount(currentPrice * holding.quantity, holding.currency || 'KRW', exchangeRates);
 }
 

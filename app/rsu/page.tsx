@@ -10,6 +10,7 @@ import { getStockPrice, detectExchangeAndCurrency } from '@/lib/stockApi';
 import { getExchangeRates } from '@/lib/exchangeRate';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/Toast';
+import { buildRsuAssets } from '@/lib/rsuAssets';
 
 export default function RSUPage() {
   const isAuthenticated = useAuth();
@@ -94,88 +95,16 @@ export default function RSUPage() {
   }, [holdings, state]);
 
   // RSU/옵션을 포트폴리오 자산으로 동기화
-  // vested → category: 'stocks' / unvested → category: 'other' 로 분리 저장 (Firestore 포함)
   const syncHoldingsToAsset = useCallback(async (holdingsToSync: StockHolding[]) => {
-    if (!exchangeRates || holdingsToSync.length === 0) return;
-
-    const assets = getAssets();
     const today = new Date().toISOString().split('T')[0];
     const currentUser: 'husband' | 'wife' =
       state?.scope === 'husband' ? 'husband' : state?.scope === 'wife' ? 'wife' : 'husband';
-
-    // 주식명별로 그룹화
-    const groupedByStock = holdingsToSync.reduce((acc, holding) => {
-      const key = holding.name || holding.symbol;
-      if (!acc[key]) acc[key] = [];
-      acc[key].push(holding);
-      return acc;
-    }, {} as Record<string, StockHolding[]>);
-
-    // 이번 동기화에서 생성/유지할 RSU 자산 ID 집합
-    const activeRsuIds = new Set<string>();
-
-    Object.entries(groupedByStock).forEach(([stockName, stockHoldings]) => {
-      let vestedValue = 0;
-      let unvestedValue = 0;
-      let owner: 'husband' | 'wife' | 'joint' = 'joint';
-      let currency = 'KRW';
-
-      stockHoldings.forEach((holding) => {
-        if (holding.isRealized) return;
-        const currentPrice = holding.currentPrice || 0;
-        if (!currentPrice) return;
-
-        const isVested = holding.vestingDate ? holding.vestingDate <= today : true;
-
-        let valueOriginal = 0;
-        if (holding.type === 'rsu' && holding.totalQuantity !== undefined) {
-          valueOriginal = currentPrice * holding.totalQuantity;
-        } else if (holding.type === 'option' && holding.strikePrice !== undefined) {
-          const intrinsicValue = currentPrice - holding.strikePrice;
-          if (intrinsicValue > 0) valueOriginal = intrinsicValue * holding.quantity;
-        } else {
-          valueOriginal = currentPrice * holding.quantity;
-        }
-
-        if (valueOriginal <= 0) return;
-
-        if (isVested) vestedValue += valueOriginal;
-        else unvestedValue += valueOriginal;
-
-        if (owner === 'joint' && holding.owner) owner = holding.owner;
-        if (currency === 'KRW') {
-          const hCurrency = holding.currency || 'KRW';
-          const hExchange = holding.exchange || 'KRX';
-          if (hCurrency !== 'KRW') currency = hCurrency;
-          else if (hExchange === 'NASDAQ' || hExchange === 'NYSE') currency = 'USD';
-        }
-      });
-
-      const upsertAsset = (id: string, name: string, amount: number, category: 'stocks' | 'other') => {
-        if (amount <= 0) return;
-        activeRsuIds.add(id);
-        const existingIdx = assets.findIndex((a) => a.id === id);
-        const base = { name, amount: Math.floor(amount), owner, currency, category, as_of_date: today, last_modified_by: currentUser };
-        if (existingIdx >= 0) {
-          assets[existingIdx] = { ...assets[existingIdx], ...base };
-          delete assets[existingIdx].isOtherAsset;
-        } else {
-          assets.push({ id, source_type: 'manual', ...base });
-        }
-      };
-
-      upsertAsset(`asset-rsu-${stockName}-vested`, 'RSU (vested)', vestedValue, 'stocks');
-      upsertAsset(`asset-rsu-${stockName}-unvested`, 'RSU (unvested)', unvestedValue, 'other');
+    const updatedAssets = buildRsuAssets(getAssets(), holdingsToSync, {
+      asOfDate: today,
+      modifiedBy: currentUser,
     });
-
-    // 더 이상 유효하지 않은 RSU 자산 제거 (기존 단일 asset-rsu-XXX 포함)
-    const updatedAssets = assets.filter((asset) => {
-      if (asset.id.startsWith('asset-rsu-')) return activeRsuIds.has(asset.id);
-      return true;
-    });
-
     await setAssets(updatedAssets);
-  }, [exchangeRates, state]);
+  }, [state]);
 
   // 가격 업데이트 함수 (interval에서 호출, 수동 새로고침에서도 사용)
   // fromUserAction: true일 때만 "최신 주가입니다" 토스트 (자동/재마운트 시 스팸 방지)
@@ -448,7 +377,7 @@ export default function RSUPage() {
 
   // 공통 holding 가치 계산 헬퍼
   const calcHoldingValue = useCallback((holding: StockHolding, rates: Record<string, number>) => {
-    const currentPrice = holding.currentPrice || 0;
+    const currentPrice = holding.currentPrice ?? 0;
     if (!currentPrice) return { krw: 0, usd: 0, eur: 0 };
 
     const currency = holding.currency || 'KRW';
@@ -636,7 +565,7 @@ export default function RSUPage() {
       sortable: false,
       render: (_, row) => {
         if (!exchangeRates) return '-';
-        const currentPrice = row.currentPrice || row.purchasePrice;
+        const currentPrice = row.currentPrice ?? row.purchasePrice;
         const currency = row.currency || 'KRW';
         const exchange = row.exchange || 'KRX';
         const isUSD = currency === 'USD' || exchange === 'NASDAQ' || exchange === 'NYSE';
@@ -1024,7 +953,7 @@ export default function RSUPage() {
                       });
                       
                       return Array.from(uniqueHoldings.values()).map((holding) => {
-                        const currentPrice = holding.currentPrice || 0;
+                        const currentPrice = holding.currentPrice ?? 0;
                         const currency = holding.currency || 'KRW';
                         const exchange = holding.exchange || 'KRX';
                         const isUSD = currency === 'USD' || exchange === 'NASDAQ' || exchange === 'NYSE';

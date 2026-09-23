@@ -9,7 +9,7 @@ import { Asset, DashboardState, Liability, StockHolding } from '@/types';
 import { getDashboardState, getAssets, getLiabilities, getStockHoldings, setDashboardState, syncFromFirebase } from '@/lib/store';
 import { getExchangeRates } from '@/lib/exchangeRate';
 import { useAuth } from '@/hooks/useAuth';
-import { getHoldingCurrentValueKrw, isIsaEtfHolding } from '@/lib/investments';
+import { calculateFinancialSummary } from '@/lib/financialSummary';
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'];
 
@@ -47,9 +47,6 @@ export default function DashboardPage() {
     loadData();
   }, [isAuthenticated]);
 
-  // category === 'other' 인 자산은 기타 자산 (자동차, RSU unvested 등)
-  const isOtherAsset = (asset: Asset) => asset.category === 'other';
-
   // DashboardState 변경 감지 (TopBar에서 변경 시)
   useEffect(() => {
     if (isAuthenticated !== true) return;
@@ -70,149 +67,36 @@ export default function DashboardPage() {
     };
   }, [isAuthenticated]);
 
-  const filteredAssets = useMemo(() => {
-    if (!state) return [];
-    if (state.scope === 'combined') return assets;
-    return assets.filter((asset) => asset.owner === state.scope || asset.owner === 'joint');
-  }, [assets, state]);
-
-  /** 순자산·총자산·자산 구성 차트에 포함되는 자산 */
-  const filteredNetWorthAssets = useMemo(
-    () => filteredAssets.filter((a) => !isOtherAsset(a)),
-    [filteredAssets]
+  const financialSummary = useMemo(
+    () => calculateFinancialSummary({
+      assets,
+      liabilities,
+      holdings,
+      scope: state?.scope || 'combined',
+      exchangeRates,
+    }),
+    [assets, liabilities, holdings, state?.scope, exchangeRates]
   );
 
-  /** 기타 자산 (순자산 합계·차트에서 제외) */
-  const filteredOtherCategoryAssets = useMemo(
-    () => filteredAssets.filter((a) => isOtherAsset(a)),
-    [filteredAssets]
+  const {
+    netWorthAssetRows: dashboardNetWorthAssets,
+    otherAssetItems: filteredOtherCategoryAssets,
+    scopedLiabilities: filteredLiabilities,
+    totalAssets,
+    otherAssets,
+    totalLiabilities,
+    netWorth,
+  } = financialSummary;
+
+  const assetByCategory = useMemo(
+    () => financialSummary.assetCategoryTotals
+      .filter((item) => !item.isOther)
+      .map((item) => ({
+        name: getCategoryLabel(item.category),
+        value: item.amount,
+      })),
+    [financialSummary.assetCategoryTotals]
   );
-
-  const filteredLiabilities = useMemo(() => {
-    if (!state) return [];
-    if (state.scope === 'combined') return liabilities;
-    return liabilities.filter((liability) => liability.owner === state.scope || liability.owner === 'joint');
-  }, [liabilities, state]);
-
-  const filteredIsaEtfs = useMemo(() => {
-    if (!state) return [];
-    const etfs = holdings.filter(isIsaEtfHolding);
-    if (state.scope === 'combined') return etfs;
-    return etfs.filter((holding) => holding.owner === state.scope || holding.owner === 'joint');
-  }, [holdings, state]);
-
-  const isaEtfValue = useMemo(() => {
-    if (!exchangeRates) return 0;
-    return Math.floor(filteredIsaEtfs.reduce((sum, holding) => sum + getHoldingCurrentValueKrw(holding, exchangeRates), 0));
-  }, [filteredIsaEtfs, exchangeRates]);
-
-  // 목록 표시용 행만 합칩니다. ISA 평가액은 totalAssets에서 별도로 한 번만 계산합니다.
-  const dashboardNetWorthAssets = useMemo(() => {
-    if (!exchangeRates) return filteredNetWorthAssets;
-
-    const isaByOwner = new Map<Asset['owner'], Asset>();
-    filteredIsaEtfs.forEach((holding) => {
-      const currentValue = Math.floor(getHoldingCurrentValueKrw(holding, exchangeRates));
-      const existing = isaByOwner.get(holding.owner);
-
-      if (existing) {
-        existing.amount += currentValue;
-        if (holding.as_of_date > existing.as_of_date) {
-          existing.as_of_date = holding.as_of_date;
-          existing.last_modified_by = holding.last_modified_by;
-        }
-        return;
-      }
-
-      isaByOwner.set(holding.owner, {
-        id: `dashboard-isa-${holding.owner}`,
-        name: 'ISA ETF',
-        category: 'stocks',
-        amount: currentValue,
-        owner: holding.owner,
-        currency: 'KRW',
-        source_type: 'auto',
-        as_of_date: holding.as_of_date,
-        last_modified_by: holding.last_modified_by,
-      });
-    });
-
-    const toKrw = (asset: Asset) => {
-      if (asset.currency === 'USD') return asset.amount * exchangeRates.USD_TO_KRW;
-      if (asset.currency === 'EUR') return asset.amount * exchangeRates.EUR_TO_KRW;
-      return asset.amount;
-    };
-
-    return [...filteredNetWorthAssets, ...isaByOwner.values()]
-      .sort((a, b) => toKrw(b) - toKrw(a));
-  }, [exchangeRates, filteredIsaEtfs, filteredNetWorthAssets]);
-
-  // 총자산 (category=other 제외)
-  const totalAssets = useMemo(() => {
-    if (!exchangeRates) return 0;
-    const assetTotal = filteredAssets.reduce((sum, asset) => {
-      if (isOtherAsset(asset)) return sum;
-      if (asset.currency === 'KRW') return sum + asset.amount;
-      if (asset.currency === 'USD') return sum + asset.amount * exchangeRates.USD_TO_KRW;
-      if (asset.currency === 'EUR') return sum + asset.amount * exchangeRates.EUR_TO_KRW;
-      return sum + asset.amount;
-    }, 0);
-    return Math.floor(assetTotal + isaEtfValue);
-  }, [filteredAssets, exchangeRates, isaEtfValue]);
-
-  // 기타 자산 (category=other: 자동차, RSU unvested 등)
-  const otherAssets = useMemo(() => {
-    if (!exchangeRates) return 0;
-    return Math.floor(filteredAssets.reduce((sum, asset) => {
-      if (!isOtherAsset(asset)) return sum;
-      if (asset.currency === 'KRW') return sum + asset.amount;
-      if (asset.currency === 'USD') return sum + asset.amount * exchangeRates.USD_TO_KRW;
-      if (asset.currency === 'EUR') return sum + asset.amount * exchangeRates.EUR_TO_KRW;
-      return sum + asset.amount;
-    }, 0));
-  }, [filteredAssets, exchangeRates]);
-
-  const totalLiabilities = useMemo(() => {
-    if (!exchangeRates) return 0;
-    return Math.floor(filteredLiabilities.reduce((sum, liability) => {
-      if (liability.currency === 'KRW') {
-        return sum + liability.amount;
-      } else if (liability.currency === 'USD') {
-        return sum + liability.amount * exchangeRates.USD_TO_KRW;
-      } else if (liability.currency === 'EUR') {
-        return sum + liability.amount * exchangeRates.EUR_TO_KRW;
-      }
-      return sum + liability.amount;
-    }, 0));
-  }, [filteredLiabilities, exchangeRates]);
-
-  const netWorth = useMemo(() => {
-    return totalAssets - totalLiabilities;
-  }, [totalAssets, totalLiabilities]);
-
-  const assetByCategory = useMemo(() => {
-    if (!exchangeRates) return [];
-    const categoryMap: Record<string, number> = {};
-    filteredAssets.forEach((asset) => {
-      if (isOtherAsset(asset)) return;
-      
-      const category = asset.category;
-      let krwAmount = asset.amount;
-      if (asset.currency === 'USD') {
-        krwAmount = asset.amount * exchangeRates.USD_TO_KRW;
-      } else if (asset.currency === 'EUR') {
-        krwAmount = asset.amount * exchangeRates.EUR_TO_KRW;
-      }
-      categoryMap[category] = (categoryMap[category] || 0) + krwAmount;
-    });
-    if (isaEtfValue > 0) {
-      categoryMap.stocks = (categoryMap.stocks || 0) + isaEtfValue;
-    }
-    return Object.entries(categoryMap).map(([name, value]) => ({
-      name: getCategoryLabel(name),
-      value: Math.floor(value),
-    }));
-  }, [filteredAssets, exchangeRates, isaEtfValue]);
 
   // 커스텀 라벨 컴포넌트 - 색상을 세그먼트와 동일하게, 겹치지 않도록 위치 조정
   const CustomLabel = useMemo(() => {

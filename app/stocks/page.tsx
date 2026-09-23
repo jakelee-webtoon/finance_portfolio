@@ -9,7 +9,7 @@ import { getDashboardState, getStockHoldings, setStockHoldings, syncFromFirebase
 import { getMarketIndices, getStockQuotes, getStockPrice } from '@/lib/stockApi';
 import { getExchangeRates } from '@/lib/exchangeRate';
 import { useAuth } from '@/hooks/useAuth';
-import { isStockHolding } from '@/lib/investments';
+import { getHoldingCurrentValueKrw, isStockHolding } from '@/lib/investments';
 
 interface StockQuote {
   symbol: string;
@@ -257,26 +257,17 @@ export default function StocksPage() {
 
   const totalValue = useMemo(() => {
     if (!exchangeRates) return 0;
-    return Math.floor(filteredHoldings.reduce((sum, holding) => {
-      const currentPrice = holding.currentPrice || holding.purchasePrice;
-      const value = currentPrice * holding.quantity;
-      
-      let convertedValue = value;
-      if (holding.currency === 'USD' && exchangeRates) {
-        convertedValue = value * exchangeRates.USD_TO_KRW;
-      } else if (holding.currency === 'EUR' && exchangeRates) {
-        convertedValue = value * exchangeRates.EUR_TO_KRW;
-      }
-      
-      return sum + convertedValue;
-    }, 0));
+    return Math.floor(filteredHoldings.reduce(
+      (sum, holding) => sum + getHoldingCurrentValueKrw(holding, exchangeRates),
+      0
+    ));
   }, [filteredHoldings, exchangeRates]);
 
   const totalGainLoss = useMemo(() => {
     if (!exchangeRates) return { krw: 0, usd: 0, eur: 0 };
     
     const totals = filteredHoldings.reduce((acc, holding) => {
-      const currentPrice = holding.currentPrice || holding.purchasePrice;
+      const currentPrice = holding.currentPrice ?? holding.purchasePrice;
       const currency = holding.currency || 'KRW';
       const exchange = holding.exchange || 'KRX';
       const isUSD = currency === 'USD' || exchange === 'NASDAQ' || exchange === 'NYSE';
@@ -379,7 +370,7 @@ export default function StocksPage() {
       sortable: false,
       render: (_, row) => {
         if (!exchangeRates) return '-';
-        const currentPrice = row.currentPrice || row.purchasePrice;
+        const currentPrice = row.currentPrice ?? row.purchasePrice;
         const currency = row.currency || 'KRW';
         const exchange = row.exchange || 'KRX';
         
@@ -427,7 +418,7 @@ export default function StocksPage() {
       render: (_, row) => {
         if (!exchangeRates) return '-';
         
-        const currentPrice = row.currentPrice || row.purchasePrice;
+        const currentPrice = row.currentPrice ?? row.purchasePrice;
         const currency = row.currency || 'KRW';
         const exchange = row.exchange || 'KRX';
         const isUSD = currency === 'USD' || exchange === 'NASDAQ' || exchange === 'NYSE';

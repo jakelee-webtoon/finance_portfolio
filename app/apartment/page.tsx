@@ -103,7 +103,7 @@ export default function ApartmentPage() {
   const syncApartmentToAsset = async (apartment: Apartment) => {
     const assets = getAssets();
     const assetName = '아파트';
-    const currentValue = apartment.currentPrice || apartment.purchasePrice;
+    const currentValue = apartment.currentPrice ?? apartment.purchasePrice;
     const apartmentId = `asset-apt-${apartment.id}`;
     const oldAssetName = `${apartment.apartmentName} (${apartment.dong}동 ${apartment.ho}호)`;
     const today = new Date().toISOString().split('T')[0];
@@ -111,8 +111,7 @@ export default function ApartmentPage() {
 
     const existingAssetIndex = assets.findIndex(
       (asset) => asset.id === apartmentId ||
-                 (asset.name === oldAssetName && asset.category === 'real_estate') ||
-                 (asset.name === assetName && asset.category === 'real_estate' && asset.id.startsWith('asset-apt-'))
+                 (asset.name === oldAssetName && asset.category === 'real_estate')
     );
 
     let updatedAssets: Asset[];
@@ -271,7 +270,7 @@ export default function ApartmentPage() {
 
   const totalValue = useMemo(() => {
     return filteredApartments.reduce((sum, apt) => {
-      const value = apt.currentPrice || apt.purchasePrice;
+      const value = apt.currentPrice ?? apt.purchasePrice;
       return sum + value;
     }, 0);
   }, [filteredApartments]);
@@ -282,7 +281,7 @@ export default function ApartmentPage() {
 
   const totalGainLoss = useMemo(() => {
     return filteredApartments.reduce((sum, apt) => {
-      const currentValue = apt.currentPrice || apt.purchasePrice;
+      const currentValue = apt.currentPrice ?? apt.purchasePrice;
       return sum + (currentValue - apt.purchasePrice);
     }, 0);
   }, [filteredApartments]);
