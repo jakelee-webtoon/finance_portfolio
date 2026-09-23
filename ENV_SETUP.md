@@ -43,27 +43,10 @@ NEXT_PUBLIC_FIREBASE_APP_ID=1:123456789012:web:abc123def456
 
 ## 4. Firestore 보안 규칙 설정
 
-Firestore Database → 규칙 탭에서 다음 규칙 설정:
+저장소 루트의 `firestore.rules`를 Firestore Database → 규칙 탭에 게시합니다.
+허용 이메일 문서 생성과 Google OAuth 설정은 `FIREBASE_SETUP.md`를 따릅니다.
 
-```javascript
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    // 사용자별 데이터 접근 제어
-    match /users/{userId}/{document=**} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-    }
-    
-    // 임시: 모든 사용자가 읽기/쓰기 가능 (개발 단계)
-    // TODO: 인증 추가 후 위의 규칙으로 변경
-    match /users/{userId}/{document=**} {
-      allow read, write: if true;
-    }
-  }
-}
-```
-
-**주의**: 개발 단계에서는 모든 사용자가 접근 가능하도록 설정했습니다. 프로덕션 배포 전에 인증 기반 규칙으로 변경해야 합니다.
+공개 규칙인 `allow read, write: if true`는 개발 환경에서도 사용하지 않습니다.
 
 ## 5. 개발 서버 재시작
 
@@ -81,4 +64,4 @@ npm run dev
 
 - 데이터는 localStorage와 Firebase에 동시에 저장됩니다
 - Firebase 연결이 실패해도 localStorage에서 데이터를 가져올 수 있습니다
-- 환경 변수가 설정되지 않으면 localStorage만 사용합니다
+- 환경 변수가 설정되지 않으면 로그인 화면에서 설정 오류를 표시합니다

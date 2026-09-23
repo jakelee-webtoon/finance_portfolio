@@ -1,46 +1,19 @@
-# Firestore 보안 규칙 설정
+# Firestore 보안 규칙
 
-Firebase에 데이터를 저장하려면 Firestore 보안 규칙을 설정해야 합니다.
+실제 규칙은 저장소 루트의 `firestore.rules`가 기준입니다.
 
-## 설정 방법
+## 적용 순서
 
-1. Firebase Console → Firestore Database → "규칙" 탭으로 이동
-2. 다음 규칙을 복사하여 붙여넣기:
+1. Firebase Authentication에서 Google 로그인을 활성화합니다.
+2. `workspaces/finance/allowedEmails/{소문자 이메일}` 문서를 생성합니다.
+3. 문서에 `enabled: true` 불리언 필드를 추가합니다.
+4. `firestore.rules`를 Firestore Rules에 게시합니다.
+5. 허용 계정과 비허용 계정으로 각각 접근을 확인합니다.
 
-```javascript
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    // 개발/테스트 모드: 모든 읽기/쓰기 허용 (주의: 프로덕션에서는 제한 필요)
-    match /{document=**} {
-      allow read, write: if true;
-    }
-    
-    // 또는 사용자별 접근 제어 (나중에 인증 추가 시)
-    // match /users/{userId}/{document=**} {
-    //   allow read, write: if request.auth != null && request.auth.uid == userId;
-    // }
-  }
-}
-```
+허용 이메일 문서는 로그인한 사용자가 자신의 문서만 조회할 수 있고, 앱에서는 생성,
+목록 조회, 수정, 삭제할 수 없습니다. 허용 목록 변경은 Firebase Console 또는 신뢰할 수
+있는 관리자 환경에서만 수행합니다.
 
-3. "게시" 버튼 클릭
-
-## 주의사항
-
-- 위 규칙은 **개발/테스트용**입니다. 모든 사용자가 모든 데이터에 접근할 수 있습니다.
-- 프로덕션 환경에서는 Firebase Authentication을 추가하고 사용자별 접근 제어를 구현해야 합니다.
-
-## 프로덕션 보안 규칙 예시
-
-```javascript
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    // 인증된 사용자만 자신의 데이터에 접근
-    match /users/{userId}/{document=**} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-    }
-  }
-}
-```
+현재 규칙은 레거시 데이터가 있는 `users/default/**`만 보호합니다. 사용자 UID 기반 경로로
+데이터를 이전하기 전까지 `firebase_user_id` 값을 임의로 설정하면 해당 경로 접근은
+거부됩니다.

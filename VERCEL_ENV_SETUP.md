@@ -35,6 +35,9 @@ NEXT_PUBLIC_FIREBASE_APP_ID
 
 NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
 값: G-QLELX2LZWH
+
+NEXT_PUBLIC_FIREBASE_APP_DOMAIN
+값: finance-jakeminji.vercel.app
 ```
 
 ### 3. 환경 변수 추가 단계
@@ -87,4 +90,4 @@ NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID
 ### Firebase 연결 에러가 발생하는 경우
 1. Firebase Console → 프로젝트 설정 → 일반 → 앱 확인
 2. 환경 변수 값이 정확한지 확인
-3. Firestore 보안 규칙 확인 (규칙 탭에서 `allow read, write: if true;` 설정)
+3. Firestore 보안 규칙 확인 (`firestore.rules`와 허용 이메일 문서 적용 여부 확인)

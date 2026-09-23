@@ -1,0 +1,31 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAllowedEmail() {
+      return isSignedIn()
+        && request.auth.token.email_verified == true
+        && request.auth.token.email is string
+        && get(/databases/$(database)/documents/workspaces/finance/allowedEmails/$(request.auth.token.email)).data.enabled == true;
+    }
+
+    match /workspaces/finance/allowedEmails/{email} {
+      allow get: if isSignedIn()
+        && request.auth.token.email_verified == true
+        && request.auth.token.email == email;
+      allow list, write: if false;
+    }
+
+    // 기존 데이터 경로를 유지한 채 허용된 가족 계정만 접근시킨다.
+    match /users/default/{document=**} {
+      allow read, write: if isAllowedEmail();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

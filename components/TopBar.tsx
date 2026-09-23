@@ -1,11 +1,14 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { DashboardState, Scope } from '@/types';
 import { getDashboardState, setDashboardState } from '@/lib/store';
 import ExchangeRateDisplay from '@/components/ExchangeRateDisplay';
+import { signOutFirebase } from '@/lib/firebase';
 
 export default function TopBar() {
+  const router = useRouter();
   const [state, setState] = useState<DashboardState | null>(null);
   const [isMobileHidden, setIsMobileHidden] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -126,6 +129,12 @@ export default function TopBar() {
     setDashboardState(newState);
   };
 
+  const handleLogout = async () => {
+    await signOutFirebase();
+    setIsSettingsOpen(false);
+    router.replace('/');
+  };
+
   if (!state) return null;
 
   const [year, month] = state.baseMonth.split('-');
@@ -231,9 +240,10 @@ export default function TopBar() {
           </div>
           <button
             type="button"
+            onClick={handleLogout}
             className="px-3 py-1.5 text-xs sm:text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-md transition-colors shrink-0"
           >
-            설정
+            로그아웃
           </button>
         </div>
         </div>
@@ -315,10 +325,10 @@ export default function TopBar() {
 
               <button
                 type="button"
-                onClick={() => setIsSettingsOpen(false)}
-                className="h-12 w-full rounded-lg bg-blue-600 text-base font-bold text-white active:bg-blue-700"
+                onClick={handleLogout}
+                className="h-12 w-full rounded-lg border border-red-200 bg-red-50 text-base font-bold text-red-700 active:bg-red-100"
               >
-                완료
+                로그아웃
               </button>
             </div>
           </section>

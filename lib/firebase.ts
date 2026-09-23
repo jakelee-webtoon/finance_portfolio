@@ -1,45 +1,63 @@
-// Firebase 초기화 파일
-import { initializeApp, getApps, FirebaseApp } from 'firebase/app';
-import { getAuth, Auth } from 'firebase/auth';
-import { getFirestore, Firestore } from 'firebase/firestore';
+import { getApps, initializeApp, type FirebaseApp } from 'firebase/app';
+import {
+  browserLocalPersistence,
+  getAuth,
+  GoogleAuthProvider,
+  setPersistence,
+  signInWithRedirect,
+  signOut,
+  type Auth,
+} from 'firebase/auth';
+import { getFirestore, type Firestore } from 'firebase/firestore';
 
-// Firebase 설정 (하드코딩)
+const configuredAuthDomain = process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN;
+const appAuthDomain = process.env.NEXT_PUBLIC_FIREBASE_APP_DOMAIN
+  || 'finance-jakeminji.vercel.app';
+
 const firebaseConfig = {
-  apiKey: "AIzaSyCxHlb4LY0t_QgNQs99C6w9Mo-pbYHY1sM",
-  authDomain: "finance-portfolio-310cf.firebaseapp.com",
-  projectId: "finance-portfolio-310cf",
-  storageBucket: "finance-portfolio-310cf.firebasestorage.app",
-  messagingSenderId: "260849761729",
-  appId: "1:260849761729:web:134443612a118747ae8340",
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: configuredAuthDomain,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
-// Firebase 앱 초기화 (중복 초기화 방지)
+export const isFirebaseConfigured = Object.values(firebaseConfig).every(Boolean);
+
 let app: FirebaseApp | null = null;
-if (typeof window !== 'undefined') {
-  try {
-    if (getApps().length === 0) {
-      app = initializeApp(firebaseConfig);
-      console.log('[Firebase] Initialized successfully');
-    } else {
-      app = getApps()[0];
-      console.log('[Firebase] Using existing app instance');
-    }
-  } catch (error) {
-    console.error('[Firebase] Initialization failed:', error);
-  }
+let auth: Auth | null = null;
+let db: Firestore | null = null;
+
+if (typeof window !== 'undefined' && isFirebaseConfigured) {
+  const isLocalhost = window.location.hostname === 'localhost'
+    || window.location.hostname === '127.0.0.1';
+  const runtimeConfig = {
+    ...firebaseConfig,
+    authDomain: isLocalhost || (appAuthDomain && window.location.hostname === appAuthDomain)
+      ? window.location.host
+      : configuredAuthDomain,
+  };
+
+  app = getApps()[0] ?? initializeApp(runtimeConfig);
+  auth = getAuth(app);
+  db = getFirestore(app);
 }
 
-// Firebase 서비스 초기화 (app이 null이면 에러 발생 가능하므로 타입 가드 필요)
-export const auth: Auth | null = app ? getAuth(app) : null;
-export const db: Firestore | null = app ? getFirestore(app) : null;
+export { auth, db };
 
-// 디버깅용 로그
-if (typeof window !== 'undefined') {
-  if (db) {
-    console.log('[Firebase] Firestore database initialized');
-  } else {
-    console.warn('[Firebase] Firestore database is null');
-  }
+export async function configureAuthPersistence(): Promise<void> {
+  if (auth) await setPersistence(auth, browserLocalPersistence);
+}
+
+export async function signInWithGoogle(): Promise<void> {
+  if (!auth) throw new Error('Firebase 환경변수가 설정되지 않았습니다.');
+  await configureAuthPersistence();
+  await signInWithRedirect(auth, new GoogleAuthProvider());
+}
+
+export async function signOutFirebase(): Promise<void> {
+  if (auth) await signOut(auth);
 }
 
 export default app;
