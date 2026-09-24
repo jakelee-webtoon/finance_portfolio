@@ -6,17 +6,30 @@ import { DashboardState, Scope } from '@/types';
 import { getDashboardState, setDashboardState } from '@/lib/store';
 import ExchangeRateDisplay from '@/components/ExchangeRateDisplay';
 import { signOutFirebase } from '@/lib/firebase';
+import {
+  AppFontSize,
+  AppPreferences,
+  AppSpacing,
+  DEFAULT_APP_PREFERENCES,
+  applyAppPreferences,
+  getAppPreferences,
+  saveAppPreferences,
+} from '@/lib/appPreferences';
 
 export default function TopBar() {
   const router = useRouter();
   const [state, setState] = useState<DashboardState | null>(null);
   const [isMobileHidden, setIsMobileHidden] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [appPreferences, setAppPreferences] = useState<AppPreferences>(DEFAULT_APP_PREFERENCES);
   const topBarRef = useRef<HTMLDivElement>(null);
   const isMobileHiddenRef = useRef(false);
 
   useEffect(() => {
     setState(getDashboardState());
+    const preferences = getAppPreferences();
+    setAppPreferences(preferences);
+    applyAppPreferences(preferences);
   }, []);
 
   useEffect(() => {
@@ -128,6 +141,18 @@ export default function TopBar() {
     setDashboardState(newState);
   };
 
+  const handleFontSizeChange = (fontSize: AppFontSize) => {
+    const preferences = { ...appPreferences, fontSize };
+    setAppPreferences(preferences);
+    saveAppPreferences(preferences);
+  };
+
+  const handleSpacingChange = (spacing: AppSpacing) => {
+    const preferences = { ...appPreferences, spacing };
+    setAppPreferences(preferences);
+    saveAppPreferences(preferences);
+  };
+
   const handleLogout = async () => {
     await signOutFirebase();
     setIsSettingsOpen(false);
@@ -154,7 +179,7 @@ export default function TopBar() {
             type="button"
             onClick={() => setIsSettingsOpen(true)}
             className="min-w-0 text-left"
-            aria-label="조회 설정 열기"
+            aria-label="설정 열기"
           >
             <div className="truncate text-lg font-extrabold text-gray-950">{state.householdName || '우리집'}</div>
             <div className="mt-0.5 flex items-center gap-1.5 text-sm font-medium text-gray-500">
@@ -167,7 +192,7 @@ export default function TopBar() {
             type="button"
             onClick={() => setIsSettingsOpen(true)}
             className="flex h-11 shrink-0 items-center gap-1.5 rounded-lg bg-gray-100 px-3 text-sm font-bold text-gray-700 active:bg-gray-200"
-            aria-label="조회 설정 열기"
+            aria-label="설정 열기"
           >
             <span aria-hidden="true" className="text-base leading-none">⚙</span>
             설정
@@ -239,6 +264,15 @@ export default function TopBar() {
           </div>
           <button
             type="button"
+            onClick={() => setIsSettingsOpen(true)}
+            className="flex shrink-0 items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100"
+            aria-label="앱 설정 열기"
+          >
+            <span aria-hidden="true" className="text-base leading-none">⚙</span>
+            설정
+          </button>
+          <button
+            type="button"
             onClick={handleLogout}
             className="px-3 py-1.5 text-xs sm:text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-md transition-colors shrink-0"
           >
@@ -250,82 +284,144 @@ export default function TopBar() {
       <div className="h-16 md:hidden" aria-hidden="true" />
 
       {isSettingsOpen && (
-        <div className="fixed inset-0 z-[80] md:hidden" role="dialog" aria-modal="true" aria-labelledby="mobile-settings-title">
+        <div className="fixed inset-0 z-[80] flex items-end justify-center md:items-center md:p-6" role="dialog" aria-modal="true" aria-labelledby="app-settings-title">
           <button
             type="button"
-            aria-label="조회 설정 닫기"
+            aria-label="설정 닫기"
             className="absolute inset-0 bg-gray-950/35 backdrop-blur-[1px]"
             onClick={() => setIsSettingsOpen(false)}
           />
-          <section className="absolute inset-x-0 bottom-0 rounded-t-2xl bg-white px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-4 shadow-2xl">
-            <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-gray-200" aria-hidden="true" />
-            <div className="mb-5 flex items-center justify-between">
+          <section className="relative max-h-[92dvh] w-full overflow-y-auto rounded-t-2xl bg-white px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-4 shadow-2xl md:max-w-xl md:rounded-xl md:p-6">
+            <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-gray-200 md:hidden" aria-hidden="true" />
+            <div className="mb-5 flex items-center justify-between border-b border-gray-100 pb-4">
               <div>
-                <h2 id="mobile-settings-title" className="text-xl font-extrabold text-gray-950">조회 설정</h2>
-                <p className="mt-1 text-sm text-gray-500">화면에 표시할 기준을 선택하세요.</p>
+                <h2 id="app-settings-title" className="text-xl font-extrabold text-gray-950">설정</h2>
+                <p className="mt-1 text-sm text-gray-500">조회 기준과 화면 표시를 조정하세요.</p>
               </div>
               <button
                 type="button"
                 onClick={() => setIsSettingsOpen(false)}
-                className="flex h-11 w-11 items-center justify-center rounded-full bg-gray-100 text-2xl leading-none text-gray-600"
+                className="flex h-11 w-11 items-center justify-center rounded-full bg-gray-100 text-2xl leading-none text-gray-600 transition-colors hover:bg-gray-200"
                 aria-label="닫기"
               >
                 ×
               </button>
             </div>
 
-            <div className="space-y-5">
-              <label className="block">
-                <span className="mb-2 block text-sm font-bold text-gray-700">가구명</span>
-                <input
-                  type="text"
-                  value={state.householdName}
-                  onChange={handleHouseholdNameChange}
-                  className="h-12 w-full rounded-lg border border-gray-200 bg-gray-50 px-4 text-base font-semibold text-gray-950 focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                />
-              </label>
-
-              <label className="block">
-                <span className="mb-2 block text-sm font-bold text-gray-700">기준월</span>
-                <input
-                  type="month"
-                  value={state.baseMonth}
-                  onChange={handleMonthChange}
-                  className="h-12 w-full rounded-lg border border-gray-200 bg-gray-50 px-4 text-base font-semibold text-gray-950 focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                />
-              </label>
-
-              <fieldset>
-                <legend className="mb-2 text-sm font-bold text-gray-700">자산 범위</legend>
-                <div className="grid grid-cols-3 rounded-lg bg-gray-100 p-1">
-                  {([
-                    ['combined', '합산'],
-                    ['husband', '남편'],
-                    ['wife', '아내'],
-                  ] as const).map(([scope, label]) => (
-                    <button
-                      key={scope}
-                      type="button"
-                      onClick={() => handleScopeChange(scope)}
-                      className={`h-11 rounded-md text-base font-bold transition-colors ${
-                        state.scope === scope ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500'
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  ))}
+            <div className="space-y-6">
+              <section aria-labelledby="query-settings-title">
+                <div className="mb-4">
+                  <h3 id="query-settings-title" className="text-base font-extrabold text-gray-900">조회 설정</h3>
+                  <p className="mt-1 text-sm text-gray-500">화면에 표시할 자산 기준입니다.</p>
                 </div>
-              </fieldset>
+                <div className="space-y-5">
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-bold text-gray-700">가구명</span>
+                    <input
+                      type="text"
+                      value={state.householdName}
+                      onChange={handleHouseholdNameChange}
+                      className="h-12 w-full rounded-lg border border-gray-200 bg-gray-50 px-4 text-base font-semibold text-gray-950 focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                    />
+                  </label>
 
-              <div className="flex min-h-12 items-center justify-between rounded-lg bg-gray-50 px-4">
-                <span className="text-sm font-bold text-gray-600">현재 환율</span>
-                <ExchangeRateDisplay />
-              </div>
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-bold text-gray-700">기준월</span>
+                    <input
+                      type="month"
+                      value={state.baseMonth}
+                      onChange={handleMonthChange}
+                      className="h-12 w-full rounded-lg border border-gray-200 bg-gray-50 px-4 text-base font-semibold text-gray-950 focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                    />
+                  </label>
+
+                  <fieldset>
+                    <legend className="mb-2 text-sm font-bold text-gray-700">자산 범위</legend>
+                    <div className="grid grid-cols-3 rounded-lg bg-gray-100 p-1">
+                      {([
+                        ['combined', '합산'],
+                        ['husband', '남편'],
+                        ['wife', '아내'],
+                      ] as const).map(([scope, label]) => (
+                        <button
+                          key={scope}
+                          type="button"
+                          onClick={() => handleScopeChange(scope)}
+                          className={`h-11 rounded-md text-base font-bold transition-colors ${
+                            state.scope === scope ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </fieldset>
+
+                  <div className="flex min-h-12 items-center justify-between rounded-lg bg-gray-50 px-4">
+                    <span className="text-sm font-bold text-gray-600">현재 환율</span>
+                    <ExchangeRateDisplay />
+                  </div>
+                </div>
+              </section>
+
+              <section className="border-t border-gray-100 pt-5" aria-labelledby="display-settings-title">
+                <div className="mb-4">
+                  <h3 id="display-settings-title" className="text-base font-extrabold text-gray-900">앱 설정</h3>
+                  <p className="mt-1 text-sm text-gray-500">이 기기에서 사용할 화면 표시입니다.</p>
+                </div>
+                <div className="space-y-5">
+                  <fieldset>
+                    <legend className="mb-2 text-sm font-bold text-gray-700">글자 크기</legend>
+                    <div className="grid grid-cols-3 rounded-lg bg-gray-100 p-1">
+                      {([
+                        ['small', '작게'],
+                        ['medium', '중간'],
+                        ['large', '크게'],
+                      ] as const).map(([fontSize, label]) => (
+                        <button
+                          key={fontSize}
+                          type="button"
+                          onClick={() => handleFontSizeChange(fontSize)}
+                          aria-pressed={appPreferences.fontSize === fontSize}
+                          className={`h-11 rounded-md text-sm font-bold transition-colors ${
+                            appPreferences.fontSize === fontSize ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </fieldset>
+
+                  <fieldset>
+                    <legend className="mb-2 text-sm font-bold text-gray-700">컴포넌트 간격</legend>
+                    <div className="grid grid-cols-3 rounded-lg bg-gray-100 p-1">
+                      {([
+                        ['compact', '촘촘하게'],
+                        ['medium', '중간'],
+                        ['wide', '넓게'],
+                      ] as const).map(([spacing, label]) => (
+                        <button
+                          key={spacing}
+                          type="button"
+                          onClick={() => handleSpacingChange(spacing)}
+                          aria-pressed={appPreferences.spacing === spacing}
+                          className={`h-11 rounded-md text-sm font-bold transition-colors ${
+                            appPreferences.spacing === spacing ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </fieldset>
+                </div>
+              </section>
 
               <button
                 type="button"
                 onClick={handleLogout}
-                className="h-12 w-full rounded-lg border border-red-200 bg-red-50 text-base font-bold text-red-700 active:bg-red-100"
+                className="h-12 w-full rounded-lg border border-red-200 bg-red-50 text-base font-bold text-red-700 transition-colors hover:bg-red-100 active:bg-red-100"
               >
                 로그아웃
               </button>
