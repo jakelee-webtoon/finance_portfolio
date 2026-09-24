@@ -103,10 +103,16 @@ export default function MonthlyPlanPage() {
   useEffect(() => {
     if (isAuthenticated !== true) return;
 
-    const loadData = async () => {
-      await syncFromFirebase();
+    const applyCachedData = () => {
       setState(getDashboardState());
       setMonthlyPlans(getMonthlyPlanEntries());
+    };
+
+    applyCachedData();
+
+    const loadData = async () => {
+      await syncFromFirebase();
+      applyCachedData();
     };
 
     loadData();

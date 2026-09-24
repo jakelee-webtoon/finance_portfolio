@@ -28,13 +28,18 @@ export default function OtherPage() {
 
   useEffect(() => {
     if (isAuthenticated !== true) return;
+
+    const applyCachedData = () => {
+      setState(getDashboardState());
+      setAssetsState(getAssets().filter((asset) => asset.category === 'other'));
+    };
+
+    applyCachedData();
+    getExchangeRates().then(setExchangeRates);
+
     const loadData = async () => {
       await syncFromFirebase();
-      const dashboardState = getDashboardState();
-      setState(dashboardState);
-      const allAssets = getAssets();
-      setAssetsState(allAssets.filter((a) => a.category === 'other'));
-      getExchangeRates().then(setExchangeRates);
+      applyCachedData();
     };
     loadData();
   }, [isAuthenticated]);

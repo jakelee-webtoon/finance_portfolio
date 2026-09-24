@@ -46,14 +46,18 @@ export default function StocksPage() {
   // 초기 로드 (한 번만)
   useEffect(() => {
     if (isAuthenticated !== true || isInitialLoaded) return;
-    
+
+    const applyCachedData = () => {
+      setState(getDashboardState());
+      setHoldings(getStockHoldings());
+    };
+
+    applyCachedData();
+
     const loadData = async () => {
       await syncFromFirebase();
-      
-      const dashboardState = getDashboardState();
-      setState(dashboardState);
-      setHoldings(getStockHoldings());
-      
+      applyCachedData();
+
       const rates = await getExchangeRates();
       setExchangeRates(rates);
       setIsInitialLoaded(true);

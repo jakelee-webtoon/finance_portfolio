@@ -105,11 +105,17 @@ export default function IsaPage() {
   useEffect(() => {
     if (isAuthenticated !== true) return;
 
-    const loadData = async () => {
-      await syncFromFirebase();
+    const applyCachedData = () => {
       setState(getDashboardState());
       setHoldings(getStockHoldings());
-      setExchangeRates(await getExchangeRates());
+    };
+
+    applyCachedData();
+    getExchangeRates().then(setExchangeRates);
+
+    const loadData = async () => {
+      await syncFromFirebase();
+      applyCachedData();
     };
 
     loadData();

@@ -79,15 +79,21 @@ export default function LedgerPage() {
 
   useEffect(() => {
     if (isAuthenticated !== true) return;
-    
+
+    const applyCachedData = () => {
+      setState(getDashboardState());
+      setEntriesState(getLedgerEntries());
+    };
+
+    applyCachedData();
+
     // Firebase에서 데이터 동기화 후 로컬 데이터 로드
     const loadData = async () => {
       await syncFromFirebase();
-      
+
       const dashboardState = getDashboardState();
-      setState(dashboardState);
-      setEntriesState(getLedgerEntries());
-      
+      applyCachedData();
+
       // 기준월 변경 시 고정비 자동 반복 로직 실행
       checkAndCreateFixedEntries(dashboardState.baseMonth);
     };

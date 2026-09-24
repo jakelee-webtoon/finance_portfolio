@@ -32,15 +32,18 @@ export default function ApartmentPage() {
 
   useEffect(() => {
     if (isAuthenticated !== true) return;
-    
+
+    const applyCachedData = () => {
+      setState(getDashboardState());
+      setApartmentsState(getApartments());
+    };
+
+    applyCachedData();
+
     // Firebase에서 데이터 동기화 후 로컬 데이터 로드
     const loadData = async () => {
       await syncFromFirebase();
-      
-      const dashboardState = getDashboardState();
-      setState(dashboardState);
-      const loadedApartments = getApartments();
-      setApartmentsState(loadedApartments);
+      applyCachedData();
     };
     
     loadData();

@@ -34,7 +34,13 @@ export default function PortfolioPage() {
 
   useEffect(() => {
     if (isAuthenticated !== true) return;
-    
+
+    setState(getDashboardState());
+    setAssetsState(getAssets());
+    setLiabilitiesState(getLiabilities());
+    setHoldings(getStockHoldings());
+    getExchangeRates().then(setExchangeRates);
+
     // Firebase에서 데이터 동기화 후 로컬 데이터 로드
     const loadData = async () => {
       await syncFromFirebase();
@@ -82,9 +88,6 @@ export default function PortfolioPage() {
     setLiabilitiesState(getLiabilities());
     setHoldings(getStockHoldings());
     
-      getExchangeRates().then((rates) => {
-        setExchangeRates(rates);
-      });
     };
     
     loadData();

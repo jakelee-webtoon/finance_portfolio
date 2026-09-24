@@ -27,21 +27,19 @@ export default function CashPage() {
 
   useEffect(() => {
     if (isAuthenticated !== true) return;
-    
+
+    const applyCachedData = () => {
+      setState(getDashboardState());
+      setAssetsState(getAssets().filter((asset) => asset.category === 'cash'));
+    };
+
+    applyCachedData();
+    getExchangeRates().then(setExchangeRates);
+
     // Firebase에서 데이터 동기화 후 로컬 데이터 로드
     const loadData = async () => {
       await syncFromFirebase();
-      
-      const dashboardState = getDashboardState();
-      setState(dashboardState);
-      const allAssets = getAssets();
-      // 현금 카테고리만 필터링
-      setAssetsState(allAssets.filter((asset) => asset.category === 'cash'));
-      
-      // 환율 로드
-      getExchangeRates().then((rates) => {
-        setExchangeRates(rates);
-      });
+      applyCachedData();
     };
     
     loadData();

@@ -1,5 +1,5 @@
 import { DashboardState, Asset, Income, Transaction, Portfolio, Liability, StockHolding, Apartment, Salary, Scope, LedgerEntry, MonthlyPlanEntry } from '@/types';
-import { mockAssets, mockIncome, mockTransactions, mockPortfolios, mockLiabilities, mockStockHoldings, mockApartments } from '@/data/mockData';
+import { mockIncome, mockTransactions, mockPortfolios } from '@/data/mockData';
 
 const STORAGE_KEY = 'finance-dashboard-state';
 
@@ -36,129 +36,97 @@ const getFirestoreFunctions = async () => {
   }
 };
 
-// Firebase에서 데이터를 가져와서 localStorage에 동기화하는 초기화 함수
-export async function syncFromFirebase(): Promise<void> {
+const FIREBASE_SYNC_TTL_MS = 30_000;
+let firebaseSyncPromise: Promise<void> | null = null;
+let lastFirebaseSyncAt = 0;
+
+async function performFirebaseSync(): Promise<void> {
   if (typeof window === 'undefined') return;
   if (!useFirebase()) return;
-  
+
   try {
     const firestore = await getFirestoreFunctions();
     if (!firestore) return;
-    
-    // Dashboard State
-    try {
-      const dashboardState = await firestore.getDashboardState();
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(dashboardState));
-    } catch (error) {
-      // 에러 무시
-    }
-    
-    // Assets
-    try {
-      const assets = await firestore.getAssets();
-      if (assets.length > 0) {
-        localStorage.setItem('finance-assets', JSON.stringify(assets));
-      }
-    } catch (error) {
-      // 에러 무시
-    }
-    
-    // Stock Holdings
-    try {
-      const holdings = await firestore.getStockHoldings();
-      console.log(`[syncFromFirebase] Fetched ${holdings.length} stock holdings from Firebase`);
-      
-      // Mock 데이터 필터링 (ID, 심볼, 이름, 수량으로 체크)
-      const realHoldings = holdings.filter((holding: StockHolding) => {
-        if (holding.id === 'stock-1' || holding.id === 'stock-2' || holding.id === 'stock-3') {
-          return false;
-        }
-        if (holding.symbol === '005930' && holding.name === '삼성전자' && holding.quantity === 50 && holding.purchasePrice === 60000) {
-          return false;
-        }
-        if (holding.symbol === '035720' && holding.name === '카카오' && holding.quantity === 20 && holding.purchasePrice === 75000) {
-          return false;
-        }
-        if (holding.symbol === 'AAPL' && holding.name === 'Apple Inc.' && holding.quantity === 10 && holding.purchasePrice === 150) {
-          return false;
-        }
-        return true;
-      });
 
-      // Firestore 스냅샷을 단일 소스로 사용 (로컬·원격 병합 제거)
-      // 병합 시 "리모트에만 있는 항목"을 다시 붙이면, 로컬에서 삭제한 직후/일시적 지연에서 삭제분이 부활하는 문제가 생김
-      localStorage.setItem('finance-stock-holdings', JSON.stringify(realHoldings));
-      console.log(`[syncFromFirebase] Stock holdings from Firebase: ${realHoldings.length} items (local merge disabled)`);
-    } catch (error) {
-      console.error('[syncFromFirebase] Failed to sync stock holdings:', error);
-      // 에러 발생 시 기존 localStorage 데이터 유지
-      const existing = localStorage.getItem('finance-stock-holdings');
-      if (!existing) {
-        localStorage.setItem('finance-stock-holdings', JSON.stringify([]));
+    const cacheKeys = [
+      STORAGE_KEY,
+      'finance-assets',
+      'finance-stock-holdings',
+      'finance-salaries',
+      'finance-apartments',
+      'finance-income',
+      'finance-liabilities',
+      'finance-ledger-entries',
+      'finance-monthly-plan-entries',
+    ];
+    const cacheSnapshot = new Map(cacheKeys.map((key) => [key, localStorage.getItem(key)]));
+    const updateUnchangedCache = (key: string, value: unknown) => {
+      if (localStorage.getItem(key) === cacheSnapshot.get(key)) {
+        localStorage.setItem(key, JSON.stringify(value));
       }
-    }
-    
-    // Salaries
-    try {
-      const salaries = await firestore.getSalaries();
-      if (salaries.length > 0) {
-        localStorage.setItem('finance-salaries', JSON.stringify(salaries));
-      }
-    } catch (error) {
-      // 에러 무시
-    }
-    
-    // Apartments
-    try {
-      const apartments = await firestore.getApartments();
-      if (apartments.length > 0) {
-        localStorage.setItem('finance-apartments', JSON.stringify(apartments));
-      }
-    } catch (error) {
-      // 에러 무시
-    }
-    
-    // Income
-    try {
-      const income = await firestore.getIncome();
-      localStorage.setItem('finance-income', JSON.stringify(withoutMockIncome(income)));
-    } catch (error) {
-      const stored = localStorage.getItem('finance-income');
-      localStorage.setItem('finance-income', JSON.stringify(stored ? withoutMockIncome(JSON.parse(stored)) : []));
-    }
-    
-    // Liabilities
-    try {
-      const liabilities = await firestore.getLiabilities();
-      if (liabilities.length > 0) {
-        localStorage.setItem('finance-liabilities', JSON.stringify(liabilities));
-      }
-    } catch (error) {
-      // 에러 무시
-    }
-    
-    // Ledger Entries
-    try {
-      const ledgerEntries = await firestore.getLedgerEntries();
-      // 빈 배열도 저장 (mock 데이터 방지)
-      localStorage.setItem('finance-ledger-entries', JSON.stringify(ledgerEntries));
-    } catch (error) {
-      // 에러 발생 시에도 빈 배열 저장 (mock 데이터 방지)
-      localStorage.setItem('finance-ledger-entries', JSON.stringify([]));
-    }
+    };
 
-    // Monthly Plan Entries
-    try {
-      const monthlyPlanEntries = await firestore.getMonthlyPlanEntries();
-      localStorage.setItem('finance-monthly-plan-entries', JSON.stringify(monthlyPlanEntries));
-    } catch (error) {
-      const existing = localStorage.getItem('finance-monthly-plan-entries');
-      if (!existing) localStorage.setItem('finance-monthly-plan-entries', JSON.stringify([]));
-    }
-
+    await Promise.all([
+      firestore.getDashboardState()
+        .then((dashboardState: DashboardState) => updateUnchangedCache(STORAGE_KEY, dashboardState))
+        .catch(() => undefined),
+      firestore.getAssets()
+        .then((assets: Asset[]) => updateUnchangedCache('finance-assets', assets))
+        .catch(() => undefined),
+      firestore.getStockHoldings()
+        .then((holdings: StockHolding[]) => {
+          const realHoldings = holdings.filter((holding) => {
+            if (holding.id === 'stock-1' || holding.id === 'stock-2' || holding.id === 'stock-3') return false;
+            if (holding.symbol === '005930' && holding.name === '삼성전자' && holding.quantity === 50 && holding.purchasePrice === 60000) return false;
+            if (holding.symbol === '035720' && holding.name === '카카오' && holding.quantity === 20 && holding.purchasePrice === 75000) return false;
+            if (holding.symbol === 'AAPL' && holding.name === 'Apple Inc.' && holding.quantity === 10 && holding.purchasePrice === 150) return false;
+            return true;
+          });
+          updateUnchangedCache('finance-stock-holdings', realHoldings);
+        })
+        .catch(() => undefined),
+      firestore.getSalaries()
+        .then((salaries: Salary[]) => updateUnchangedCache('finance-salaries', salaries))
+        .catch(() => undefined),
+      firestore.getApartments()
+        .then((apartments: Apartment[]) => updateUnchangedCache('finance-apartments', apartments))
+        .catch(() => undefined),
+      firestore.getIncome()
+        .then((income: Income[]) => updateUnchangedCache('finance-income', withoutMockIncome(income)))
+        .catch(() => undefined),
+      firestore.getLiabilities()
+        .then((liabilities: Liability[]) => updateUnchangedCache('finance-liabilities', liabilities))
+        .catch(() => undefined),
+      firestore.getLedgerEntries()
+        .then((entries: LedgerEntry[]) => updateUnchangedCache('finance-ledger-entries', entries))
+        .catch(() => undefined),
+      firestore.getMonthlyPlanEntries()
+        .then((entries: MonthlyPlanEntry[]) => updateUnchangedCache('finance-monthly-plan-entries', entries))
+        .catch(() => undefined),
+    ]);
   } catch (error) {
     // 전체 에러 무시 (Firebase 연결 실패 시 localStorage만 사용)
   }
+}
+
+// 캐시를 먼저 렌더링한 뒤 호출한다. 짧은 탭 이동 동안에는 같은 동기화 결과를 재사용한다.
+export function syncFromFirebase(options: { force?: boolean } = {}): Promise<void> {
+  if (typeof window === 'undefined' || !useFirebase()) return Promise.resolve();
+
+  if (!options.force && Date.now() - lastFirebaseSyncAt < FIREBASE_SYNC_TTL_MS) {
+    return Promise.resolve();
+  }
+  if (firebaseSyncPromise) return firebaseSyncPromise;
+
+  firebaseSyncPromise = performFirebaseSync()
+    .then(() => {
+      lastFirebaseSyncAt = Date.now();
+    })
+    .finally(() => {
+      firebaseSyncPromise = null;
+    });
+
+  return firebaseSyncPromise;
 }
 
 // 동기 버전 (기존 코드 호환성 유지 - 기본 export)
@@ -208,9 +176,9 @@ export function setDashboardState(state: DashboardState): void {
 
 // 동기 버전 (기존 코드 호환성 유지 - 기본 export)
 export function getAssets(): Asset[] {
-  if (typeof window === 'undefined') return mockAssets;
+  if (typeof window === 'undefined') return [];
   const stored = localStorage.getItem('finance-assets');
-  return stored ? JSON.parse(stored) : mockAssets;
+  return stored ? JSON.parse(stored) : [];
 }
 
 export async function setAssets(assets: Asset[]): Promise<void> {
@@ -281,9 +249,9 @@ export async function setPortfolios(portfolios: Portfolio[]): Promise<void> {
 }
 
 export function getLiabilities(): Liability[] {
-  if (typeof window === 'undefined') return mockLiabilities;
+  if (typeof window === 'undefined') return [];
   const stored = localStorage.getItem('finance-liabilities');
-  return stored ? JSON.parse(stored) : mockLiabilities;
+  return stored ? JSON.parse(stored) : [];
 }
 
 export async function setLiabilities(liabilities: Liability[]): Promise<void> {
@@ -329,9 +297,9 @@ export async function setStockHoldings(holdings: StockHolding[]): Promise<void> 
 
 // 동기 버전 (기존 코드 호환성 유지 - 기본 export)
 export function getApartments(): Apartment[] {
-  if (typeof window === 'undefined') return mockApartments;
+  if (typeof window === 'undefined') return [];
   const stored = localStorage.getItem('finance-apartments');
-  return stored ? JSON.parse(stored) : mockApartments;
+  return stored ? JSON.parse(stored) : [];
 }
 
 export async function setApartments(apartments: Apartment[]): Promise<void> {

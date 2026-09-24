@@ -25,20 +25,21 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (isAuthenticated !== true) return;
-    
+
+    const applyCachedData = () => {
+      setState(getDashboardState());
+      setAssets(getAssets());
+      setLiabilities(getLiabilities());
+      setHoldings(getStockHoldings());
+    };
+
+    applyCachedData();
+    getExchangeRates().then(setExchangeRates);
+
     const loadData = async () => {
       try {
         await syncFromFirebase();
-        
-        const dashboardState = getDashboardState();
-        setState(dashboardState);
-        setAssets(getAssets());
-        setLiabilities(getLiabilities());
-        setHoldings(getStockHoldings());
-        
-        getExchangeRates().then((rates) => {
-          setExchangeRates(rates);
-        });
+        applyCachedData();
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Unknown error');
       }

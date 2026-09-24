@@ -49,13 +49,17 @@ export default function RSUPage() {
   useEffect(() => {
     if (isAuthenticated !== true || isInitialLoaded) return;
 
+    const applyCachedData = () => {
+      setState(getDashboardState());
+      const allHoldings = getStockHoldings();
+      setHoldings(allHoldings.filter((h) => h.type === 'rsu' || h.type === 'option'));
+    };
+
+    applyCachedData();
+
     const loadData = async () => {
       await syncFromFirebase();
-      const dashboardState = getDashboardState();
-      setState(dashboardState);
-      const allHoldings = getStockHoldings();
-      const filtered = allHoldings.filter((h) => h.type === 'rsu' || h.type === 'option');
-      setHoldings(filtered);
+      applyCachedData();
       const rates = await getExchangeRates();
       setExchangeRates(rates);
       setIsInitialLoaded(true);
