@@ -16,7 +16,7 @@
 
 /* 모바일: 가로 오버플로우·미세 좌우 흔들림 방지 (100vw 스크롤바 이슈 포함) */
 html {
-  overflow-x: clip;
+  overflow-x: hidden;
   max-width: 100%;
   overscroll-behavior-x: none;
   overscroll-behavior-y: none;
@@ -26,13 +26,28 @@ html {
 body {
   color: var(--foreground);
   background: #f8fafc;
-  overflow-x: clip;
+  overflow-x: hidden;
   max-width: 100%;
   min-height: 100dvh;
   overscroll-behavior-x: none;
   overscroll-behavior-y: none;
   /* Pretendard 미로딩 시 첫 렌더 지연 방지 — 시스템 폰트 우선 */
   font-family: -apple-system, BlinkMacSystemFont, system-ui, 'Segoe UI', Roboto, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif;
+}
+
+.page-transition {
+  animation: page-enter 220ms ease-out both;
+}
+
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @media (max-width: 767px) {
@@ -63,9 +78,51 @@ body {
     transform: translateZ(0);
   }
 
+  .mobile-navigation-menu {
+    animation: mobile-menu-enter 180ms ease-out both;
+    left: 0;
+    right: 0;
+    max-width: 100svw;
+    overflow-x: hidden;
+    touch-action: none;
+    transform: translate3d(0, var(--menu-drag-y, 0px), 0);
+    transition: transform 180ms ease-out;
+    will-change: transform;
+  }
+
+  .mobile-navigation-menu--dragging {
+    transition: none;
+    touch-action: none;
+  }
+
   [data-mobile-topbar-shell] {
     backface-visibility: hidden;
     will-change: transform;
+  }
+
+  .app-settings-dialog {
+    max-width: 100svw;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+
+  .app-settings-sheet {
+    box-sizing: border-box;
+    max-width: 100svw;
+    overscroll-behavior: contain;
+    touch-action: pan-y;
+    transform: translate3d(0, var(--settings-drag-y, 0px), 0);
+    transition: transform 180ms ease-out;
+    will-change: transform;
+  }
+
+  .app-settings-sheet--dragging {
+    touch-action: none;
+    transition: none;
+  }
+
+  .app-settings-drag-area {
+    touch-action: none;
   }
 
   .monthly-amount-input {
@@ -174,6 +231,30 @@ body {
   select,
   textarea {
     font-size: 17px;
+  }
+}
+
+@keyframes mobile-menu-enter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-transition,
+  .mobile-navigation-menu {
+    animation: none;
+  }
+
+  .mobile-navigation-menu {
+    transition: none;
+  }
+
+  .app-settings-sheet {
+    transition: none;
   }
 }
 
@@ -318,6 +399,26 @@ html[data-mobile-topbar='hidden'] .top-navigation {
 
   .isa-overview-metrics > :not(:first-child) .text-xl {
     font-size: 0.9375rem;
+  }
+
+  .isa-limit-value,
+  .isa-tax-benefit-value {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    word-break: keep-all;
+    line-height: 1.25;
+  }
+
+  .isa-tax-benefit-value {
+    display: flex;
+    flex-wrap: wrap;
+    column-gap: 0.35rem;
+    row-gap: 0.1rem;
+  }
+
+  .isa-tax-benefit-value span:last-child {
+    min-width: 0;
+    max-width: 100%;
   }
 
   .rsu-metrics > :not(.rsu-metric-wide) .text-2xl,

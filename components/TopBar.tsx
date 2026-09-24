@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { type CSSProperties, type MouseEvent, type PointerEvent, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { DashboardState, Scope } from '@/types';
 import { getDashboardState, setDashboardState } from '@/lib/store';
@@ -21,9 +21,21 @@ export default function TopBar() {
   const [state, setState] = useState<DashboardState | null>(null);
   const [isMobileHidden, setIsMobileHidden] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [settingsDragY, setSettingsDragY] = useState(0);
+  const [isSettingsDragging, setIsSettingsDragging] = useState(false);
   const [appPreferences, setAppPreferences] = useState<AppPreferences>(DEFAULT_APP_PREFERENCES);
   const topBarRef = useRef<HTMLDivElement>(null);
   const isMobileHiddenRef = useRef(false);
+  const settingsDragRef = useRef({
+    pointerId: -1,
+    startY: 0,
+    lastY: 0,
+    lastTime: 0,
+    dragY: 0,
+    velocity: 0,
+    hasMoved: false,
+  });
+  const suppressSettingsClickRef = useRef(false);
 
   useEffect(() => {
     setState(getDashboardState());
@@ -111,6 +123,71 @@ export default function TopBar() {
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [isSettingsOpen]);
+
+  useEffect(() => {
+    if (isSettingsOpen) return;
+    setSettingsDragY(0);
+    setIsSettingsDragging(false);
+    settingsDragRef.current.pointerId = -1;
+  }, [isSettingsOpen]);
+
+  const handleSettingsPointerDown = (event: PointerEvent<HTMLElement>) => {
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    if ((event.target as HTMLElement).closest('input, select, textarea, button, a')) return;
+
+    const now = performance.now();
+    settingsDragRef.current = {
+      pointerId: event.pointerId,
+      startY: event.clientY,
+      lastY: event.clientY,
+      lastTime: now,
+      dragY: 0,
+      velocity: 0,
+      hasMoved: false,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const handleSettingsPointerMove = (event: PointerEvent<HTMLElement>) => {
+    const drag = settingsDragRef.current;
+    if (drag.pointerId !== event.pointerId) return;
+
+    const nextDragY = Math.max(0, event.clientY - drag.startY);
+    const now = performance.now();
+    const elapsed = Math.max(now - drag.lastTime, 1);
+    drag.velocity = (event.clientY - drag.lastY) / elapsed;
+    drag.lastY = event.clientY;
+    drag.lastTime = now;
+    drag.dragY = nextDragY;
+
+    if (!drag.hasMoved && nextDragY < 8) return;
+    drag.hasMoved = true;
+    setIsSettingsDragging(true);
+    setSettingsDragY(nextDragY);
+  };
+
+  const handleSettingsPointerEnd = (event: PointerEvent<HTMLElement>) => {
+    const drag = settingsDragRef.current;
+    if (drag.pointerId !== event.pointerId) return;
+
+    const shouldClose = drag.dragY > 108 || (drag.dragY > 36 && drag.velocity > 0.65);
+    suppressSettingsClickRef.current = drag.hasMoved;
+    settingsDragRef.current.pointerId = -1;
+    setIsSettingsDragging(false);
+
+    if (shouldClose) {
+      setIsSettingsOpen(false);
+    }
+
+    setSettingsDragY(0);
+  };
+
+  const handleSettingsClickCapture = (event: MouseEvent<HTMLElement>) => {
+    if (!suppressSettingsClickRef.current) return;
+    suppressSettingsClickRef.current = false;
+    event.preventDefault();
+    event.stopPropagation();
+  };
 
   const handleMonthChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!state) return;
@@ -284,16 +361,26 @@ export default function TopBar() {
       <div className="h-16 md:hidden" aria-hidden="true" />
 
       {isSettingsOpen && (
-        <div className="fixed inset-0 z-[80] flex items-end justify-center md:items-center md:p-6" role="dialog" aria-modal="true" aria-labelledby="app-settings-title">
+        <div className="app-settings-dialog fixed inset-0 z-[80] flex items-end justify-center md:items-center md:p-6" role="dialog" aria-modal="true" aria-labelledby="app-settings-title">
           <button
             type="button"
             aria-label="설정 닫기"
             className="absolute inset-0 bg-gray-950/35 backdrop-blur-[1px]"
             onClick={() => setIsSettingsOpen(false)}
           />
-          <section className="relative max-h-[92dvh] w-full overflow-y-auto rounded-t-2xl bg-white px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-4 shadow-2xl md:max-w-xl md:rounded-xl md:p-6">
-            <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-gray-200 md:hidden" aria-hidden="true" />
-            <div className="mb-5 flex items-center justify-between border-b border-gray-100 pb-4">
+          <section
+            className={`app-settings-sheet relative max-h-[92dvh] w-full overflow-y-auto overflow-x-hidden rounded-t-2xl bg-white px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-4 shadow-2xl md:max-w-xl md:rounded-xl md:p-6 ${
+              isSettingsDragging ? 'app-settings-sheet--dragging' : ''
+            }`}
+            style={{ '--settings-drag-y': `${settingsDragY}px` } as CSSProperties}
+            onPointerDown={handleSettingsPointerDown}
+            onPointerMove={handleSettingsPointerMove}
+            onPointerUp={handleSettingsPointerEnd}
+            onPointerCancel={handleSettingsPointerEnd}
+            onClickCapture={handleSettingsClickCapture}
+          >
+            <div className="app-settings-drag-area mx-auto mb-4 h-1 w-10 rounded-full bg-gray-200 md:hidden" aria-hidden="true" />
+            <div className="app-settings-drag-area mb-5 flex items-center justify-between border-b border-gray-100 pb-4">
               <div>
                 <h2 id="app-settings-title" className="text-xl font-extrabold text-gray-950">설정</h2>
                 <p className="mt-1 text-sm text-gray-500">조회 기준과 화면 표시를 조정하세요.</p>

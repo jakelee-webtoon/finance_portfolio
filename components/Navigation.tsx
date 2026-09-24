@@ -1,12 +1,24 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { type CSSProperties, type MouseEvent, type PointerEvent, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
 export default function Navigation() {
   const pathname = usePathname();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [menuDragY, setMenuDragY] = useState(0);
+  const [isMenuDragging, setIsMenuDragging] = useState(false);
+  const menuDragRef = useRef({
+    pointerId: -1,
+    startY: 0,
+    lastY: 0,
+    lastTime: 0,
+    dragY: 0,
+    velocity: 0,
+    hasMoved: false,
+  });
+  const suppressMenuClickRef = useRef(false);
 
   const navItems = [
     { href: '/dashboard', label: '대시보드' },
@@ -36,6 +48,8 @@ export default function Navigation() {
 
   useEffect(() => {
     setIsMenuOpen(false);
+    setMenuDragY(0);
+    setIsMenuDragging(false);
   }, [pathname]);
 
   useEffect(() => {
@@ -58,6 +72,63 @@ export default function Navigation() {
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [isMenuOpen]);
+
+  const handleMenuPointerDown = (event: PointerEvent<HTMLElement>) => {
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+
+    const now = performance.now();
+    menuDragRef.current = {
+      pointerId: event.pointerId,
+      startY: event.clientY,
+      lastY: event.clientY,
+      lastTime: now,
+      dragY: 0,
+      velocity: 0,
+      hasMoved: false,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const handleMenuPointerMove = (event: PointerEvent<HTMLElement>) => {
+    const drag = menuDragRef.current;
+    if (drag.pointerId !== event.pointerId) return;
+
+    const nextDragY = Math.max(0, event.clientY - drag.startY);
+    const now = performance.now();
+    const elapsed = Math.max(now - drag.lastTime, 1);
+    drag.velocity = (event.clientY - drag.lastY) / elapsed;
+    drag.lastY = event.clientY;
+    drag.lastTime = now;
+    drag.dragY = nextDragY;
+
+    if (!drag.hasMoved && nextDragY < 8) return;
+    drag.hasMoved = true;
+    setIsMenuDragging(true);
+    setMenuDragY(nextDragY);
+  };
+
+  const handleMenuPointerEnd = (event: PointerEvent<HTMLElement>) => {
+    const drag = menuDragRef.current;
+    if (drag.pointerId !== event.pointerId) return;
+
+    const shouldClose = drag.dragY > 96 || (drag.dragY > 32 && drag.velocity > 0.65);
+    suppressMenuClickRef.current = drag.hasMoved;
+    menuDragRef.current.pointerId = -1;
+    setIsMenuDragging(false);
+
+    if (shouldClose) {
+      setIsMenuOpen(false);
+    }
+
+    setMenuDragY(0);
+  };
+
+  const handleMenuClickCapture = (event: MouseEvent<HTMLElement>) => {
+    if (!suppressMenuClickRef.current) return;
+    suppressMenuClickRef.current = false;
+    event.preventDefault();
+    event.stopPropagation();
+  };
 
   return (
     <>
@@ -92,8 +163,16 @@ export default function Navigation() {
       {isMenuOpen && (
         <section
           id="mobile-navigation-menu"
-          className="fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-[60] rounded-t-2xl bg-white px-4 pb-5 pt-3 shadow-2xl md:hidden"
+          className={`mobile-navigation-menu fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-[60] rounded-t-2xl bg-white px-4 pb-5 pt-3 shadow-2xl md:hidden ${
+            isMenuDragging ? 'mobile-navigation-menu--dragging' : ''
+          }`}
+          style={{ '--menu-drag-y': `${menuDragY}px` } as CSSProperties}
           aria-label="전체 메뉴"
+          onPointerDown={handleMenuPointerDown}
+          onPointerMove={handleMenuPointerMove}
+          onPointerUp={handleMenuPointerEnd}
+          onPointerCancel={handleMenuPointerEnd}
+          onClickCapture={handleMenuClickCapture}
         >
           <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-gray-200" aria-hidden="true" />
           <div className="mb-3 flex items-center justify-between px-1">

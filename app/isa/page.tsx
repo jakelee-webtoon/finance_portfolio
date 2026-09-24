@@ -557,14 +557,17 @@ export default function IsaPage() {
                   </span>
                 )}
               </div>
-              <div className="text-xl font-black text-indigo-900">{formatKrw(annualContributionLimit)}</div>
+              <div className="isa-limit-value text-xl font-black text-indigo-900">{formatKrw(annualContributionLimit)}</div>
               <div className="text-xs text-indigo-700/80 mt-1">
                 {state.scope === 'combined' ? '부부 합산 기준' : '개인 기준'} · 총 {formatKrw(totalContributionLimit)}
               </div>
             </div>
             <div className="col-span-12 sm:col-span-6 lg:col-span-3 bg-emerald-50 rounded-2xl border border-emerald-100 p-5">
               <div className="text-xs font-bold text-emerald-600 mb-2">세제 혜택</div>
-              <div className="text-xl font-black text-emerald-900">일반형 {formatKrw(taxFreeLimit)}</div>
+              <div className="isa-tax-benefit-value text-xl font-black text-emerald-900">
+                <span>일반형</span>
+                <span>{formatKrw(taxFreeLimit)}</span>
+              </div>
               <div className="text-xs text-emerald-700/80 mt-1">초과분 {(ISA_SEPARATE_TAX_RATE * 100).toFixed(1)}% 분리과세</div>
             </div>
           </div>

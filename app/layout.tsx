@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { ToastProvider } from "@/components/Toast";
+import PageTransition from "@/components/PageTransition";
 
 export const metadata: Metadata = {
   title: "Finance Portfolio Dashboard",
@@ -23,7 +24,7 @@ export default function RootLayout({
       </head>
       <body className="min-w-0">
         <ToastProvider>
-          {children}
+          <PageTransition>{children}</PageTransition>
         </ToastProvider>
       </body>
     </html>
