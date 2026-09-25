@@ -17,6 +17,7 @@
 /* 모바일: 가로 오버플로우·미세 좌우 흔들림 방지 (100vw 스크롤바 이슈 포함) */
 html {
   overflow-x: hidden;
+  overflow-x: clip;
   max-width: 100%;
   overscroll-behavior-x: none;
   overscroll-behavior-y: none;
@@ -27,6 +28,7 @@ body {
   color: var(--foreground);
   background: #f8fafc;
   overflow-x: hidden;
+  overflow-x: clip;
   max-width: 100%;
   min-height: 100dvh;
   overscroll-behavior-x: none;
@@ -36,14 +38,18 @@ body {
 }
 
 .page-transition {
-  animation: page-enter 220ms ease-out both;
+  position: relative;
+  overflow-x: clip;
+  animation: page-enter 300ms cubic-bezier(.2, .8, .2, 1) both;
 }
 
 @keyframes page-enter {
   from {
+    left: 28px;
     opacity: 0;
   }
   to {
+    left: 0;
     opacity: 1;
   }
 }

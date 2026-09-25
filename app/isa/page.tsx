@@ -33,6 +33,7 @@ type Exchange = 'KRX' | 'NASDAQ' | 'NYSE' | 'other';
 
 const ETF_CATEGORY_COLORS = ['#2563EB', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#06B6D4', '#64748B'];
 const PIE_LABEL_RADIAN = Math.PI / 180;
+const ISA_PRICE_REFRESH_SESSION_KEY = 'finance-isa-prices-refreshed';
 
 function renderPieCategoryLabel({
   cx,
@@ -80,7 +81,6 @@ export default function IsaPage() {
   const [isSearchingEtf, setIsSearchingEtf] = useState(false);
   const [isUpdatingPrices, setIsUpdatingPrices] = useState(false);
   const [searchMessage, setSearchMessage] = useState('');
-  const priceUpdateIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const priceUpdateInProgressRef = useRef(false);
 
   const getInitialFormData = useCallback(() => ({
@@ -140,17 +140,18 @@ export default function IsaPage() {
       const allHoldings = getStockHoldings();
       const etfs = allHoldings.filter(isIsaEtfHolding);
       if (etfs.length === 0) return;
+      const symbols = [...new Set(etfs.map((holding) => holding.symbol).filter(Boolean))];
 
       const quotes = forceRefresh
         ? Object.fromEntries(
             await Promise.all(
-              etfs.map(async (holding) => {
-                const price = await getStockPrice(holding.symbol, true);
-                return [holding.symbol, price];
+              symbols.map(async (symbol) => {
+                const price = await getStockPrice(symbol, true);
+                return [symbol, price];
               })
             )
           )
-        : await getStockQuotes(etfs.map((holding) => holding.symbol));
+        : await getStockQuotes(symbols);
 
       const updatedAllHoldings = allHoldings.map((holding) => {
         if (!isIsaEtfHolding(holding)) return holding;
@@ -177,20 +178,10 @@ export default function IsaPage() {
 
   useEffect(() => {
     if (!exchangeRates) return;
+    if (sessionStorage.getItem(ISA_PRICE_REFRESH_SESSION_KEY)) return;
 
+    sessionStorage.setItem(ISA_PRICE_REFRESH_SESSION_KEY, 'true');
     void updateIsaPrices(false, false);
-
-    if (priceUpdateIntervalRef.current) return;
-    priceUpdateIntervalRef.current = setInterval(() => {
-      void updateIsaPrices(false, false);
-    }, 60000);
-
-    return () => {
-      if (priceUpdateIntervalRef.current) {
-        clearInterval(priceUpdateIntervalRef.current);
-        priceUpdateIntervalRef.current = null;
-      }
-    };
   }, [exchangeRates, updateIsaPrices]);
 
   const filteredEtfs = useMemo(() => {

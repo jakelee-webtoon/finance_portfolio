@@ -12,6 +12,8 @@ import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/Toast';
 import { buildRsuAssets } from '@/lib/rsuAssets';
 
+const RSU_PRICE_REFRESH_SESSION_KEY = 'finance-rsu-prices-refreshed';
+
 export default function RSUPage() {
   const isAuthenticated = useAuth();
   const { showToast } = useToast();
@@ -24,11 +26,8 @@ export default function RSUPage() {
   const [noteValue, setNoteValue] = useState('');
   const [isInitialLoaded, setIsInitialLoaded] = useState(false);
   const [isUpdatingPrices, setIsUpdatingPrices] = useState(false);
-  const priceUpdateIntervalRef = useRef<NodeJS.Timeout | null>(null);
   /** updatePrices 중복 실행·의존성 루프 방지 (isUpdatingPrices는 UI용이라 useCallback deps에 넣지 않음) */
   const priceUpdateInProgressRef = useRef(false);
-  /** interval effect가 showToast/updatePrices 참조 변경마다 재실행되지 않도록 최신 함수만 유지 */
-  const updatePricesRef = useRef<(forceRefresh?: boolean, fromUserAction?: boolean) => Promise<void>>(async () => {});
 
   const getInitialFormData = useCallback(() => ({
     symbol: '',
@@ -110,7 +109,7 @@ export default function RSUPage() {
     await setAssets(updatedAssets);
   }, [state]);
 
-  // 가격 업데이트 함수 (interval에서 호출, 수동 새로고침에서도 사용)
+  // 가격 업데이트 함수 (세션 최초 진입과 수동 새로고침에서 사용)
   // fromUserAction: true일 때만 "최신 주가입니다" 토스트 (자동/재마운트 시 스팸 방지)
   const updatePrices = useCallback(async (forceRefresh: boolean = false, fromUserAction: boolean = false) => {
     if (priceUpdateInProgressRef.current) return;
@@ -121,31 +120,22 @@ export default function RSUPage() {
       const allHoldings = getStockHoldings();
       const currentRsuHoldings = allHoldings.filter((h) => h.type === 'rsu' || h.type === 'option');
       if (currentRsuHoldings.length === 0) return;
-
-      // 강제 새로고침인 경우 모든 심볼의 캐시 삭제
-      if (forceRefresh && typeof window !== 'undefined') {
-        currentRsuHoldings.forEach((holding) => {
-          if (holding.symbol) {
-            localStorage.removeItem(`stock-quotes-cache-${holding.symbol}`);
-          }
-        });
-      }
+      const symbols = [...new Set(currentRsuHoldings.map((holding) => holding.symbol).filter(Boolean))];
+      const prices = Object.fromEntries(
+        await Promise.all(
+          symbols.map(async (symbol) => [symbol, await getStockPrice(symbol, forceRefresh)] as const)
+        )
+      );
 
       // RSU/옵션만 가격 업데이트 (기존 필드 모두 보존)
-      const updatedRsuHoldings = await Promise.all(
-        currentRsuHoldings.map(async (holding) => {
-          if (!holding.symbol) return holding;
-          try {
-            const price = await getStockPrice(holding.symbol, forceRefresh);
-            if (price !== null && price !== holding.currentPrice) {
-              return { ...holding, currentPrice: price };
-            }
-          } catch {
-            // 에러 발생 시 기존 holding 반환
-          }
-          return holding;
-        })
-      );
+      const updatedRsuHoldings = currentRsuHoldings.map((holding) => {
+        if (!holding.symbol) return holding;
+        const price = prices[holding.symbol];
+        if (price !== null && price !== holding.currentPrice) {
+          return { ...holding, currentPrice: price };
+        }
+        return holding;
+      });
 
       // 가격만 변경된 경우에만 저장
       const hasChanges = updatedRsuHoldings.some((holding, index) =>
@@ -171,27 +161,14 @@ export default function RSUPage() {
     }
   }, [syncHoldingsToAsset, showToast]);
 
-  updatePricesRef.current = updatePrices;
-
-  // 가격 업데이트 interval 설정 (초기 로드 완료 후 한 번만 — updatePrices 참조에 의존하지 않음)
+  // 세션마다 최초 진입 시 한 번만 자동 갱신한다.
   useEffect(() => {
     if (!isInitialLoaded || !exchangeRates) return;
+    if (sessionStorage.getItem(RSU_PRICE_REFRESH_SESSION_KEY)) return;
 
-    if (priceUpdateIntervalRef.current) return;
-
-    void updatePricesRef.current(true, false);
-
-    priceUpdateIntervalRef.current = setInterval(() => {
-      void updatePricesRef.current(false, false);
-    }, 60000);
-
-    return () => {
-      if (priceUpdateIntervalRef.current) {
-        clearInterval(priceUpdateIntervalRef.current);
-        priceUpdateIntervalRef.current = null;
-      }
-    };
-  }, [isInitialLoaded, exchangeRates]);
+    sessionStorage.setItem(RSU_PRICE_REFRESH_SESSION_KEY, 'true');
+    void updatePrices(true, false);
+  }, [isInitialLoaded, exchangeRates, updatePrices]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
