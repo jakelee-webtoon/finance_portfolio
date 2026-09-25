@@ -12,6 +12,8 @@ import {
   type Firestore
 } from 'firebase/firestore';
 import { db } from './firebase';
+import { FIRESTORE_COLLECTIONS, planCollectionWrites } from './persistenceConfig';
+import { parseStoredJson } from './storageJson';
 
 // db가 null이면 함수들이 에러를 반환하도록 처리
 // (런타임에만 체크, 빌드 시 에러 방지)
@@ -54,8 +56,7 @@ const dateToTimestamp = (date: string | Date): Timestamp => {
 };
 
 const readLocalStorage = <T>(key: string, fallback: T): T => {
-  const stored = localStorage.getItem(key);
-  return stored ? JSON.parse(stored) : fallback;
+  return parseStoredJson(localStorage.getItem(key), fallback);
 };
 
 const writeLocalStorage = <T>(key: string, value: T): void => {
@@ -92,26 +93,26 @@ const replaceCollection = async <T extends FirestoreEntity>(
   items: T[],
   dateFields: readonly string[] = []
 ): Promise<number> => {
-  const batch = writeBatch(firestore);
   const existingSnapshot = await getDocs(query(collection(firestore, collectionPath)));
-  const existingIds = new Set(existingSnapshot.docs.map(snapshotDoc => snapshotDoc.id));
-  const newIds = new Set(items.map(item => item.id));
+  const plan = planCollectionWrites(
+    existingSnapshot.docs.map(snapshotDoc => snapshotDoc.id),
+    items
+  );
 
-  existingIds.forEach(id => {
-    if (!newIds.has(id)) {
-      batch.delete(doc(firestore, collectionPath, id));
-    }
-  });
+  for (const operations of plan.batches) {
+    const batch = writeBatch(firestore);
+    operations.forEach(operation => {
+      const documentRef = doc(firestore, collectionPath, operation.id);
+      if (operation.type === 'delete') {
+        batch.delete(documentRef);
+      } else {
+        batch.set(documentRef, prepareFirestoreData(operation.item, dateFields));
+      }
+    });
+    await batch.commit();
+  }
 
-  items.forEach(item => {
-    batch.set(
-      doc(firestore, collectionPath, item.id),
-      prepareFirestoreData(item, dateFields)
-    );
-  });
-
-  await batch.commit();
-  return existingIds.size - newIds.size;
+  return plan.deletedCount;
 };
 
 const saveCollection = async <T extends FirestoreEntity>(
@@ -228,12 +229,7 @@ export async function getAssets(): Promise<Asset[]> {
 }
 
 export async function setAssets(assets: Asset[]): Promise<void> {
-  await saveCollection(assets, {
-    collectionName: 'assets',
-    storageKey: 'finance-assets',
-    label: 'Assets',
-    dateFields: ['as_of_date'],
-  });
+  await saveCollection(assets, FIRESTORE_COLLECTIONS.assets);
 }
 
 // Stock Holdings
@@ -274,12 +270,7 @@ export async function getStockHoldings(): Promise<StockHolding[]> {
 }
 
 export async function setStockHoldings(holdings: StockHolding[]): Promise<void> {
-  await saveCollection(holdings, {
-    collectionName: 'stockHoldings',
-    storageKey: 'finance-stock-holdings',
-    label: 'Stock Holdings',
-    dateFields: ['as_of_date'],
-  });
+  await saveCollection(holdings, FIRESTORE_COLLECTIONS.stockHoldings);
 }
 
 // Salaries
@@ -303,11 +294,7 @@ export async function getSalaries(): Promise<Salary[]> {
 }
 
 export async function setSalaries(salaries: Salary[]): Promise<void> {
-  await saveCollection(salaries, {
-    collectionName: 'salaries',
-    storageKey: 'finance-salaries',
-    label: 'Salaries',
-  });
+  await saveCollection(salaries, FIRESTORE_COLLECTIONS.salaries);
 }
 
 // Apartments
@@ -332,12 +319,7 @@ export async function getApartments(): Promise<Apartment[]> {
 }
 
 export async function setApartments(apartments: Apartment[]): Promise<void> {
-  await saveCollection(apartments, {
-    collectionName: 'apartments',
-    storageKey: 'finance-apartments',
-    label: 'Apartments',
-    dateFields: ['as_of_date'],
-  });
+  await saveCollection(apartments, FIRESTORE_COLLECTIONS.apartments);
 }
 
 // Income
@@ -362,12 +344,7 @@ export async function getIncome(): Promise<Income[]> {
 }
 
 export async function setIncome(income: Income[]): Promise<void> {
-  await saveCollection(income, {
-    collectionName: 'income',
-    storageKey: 'finance-income',
-    label: 'Income',
-    dateFields: ['as_of_date'],
-  });
+  await saveCollection(income, FIRESTORE_COLLECTIONS.income);
 }
 
 // Liabilities
@@ -392,12 +369,7 @@ export async function getLiabilities(): Promise<Liability[]> {
 }
 
 export async function setLiabilities(liabilities: Liability[]): Promise<void> {
-  await saveCollection(liabilities, {
-    collectionName: 'liabilities',
-    storageKey: 'finance-liabilities',
-    label: 'Liabilities',
-    dateFields: ['as_of_date'],
-  });
+  await saveCollection(liabilities, FIRESTORE_COLLECTIONS.liabilities);
 }
 
 // 가계부 항목
@@ -426,12 +398,7 @@ export async function getLedgerEntries(): Promise<LedgerEntry[]> {
 }
 
 export async function setLedgerEntries(entries: LedgerEntry[]): Promise<void> {
-  await saveCollection(entries, {
-    collectionName: 'ledgerEntries',
-    storageKey: 'finance-ledger-entries',
-    label: 'Ledger Entries',
-    dateFields: ['date', 'as_of_date'],
-  });
+  await saveCollection(entries, FIRESTORE_COLLECTIONS.ledgerEntries);
 }
 
 // 월간 계획
@@ -458,10 +425,5 @@ export async function getMonthlyPlanEntries(): Promise<MonthlyPlanEntry[]> {
 }
 
 export async function setMonthlyPlanEntries(entries: MonthlyPlanEntry[]): Promise<void> {
-  await saveCollection(entries, {
-    collectionName: 'monthlyPlanEntries',
-    storageKey: 'finance-monthly-plan-entries',
-    label: 'Monthly Plan Entries',
-    dateFields: ['as_of_date'],
-  });
+  await saveCollection(entries, FIRESTORE_COLLECTIONS.monthlyPlanEntries);
 }

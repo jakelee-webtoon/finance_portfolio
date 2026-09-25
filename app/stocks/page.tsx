@@ -9,6 +9,7 @@ import { getDashboardState, getStockHoldings, setStockHoldings, syncFromFirebase
 import { getMarketIndices, getStockQuotes, getStockPrice } from '@/lib/stockApi';
 import { getExchangeRates } from '@/lib/exchangeRate';
 import { useAuth } from '@/hooks/useAuth';
+import { useModalDismiss } from '@/hooks/useModalDismiss';
 import { getHoldingCurrentValueKrw, isStockHolding } from '@/lib/investments';
 
 interface StockQuote {
@@ -28,6 +29,10 @@ export default function StocksPage() {
   // RSU/옵션 탭 제거 (별도 페이지로 분리)
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  useModalDismiss(isFormOpen, () => {
+    setIsFormOpen(false);
+    setEditingId(null);
+  });
   
   const getInitialFormData = useCallback(() => ({
     symbol: '',
@@ -690,8 +695,8 @@ export default function StocksPage() {
 
           {/* 입력 폼 모달 */}
           {isFormOpen && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-              <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <div className="app-modal-overlay fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" role="dialog" aria-modal="true" aria-label={editingId ? '주식 수정' : '주식 추가'}>
+              <div className="app-modal-panel app-modal-panel--compact bg-white rounded-lg p-6 w-full max-w-md">
                 <h2 className="text-xl font-bold text-gray-900 mb-4">
                   {editingId ? '주식 수정' : '주식 추가'}
                 </h2>

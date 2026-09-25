@@ -10,6 +10,7 @@ import { getDashboardState, getStockHoldings, setStockHoldings, syncFromFirebase
 import { getExchangeRates } from '@/lib/exchangeRate';
 import { EtfSearchResult, getStockPrice, getStockQuotes, searchEtfs } from '@/lib/stockApi';
 import { useAuth } from '@/hooks/useAuth';
+import { useModalDismiss } from '@/hooks/useModalDismiss';
 import { useToast } from '@/components/Toast';
 import MobileHelp from '@/components/MobileHelp';
 import {
@@ -77,6 +78,10 @@ export default function IsaPage() {
   const [exchangeRates, setExchangeRates] = useState<Record<string, number> | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  useModalDismiss(isFormOpen, () => {
+    setIsFormOpen(false);
+    setEditingId(null);
+  });
   const [searchResults, setSearchResults] = useState<EtfSearchResult[]>([]);
   const [isSearchingEtf, setIsSearchingEtf] = useState(false);
   const [isUpdatingPrices, setIsUpdatingPrices] = useState(false);
@@ -733,8 +738,8 @@ export default function IsaPage() {
           </div>
 
           {isFormOpen && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-              <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="app-modal-overlay fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" role="dialog" aria-modal="true" aria-label={editingId ? 'ISA ETF 수정' : 'ISA ETF 추가'}>
+              <div className="app-modal-panel bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
                 <h2 className="text-xl font-bold text-gray-900 mb-4">{editingId ? 'ISA ETF 수정' : 'ISA ETF 추가'}</h2>
                 <form onSubmit={handleSubmit} className="space-y-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

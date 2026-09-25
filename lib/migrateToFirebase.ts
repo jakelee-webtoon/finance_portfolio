@@ -1,5 +1,5 @@
 // localStorage 데이터를 Firebase로 마이그레이션하는 스크립트
-import { DashboardState, Asset, StockHolding, Salary, Apartment, Income, Liability, LedgerEntry } from '@/types';
+import { DashboardState, Asset, StockHolding, Salary, Apartment, Income, Liability, LedgerEntry, MonthlyPlanEntry } from '@/types';
 import { mockAssets, mockIncome, mockStockHoldings, mockApartments, mockLiabilities } from '@/data/mockData';
 import * as firestore from './firestore';
 import { db } from './firebase';
@@ -230,7 +230,25 @@ export async function migrateToFirebase(): Promise<{
       console.error('Ledger Entries migration error:', error);
     }
 
-    // 9. Transactions 마이그레이션 (있는 경우)
+    // 9. Monthly Plan Entries 마이그레이션
+    try {
+      const stored = localStorage.getItem('finance-monthly-plan-entries');
+      if (stored) {
+        const entries: MonthlyPlanEntry[] = JSON.parse(stored);
+        if (entries.length > 0) {
+          await firestore.setMonthlyPlanEntries(entries);
+          migrated.push(`Monthly Plan Entries (${entries.length}개)`);
+        } else {
+          migrated.push('Monthly Plan Entries (데이터 없음)');
+        }
+      } else {
+        migrated.push('Monthly Plan Entries (localStorage에 데이터 없음)');
+      }
+    } catch (error) {
+      errors.push(`Monthly Plan Entries: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+
+    // 10. Transactions 마이그레이션 (있는 경우)
     try {
       const stored = localStorage.getItem('finance-transactions');
       if (stored) {

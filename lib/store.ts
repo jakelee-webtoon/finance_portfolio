@@ -1,5 +1,7 @@
 import { DashboardState, Asset, Income, Transaction, Portfolio, Liability, StockHolding, Apartment, Salary, Scope, LedgerEntry, MonthlyPlanEntry } from '@/types';
 import { mockIncome, mockTransactions, mockPortfolios } from '@/data/mockData';
+import { FIRESTORE_COLLECTIONS } from '@/lib/persistenceConfig';
+import { parseStoredJson } from '@/lib/storageJson';
 
 const STORAGE_KEY = 'finance-dashboard-state';
 
@@ -23,8 +25,10 @@ const useFirebase = (): boolean => {
 };
 
 // Firebase 함수들을 동적으로 import (환경 변수가 없을 때 에러 방지)
-let firestoreFunctions: any = null;
-const getFirestoreFunctions = async () => {
+type FirestoreModule = typeof import('./firestore');
+
+let firestoreFunctions: FirestoreModule | null = null;
+const getFirestoreFunctions = async (): Promise<FirestoreModule | null> => {
   if (!useFirebase()) return null;
   if (firestoreFunctions) return firestoreFunctions;
   
@@ -33,6 +37,33 @@ const getFirestoreFunctions = async () => {
     return firestoreFunctions;
   } catch (error) {
     return null;
+  }
+};
+
+const readLocalJson = <T>(key: string, fallback: T): T => {
+  if (typeof window === 'undefined') return fallback;
+  return parseStoredJson(localStorage.getItem(key), fallback);
+};
+
+const writeLocalJson = <T>(key: string, value: T): void => {
+  localStorage.setItem(key, JSON.stringify(value));
+};
+
+const persistCollection = async <T>(
+  storageKey: string,
+  value: T,
+  label: string,
+  saveToFirestore: (firestore: FirestoreModule) => Promise<void>
+): Promise<void> => {
+  if (typeof window === 'undefined') return;
+  writeLocalJson(storageKey, value);
+  if (!useFirebase()) return;
+
+  try {
+    const firestore = await getFirestoreFunctions();
+    if (firestore) await saveToFirestore(firestore);
+  } catch (error: unknown) {
+    console.error(`[Store] Failed to save ${label} to Firebase:`, error);
   }
 };
 
@@ -50,14 +81,7 @@ async function performFirebaseSync(): Promise<void> {
 
     const cacheKeys = [
       STORAGE_KEY,
-      'finance-assets',
-      'finance-stock-holdings',
-      'finance-salaries',
-      'finance-apartments',
-      'finance-income',
-      'finance-liabilities',
-      'finance-ledger-entries',
-      'finance-monthly-plan-entries',
+      ...Object.values(FIRESTORE_COLLECTIONS).map(config => config.storageKey),
     ];
     const cacheSnapshot = new Map(cacheKeys.map((key) => [key, localStorage.getItem(key)]));
     const updateUnchangedCache = (key: string, value: unknown) => {
@@ -71,7 +95,7 @@ async function performFirebaseSync(): Promise<void> {
         .then((dashboardState: DashboardState) => updateUnchangedCache(STORAGE_KEY, dashboardState))
         .catch(() => undefined),
       firestore.getAssets()
-        .then((assets: Asset[]) => updateUnchangedCache('finance-assets', assets))
+        .then((assets: Asset[]) => updateUnchangedCache(FIRESTORE_COLLECTIONS.assets.storageKey, assets))
         .catch(() => undefined),
       firestore.getStockHoldings()
         .then((holdings: StockHolding[]) => {
@@ -82,26 +106,26 @@ async function performFirebaseSync(): Promise<void> {
             if (holding.symbol === 'AAPL' && holding.name === 'Apple Inc.' && holding.quantity === 10 && holding.purchasePrice === 150) return false;
             return true;
           });
-          updateUnchangedCache('finance-stock-holdings', realHoldings);
+          updateUnchangedCache(FIRESTORE_COLLECTIONS.stockHoldings.storageKey, realHoldings);
         })
         .catch(() => undefined),
       firestore.getSalaries()
-        .then((salaries: Salary[]) => updateUnchangedCache('finance-salaries', salaries))
+        .then((salaries: Salary[]) => updateUnchangedCache(FIRESTORE_COLLECTIONS.salaries.storageKey, salaries))
         .catch(() => undefined),
       firestore.getApartments()
-        .then((apartments: Apartment[]) => updateUnchangedCache('finance-apartments', apartments))
+        .then((apartments: Apartment[]) => updateUnchangedCache(FIRESTORE_COLLECTIONS.apartments.storageKey, apartments))
         .catch(() => undefined),
       firestore.getIncome()
-        .then((income: Income[]) => updateUnchangedCache('finance-income', withoutMockIncome(income)))
+        .then((income: Income[]) => updateUnchangedCache(FIRESTORE_COLLECTIONS.income.storageKey, withoutMockIncome(income)))
         .catch(() => undefined),
       firestore.getLiabilities()
-        .then((liabilities: Liability[]) => updateUnchangedCache('finance-liabilities', liabilities))
+        .then((liabilities: Liability[]) => updateUnchangedCache(FIRESTORE_COLLECTIONS.liabilities.storageKey, liabilities))
         .catch(() => undefined),
       firestore.getLedgerEntries()
-        .then((entries: LedgerEntry[]) => updateUnchangedCache('finance-ledger-entries', entries))
+        .then((entries: LedgerEntry[]) => updateUnchangedCache(FIRESTORE_COLLECTIONS.ledgerEntries.storageKey, entries))
         .catch(() => undefined),
       firestore.getMonthlyPlanEntries()
-        .then((entries: MonthlyPlanEntry[]) => updateUnchangedCache('finance-monthly-plan-entries', entries))
+        .then((entries: MonthlyPlanEntry[]) => updateUnchangedCache(FIRESTORE_COLLECTIONS.monthlyPlanEntries.storageKey, entries))
         .catch(() => undefined),
     ]);
   } catch (error) {
@@ -141,7 +165,11 @@ export function getDashboardState(): DashboardState {
 
   const stored = localStorage.getItem(STORAGE_KEY);
   if (stored) {
-    return JSON.parse(stored);
+    return readLocalJson(STORAGE_KEY, {
+      householdName: '우리집',
+      baseMonth: new Date().toISOString().slice(0, 7),
+      scope: 'combined',
+    });
   }
 
   const defaultState: DashboardState = {
@@ -176,52 +204,23 @@ export function setDashboardState(state: DashboardState): void {
 
 // 동기 버전 (기존 코드 호환성 유지 - 기본 export)
 export function getAssets(): Asset[] {
-  if (typeof window === 'undefined') return [];
-  const stored = localStorage.getItem('finance-assets');
-  return stored ? JSON.parse(stored) : [];
+  return readLocalJson<Asset[]>(FIRESTORE_COLLECTIONS.assets.storageKey, []);
 }
 
 export async function setAssets(assets: Asset[]): Promise<void> {
-  if (typeof window === 'undefined') return;
-
-  localStorage.setItem('finance-assets', JSON.stringify(assets));
-
-  if (useFirebase()) {
-    try {
-      const firestore = await getFirestoreFunctions();
-      if (firestore) {
-        await firestore.setAssets(assets);
-      }
-    } catch (error: unknown) {
-      console.error('[Store] Failed to save Assets to Firebase:', error);
-    }
-  }
+  await persistCollection(FIRESTORE_COLLECTIONS.assets.storageKey, assets, 'Assets', firestore => firestore.setAssets(assets));
 }
 
 // 동기 버전 (기존 코드 호환성 유지 - 기본 export)
 export function getIncome(): Income[] {
-  if (typeof window === 'undefined') return [];
-  const stored = localStorage.getItem('finance-income');
-  if (!stored) return [];
-
-  const income = withoutMockIncome(JSON.parse(stored));
-  localStorage.setItem('finance-income', JSON.stringify(income));
+  const income = withoutMockIncome(readLocalJson<Income[]>(FIRESTORE_COLLECTIONS.income.storageKey, []));
+  if (typeof window === 'undefined') return income;
+  writeLocalJson(FIRESTORE_COLLECTIONS.income.storageKey, income);
   return income;
 }
 
 export async function setIncome(income: Income[]): Promise<void> {
-  if (typeof window === 'undefined') return;
-  localStorage.setItem('finance-income', JSON.stringify(income));
-  if (useFirebase()) {
-    try {
-      const firestore = await getFirestoreFunctions();
-      if (firestore) {
-        await firestore.setIncome(income);
-      }
-    } catch (error: unknown) {
-      console.error('[Store] Failed to save Income to Firebase:', error);
-    }
-  }
+  await persistCollection(FIRESTORE_COLLECTIONS.income.storageKey, income, 'Income', firestore => firestore.setIncome(income));
 }
 
 export function getTransactions(): Transaction[] {
@@ -249,135 +248,54 @@ export async function setPortfolios(portfolios: Portfolio[]): Promise<void> {
 }
 
 export function getLiabilities(): Liability[] {
-  if (typeof window === 'undefined') return [];
-  const stored = localStorage.getItem('finance-liabilities');
-  return stored ? JSON.parse(stored) : [];
+  return readLocalJson<Liability[]>(FIRESTORE_COLLECTIONS.liabilities.storageKey, []);
 }
 
 export async function setLiabilities(liabilities: Liability[]): Promise<void> {
-  if (typeof window === 'undefined') return;
-  localStorage.setItem('finance-liabilities', JSON.stringify(liabilities));
-  if (useFirebase()) {
-    try {
-      const firestore = await getFirestoreFunctions();
-      if (firestore) {
-        await firestore.setLiabilities(liabilities);
-      }
-    } catch (error: unknown) {
-      console.error('[Store] Failed to save Liabilities to Firebase:', error);
-    }
-  }
+  await persistCollection(FIRESTORE_COLLECTIONS.liabilities.storageKey, liabilities, 'Liabilities', firestore => firestore.setLiabilities(liabilities));
 }
 
 // 동기 버전 (기존 코드 호환성 유지 - 기본 export)
 export function getStockHoldings(): StockHolding[] {
-  if (typeof window === 'undefined') return [];
-  const stored = localStorage.getItem('finance-stock-holdings');
-  // 빈 배열도 유효한 데이터로 처리 (mock 데이터 반환하지 않음)
-  if (stored === null) return [];
-  const parsed = JSON.parse(stored);
+  const parsed = readLocalJson<unknown>(FIRESTORE_COLLECTIONS.stockHoldings.storageKey, []);
   return Array.isArray(parsed) ? parsed : [];
 }
 
 export async function setStockHoldings(holdings: StockHolding[]): Promise<void> {
-  if (typeof window === 'undefined') return;
-
-  localStorage.setItem('finance-stock-holdings', JSON.stringify(holdings));
-
-  if (!useFirebase()) return;
-  try {
-    const firestore = await getFirestoreFunctions();
-    if (firestore) {
-      await firestore.setStockHoldings(holdings);
-    }
-  } catch (error: unknown) {
-    console.error('[Store] Failed to save Stock Holdings to Firebase:', error);
-  }
+  await persistCollection(FIRESTORE_COLLECTIONS.stockHoldings.storageKey, holdings, 'Stock Holdings', firestore => firestore.setStockHoldings(holdings));
 }
 
 // 동기 버전 (기존 코드 호환성 유지 - 기본 export)
 export function getApartments(): Apartment[] {
-  if (typeof window === 'undefined') return [];
-  const stored = localStorage.getItem('finance-apartments');
-  return stored ? JSON.parse(stored) : [];
+  return readLocalJson<Apartment[]>(FIRESTORE_COLLECTIONS.apartments.storageKey, []);
 }
 
 export async function setApartments(apartments: Apartment[]): Promise<void> {
-  if (typeof window === 'undefined') return;
-  localStorage.setItem('finance-apartments', JSON.stringify(apartments));
-  if (useFirebase()) {
-    try {
-      const firestore = await getFirestoreFunctions();
-      if (firestore) {
-        await firestore.setApartments(apartments);
-      }
-    } catch (error: unknown) {
-      console.error('[Store] Failed to save Apartments to Firebase:', error);
-    }
-  }
+  await persistCollection(FIRESTORE_COLLECTIONS.apartments.storageKey, apartments, 'Apartments', firestore => firestore.setApartments(apartments));
 }
 
 // 동기 버전 (기존 코드 호환성 유지 - 기본 export)
 export function getSalaries(): Salary[] {
-  if (typeof window === 'undefined') return [];
-  const stored = localStorage.getItem('finance-salaries');
-  return stored ? JSON.parse(stored) : [];
+  return readLocalJson<Salary[]>(FIRESTORE_COLLECTIONS.salaries.storageKey, []);
 }
 
 export async function setSalaries(salaries: Salary[]): Promise<void> {
-  if (typeof window === 'undefined') return;
-  localStorage.setItem('finance-salaries', JSON.stringify(salaries));
-  if (useFirebase()) {
-    try {
-      const firestore = await getFirestoreFunctions();
-      if (firestore) {
-        await firestore.setSalaries(salaries);
-      }
-    } catch (error: unknown) {
-      console.error('[Store] Failed to save Salaries to Firebase:', error);
-    }
-  }
+  await persistCollection(FIRESTORE_COLLECTIONS.salaries.storageKey, salaries, 'Salaries', firestore => firestore.setSalaries(salaries));
 }
 
 // 가계부 항목
 export function getLedgerEntries(): LedgerEntry[] {
-  if (typeof window === 'undefined') return [];
-  const stored = localStorage.getItem('finance-ledger-entries');
-  return stored ? JSON.parse(stored) : [];
+  return readLocalJson<LedgerEntry[]>(FIRESTORE_COLLECTIONS.ledgerEntries.storageKey, []);
 }
 
 export async function setLedgerEntries(entries: LedgerEntry[]): Promise<void> {
-  if (typeof window === 'undefined') return;
-  localStorage.setItem('finance-ledger-entries', JSON.stringify(entries));
-  if (useFirebase()) {
-    try {
-      const firestore = await getFirestoreFunctions();
-      if (firestore) {
-        await firestore.setLedgerEntries(entries);
-      }
-    } catch (error: unknown) {
-      console.error('[Store] Failed to save Ledger Entries to Firebase:', error);
-    }
-  }
+  await persistCollection(FIRESTORE_COLLECTIONS.ledgerEntries.storageKey, entries, 'Ledger Entries', firestore => firestore.setLedgerEntries(entries));
 }
 
 export function getMonthlyPlanEntries(): MonthlyPlanEntry[] {
-  if (typeof window === 'undefined') return [];
-  const stored = localStorage.getItem('finance-monthly-plan-entries');
-  return stored ? JSON.parse(stored) : [];
+  return readLocalJson<MonthlyPlanEntry[]>(FIRESTORE_COLLECTIONS.monthlyPlanEntries.storageKey, []);
 }
 
 export async function setMonthlyPlanEntries(entries: MonthlyPlanEntry[]): Promise<void> {
-  if (typeof window === 'undefined') return;
-  localStorage.setItem('finance-monthly-plan-entries', JSON.stringify(entries));
-  if (useFirebase()) {
-    try {
-      const firestore = await getFirestoreFunctions();
-      if (firestore) {
-        await firestore.setMonthlyPlanEntries(entries);
-      }
-    } catch (error: unknown) {
-      console.error('[Store] Failed to save Monthly Plan Entries to Firebase:', error);
-    }
-  }
+  await persistCollection(FIRESTORE_COLLECTIONS.monthlyPlanEntries.storageKey, entries, 'Monthly Plan Entries', firestore => firestore.setMonthlyPlanEntries(entries));
 }

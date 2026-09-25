@@ -10,6 +10,8 @@ interface ExchangeRateCache {
   version?: number;
 }
 
+let exchangeRateRequest: Promise<Record<string, number>> | null = null;
+
 function getFallbackRates(): Record<string, number> {
   return {
     USD: 1,
@@ -42,29 +44,37 @@ export async function getExchangeRates(): Promise<Record<string, number>> {
     }
   }
 
+  if (!exchangeRateRequest) {
+    exchangeRateRequest = (async () => {
+      try {
+        const response = await fetch(`/api/exchange-rate?_t=${Date.now()}`, {
+          cache: 'no-store',
+        });
+        if (!response.ok) {
+          throw new Error('Failed to fetch exchange rates');
+        }
+        const rates = await response.json();
+
+        if (typeof window !== 'undefined') {
+          const cache: ExchangeRateCache = {
+            rates,
+            timestamp: Date.now(),
+            version: CACHE_VERSION,
+          };
+          localStorage.setItem(EXCHANGE_RATE_CACHE_KEY, JSON.stringify(cache));
+        }
+
+        return rates;
+      } catch {
+        return getFallbackRates();
+      }
+    })();
+  }
+
   try {
-    const response = await fetch(`/api/exchange-rate?_t=${Date.now()}`, {
-      cache: 'no-store',
-    });
-    if (!response.ok) {
-      throw new Error('Failed to fetch exchange rates');
-    }
-    const rates = await response.json();
-
-    // 캐시 저장
-    if (typeof window !== 'undefined') {
-      const cache: ExchangeRateCache = {
-        rates,
-        timestamp: Date.now(),
-        version: CACHE_VERSION,
-      };
-      localStorage.setItem(EXCHANGE_RATE_CACHE_KEY, JSON.stringify(cache));
-    }
-
-    return rates;
-  } catch (error) {
-    // 기본 환율 반환 (오프라인 또는 API 실패 시)
-    return getFallbackRates();
+    return await exchangeRateRequest;
+  } finally {
+    exchangeRateRequest = null;
   }
 }
 

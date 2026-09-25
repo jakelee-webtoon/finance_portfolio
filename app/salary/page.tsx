@@ -8,6 +8,7 @@ import { Salary, DashboardState } from '@/types';
 import { getDashboardState, getSalaries, setSalaries, syncFromFirebase } from '@/lib/store';
 import { getExchangeRates } from '@/lib/exchangeRate';
 import { useAuth } from '@/hooks/useAuth';
+import { useModalDismiss } from '@/hooks/useModalDismiss';
 import NaverSalaryComparisonModal from '@/components/NaverSalaryComparisonModal';
 
 // 금액 포맷팅 함수 (1억 넘으면 억 단위, 아니면 만원 단위)
@@ -32,6 +33,10 @@ export default function SalaryPage() {
   const [exchangeRates, setExchangeRates] = useState<Record<string, number> | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  useModalDismiss(isFormOpen, () => {
+    setIsFormOpen(false);
+    setEditingId(null);
+  });
   const [isComparisonModalOpen, setIsComparisonModalOpen] = useState(false);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [formData, setFormData] = useState({
@@ -587,8 +592,8 @@ export default function SalaryPage() {
 
           {/* 입력 폼 모달 */}
           {isFormOpen && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-              <div className="bg-white rounded-lg p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
+            <div className="app-modal-overlay fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" role="dialog" aria-modal="true" aria-label={editingId ? '연봉 수정' : '연봉 추가'}>
+              <div className="app-modal-panel app-modal-panel--compact bg-white rounded-lg p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
                 <h2 className="text-xl font-bold text-gray-900 mb-4">
                   {editingId ? '연봉 수정' : '연봉 추가'}
                 </h2>

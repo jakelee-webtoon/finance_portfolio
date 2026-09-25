@@ -7,6 +7,7 @@ import Navigation from '@/components/Navigation';
 import { LedgerEntry, LedgerType, LedgerCategory, DashboardState } from '@/types';
 import { getDashboardState, getLedgerEntries, setLedgerEntries, syncFromFirebase } from '@/lib/store';
 import { useAuth } from '@/hooks/useAuth';
+import { useModalDismiss } from '@/hooks/useModalDismiss';
 
 // 카테고리 한글명 매핑
 const categoryLabels: Record<LedgerCategory, string> = {
@@ -65,6 +66,10 @@ export default function LedgerPage() {
   const [entries, setEntriesState] = useState<LedgerEntry[]>([]);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  useModalDismiss(isFormOpen, () => {
+    setIsFormOpen(false);
+    setEditingId(null);
+  });
   const [formData, setFormData] = useState({
     date: '',
     type: 'expense_fixed' as LedgerType,
@@ -659,8 +664,8 @@ export default function LedgerPage() {
 
           {/* 입력 폼 모달 */}
           {isFormOpen && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-              <div className="bg-white rounded-lg p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
+            <div className="app-modal-overlay fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" role="dialog" aria-modal="true" aria-label={editingId ? '가계부 항목 수정' : '가계부 항목 추가'}>
+              <div className="app-modal-panel app-modal-panel--compact bg-white rounded-lg p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
                 <h2 className="text-xl font-bold text-gray-900 mb-4">
                   {editingId ? '항목 수정' : '항목 추가'}
                 </h2>

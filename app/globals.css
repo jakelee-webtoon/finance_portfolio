@@ -7,13 +7,6 @@
   --foreground: #171717;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 /* 모바일: 가로 오버플로우·미세 좌우 흔들림 방지 (100vw 스크롤바 이슈 포함) */
 html {
   overflow-x: hidden;
@@ -35,6 +28,79 @@ body {
   overscroll-behavior-y: none;
   /* Pretendard 미로딩 시 첫 렌더 지연 방지 — 시스템 폰트 우선 */
   font-family: -apple-system, BlinkMacSystemFont, system-ui, 'Segoe UI', Roboto, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif;
+}
+
+:where(button, a, input, select, textarea, summary):focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+button:disabled,
+input:disabled,
+select:disabled,
+textarea:disabled {
+  cursor: not-allowed;
+}
+
+body:has(.app-modal-overlay) {
+  overflow-y: hidden;
+}
+
+.app-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  max-width: 100svw;
+  overflow: hidden;
+  padding: 0;
+  background: rgb(3 7 18 / 0.4);
+  overscroll-behavior: none;
+}
+
+.app-modal-panel {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100svw;
+  max-height: 92dvh;
+  overflow-x: hidden;
+  overflow-y: auto;
+  border-radius: 1rem 1rem 0 0;
+  background: #ffffff;
+  padding: 1rem;
+  padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+  box-shadow: 0 -12px 36px rgb(15 23 42 / 0.18);
+  overscroll-behavior: contain;
+}
+
+.app-modal-panel--compact {
+  --app-modal-max-width: 28rem;
+}
+
+.app-modal-panel--wide {
+  --app-modal-max-width: 72rem;
+}
+
+@media (min-width: 768px) {
+  .app-modal-overlay {
+    align-items: center;
+    padding: 1.5rem;
+  }
+
+  .app-modal-panel {
+    max-width: min(100%, var(--app-modal-max-width, 42rem));
+    max-height: 90vh;
+    border-radius: 0.5rem;
+    padding: 1.5rem;
+    box-shadow: 0 24px 64px rgb(15 23 42 / 0.24);
+  }
+}
+
+.app-modal-panel--flush {
+  padding: 0;
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
 .page-transition {

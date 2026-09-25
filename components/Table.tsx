@@ -86,7 +86,7 @@ export default function Table<T extends Record<string, any>>({
     const value = row[column.key as keyof T];
     if (column.render) return column.render(value, row);
     if (typeof value === 'number') return formatNumber(value);
-    return String(value || '');
+    return value == null ? '' : String(value);
   };
 
   const sortableColumns = columns.filter((column) => column.sortable);
@@ -237,20 +237,26 @@ export default function Table<T extends Record<string, any>>({
               {columns.map((column) => (
                 <th
                   key={String(column.key)}
-                  className={`whitespace-nowrap px-3 py-3 text-left text-[11px] font-bold text-gray-500 uppercase tracking-widest border-b border-gray-100 xl:px-4 ${
-                    column.sortable ? 'cursor-pointer hover:bg-gray-100 transition-colors' : ''
-                  }`}
-                  onClick={() => column.sortable && handleSort(column.key)}
+                  aria-sort={column.sortable && sortColumn === column.key
+                    ? sortDirection === 'asc' ? 'ascending' : sortDirection === 'desc' ? 'descending' : 'none'
+                    : undefined}
+                  className="whitespace-nowrap border-b border-gray-100 px-3 py-3 text-left text-[11px] font-bold uppercase tracking-widest text-gray-500 xl:px-4"
                 >
-                  <div className="flex items-center gap-1.5">
-                    {column.label}
-                    {column.sortable && (
+                  {column.sortable ? (
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-1.5 text-left transition-colors hover:text-gray-700"
+                      onClick={() => handleSort(column.key)}
+                    >
+                      {column.label}
                       <div className="flex flex-col text-[8px] leading-[4px]">
                         <span className={`${sortColumn === column.key && sortDirection === 'asc' ? 'text-blue-500' : 'text-gray-300'}`}>▲</span>
                         <span className={`${sortColumn === column.key && sortDirection === 'desc' ? 'text-blue-500' : 'text-gray-300'}`}>▼</span>
                       </div>
-                    )}
-                  </div>
+                    </button>
+                  ) : (
+                    column.label
+                  )}
                 </th>
               ))}
             </tr>

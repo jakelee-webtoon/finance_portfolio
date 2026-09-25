@@ -7,6 +7,7 @@ import Table, { Column } from '@/components/Table';
 import { Income, DashboardState } from '@/types';
 import { getDashboardState, getIncome, setIncome, syncFromFirebase } from '@/lib/store';
 import { useAuth } from '@/hooks/useAuth';
+import { useModalDismiss } from '@/hooks/useModalDismiss';
 
 export default function IncomePage() {
   const isAuthenticated = useAuth();
@@ -14,6 +15,10 @@ export default function IncomePage() {
   const [incomes, setIncomes] = useState<Income[]>([]);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  useModalDismiss(isFormOpen, () => {
+    setIsFormOpen(false);
+    setEditingId(null);
+  });
   const [formData, setFormData] = useState({
     source: '',
     amount: '',
@@ -288,8 +293,8 @@ export default function IncomePage() {
 
           {/* 입력 폼 모달 */}
           {isFormOpen && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-              <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <div className="app-modal-overlay fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" role="dialog" aria-modal="true" aria-label={editingId ? '수입 수정' : '수입 추가'}>
+              <div className="app-modal-panel app-modal-panel--compact bg-white rounded-lg p-6 w-full max-w-md">
                 <h2 className="text-xl font-bold text-gray-900 mb-4">
                   {editingId ? '수입 수정' : '수입 추가'}
                 </h2>

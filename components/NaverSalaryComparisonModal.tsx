@@ -135,7 +135,10 @@ export default function NaverSalaryComparisonModal({
 
   return (
     <div
-      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+      className="app-modal-overlay fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="naver-salary-modal-title"
       onClick={(e) => {
         if (e.target === e.currentTarget) {
           onClose();
@@ -143,12 +146,12 @@ export default function NaverSalaryComparisonModal({
       }}
     >
       <div
-        className="bg-white rounded-lg shadow-xl w-full max-w-6xl max-h-[90vh] flex flex-col"
+        className="app-modal-panel app-modal-panel--wide app-modal-panel--flush bg-white rounded-lg shadow-xl w-full max-w-6xl max-h-[90vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* 헤더 */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
-          <h2 className="text-2xl font-bold text-gray-900">네이버 연봉 비교</h2>
+          <h2 id="naver-salary-modal-title" className="text-2xl font-bold text-gray-900">네이버 연봉 비교</h2>
           <button
             onClick={onClose}
             className="text-gray-400 hover:text-gray-600 transition-colors"

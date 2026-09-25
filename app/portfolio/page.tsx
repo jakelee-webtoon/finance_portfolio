@@ -8,6 +8,7 @@ import { Asset, Liability, DashboardState, StockHolding } from '@/types';
 import { getDashboardState, getAssets, setAssets, getLiabilities, setLiabilities, getApartments, setApartments, getStockHoldings, syncFromFirebase } from '@/lib/store';
 import { getExchangeRates, convertCurrency } from '@/lib/exchangeRate';
 import { useAuth } from '@/hooks/useAuth';
+import { useModalDismiss } from '@/hooks/useModalDismiss';
 import { useToast } from '@/components/Toast';
 import { calculateFinancialSummary, isOtherAsset } from '@/lib/financialSummary';
 
@@ -23,6 +24,10 @@ export default function PortfolioPage() {
   const [activeTab, setActiveTab] = useState<TabType>('assets');
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  useModalDismiss(isFormOpen, () => {
+    setIsFormOpen(false);
+    setEditingId(null);
+  });
   const [exchangeRates, setExchangeRates] = useState<Record<string, number> | null>(null);
   const [formData, setFormData] = useState({
     name: '',
@@ -709,8 +714,13 @@ export default function PortfolioPage() {
 
           {/* 입력 폼 모달 */}
           {isFormOpen && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-              <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <div
+              className="app-modal-overlay fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+              role="dialog"
+              aria-modal="true"
+              aria-label={`${activeTab === 'assets' ? '자산' : '부채'} ${editingId ? '수정' : '추가'}`}
+            >
+              <div className="app-modal-panel app-modal-panel--compact bg-white rounded-lg p-6 w-full max-w-md">
                 <h2 className="text-xl font-bold text-gray-900 mb-4">
                   {editingId ? `${activeTab === 'assets' ? '자산' : '부채'} 수정` : `${activeTab === 'assets' ? '자산' : '부채'} 추가`}
                 </h2>

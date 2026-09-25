@@ -28,7 +28,6 @@ async function fetchUsdKrwFromYahoo(): Promise<number | null> {
         Accept: 'application/json',
       },
       cache: 'no-store',
-      next: { revalidate: 0 },
     }
   );
 
@@ -52,7 +51,6 @@ async function fetchUsdKrwFromYahoo(): Promise<number | null> {
 async function fetchFallbackRates(): Promise<Record<string, number> | null> {
   const response = await fetch(`${FALLBACK_API_URL}?_t=${Date.now()}`, {
     cache: 'no-store',
-    next: { revalidate: 0 },
   });
 
   if (!response.ok) {

@@ -7,6 +7,7 @@ import Table, { Column } from '@/components/Table';
 import { Apartment, DashboardState, Asset } from '@/types';
 import { getDashboardState, getApartments, setApartments, getAssets, setAssets, syncFromFirebase } from '@/lib/store';
 import { useAuth } from '@/hooks/useAuth';
+import { useModalDismiss } from '@/hooks/useModalDismiss';
 
 export default function ApartmentPage() {
   const isAuthenticated = useAuth();
@@ -14,6 +15,10 @@ export default function ApartmentPage() {
   const [apartments, setApartmentsState] = useState<Apartment[]>([]);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  useModalDismiss(isFormOpen, () => {
+    setIsFormOpen(false);
+    setEditingId(null);
+  });
   const [formData, setFormData] = useState({
     apartmentName: '',
     address: '',
@@ -452,8 +457,8 @@ export default function ApartmentPage() {
 
           {/* 입력 폼 모달 */}
           {isFormOpen && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-              <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="app-modal-overlay fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" role="dialog" aria-modal="true" aria-label={editingId ? '아파트 수정' : '아파트 추가'}>
+              <div className="app-modal-panel bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
                 <h2 className="text-xl font-bold text-gray-900 mb-4">
                   {editingId ? '아파트 수정' : '아파트 추가'}
                 </h2>

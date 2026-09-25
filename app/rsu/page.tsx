@@ -9,6 +9,7 @@ import { getDashboardState, getStockHoldings, setStockHoldings, getAssets, setAs
 import { getStockPrice, detectExchangeAndCurrency } from '@/lib/stockApi';
 import { getExchangeRates } from '@/lib/exchangeRate';
 import { useAuth } from '@/hooks/useAuth';
+import { useModalDismiss } from '@/hooks/useModalDismiss';
 import { useToast } from '@/components/Toast';
 import { buildRsuAssets } from '@/lib/rsuAssets';
 
@@ -22,6 +23,10 @@ export default function RSUPage() {
   const [exchangeRates, setExchangeRates] = useState<Record<string, number> | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  useModalDismiss(isFormOpen, () => {
+    setIsFormOpen(false);
+    setEditingId(null);
+  });
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [noteValue, setNoteValue] = useState('');
   const [isInitialLoaded, setIsInitialLoaded] = useState(false);
@@ -998,8 +1003,8 @@ export default function RSUPage() {
 
           {/* 입력 폼 모달 */}
           {isFormOpen && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-              <div className="bg-white rounded-lg p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
+            <div className="app-modal-overlay fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" role="dialog" aria-modal="true" aria-label={editingId ? 'RSU 또는 옵션 수정' : 'RSU 또는 옵션 추가'}>
+              <div className="app-modal-panel app-modal-panel--compact bg-white rounded-lg p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
                 <h2 className="text-xl font-bold text-gray-900 mb-4">
                   {editingId ? 'RSU/옵션 수정' : 'RSU/옵션 추가'}
                 </h2>
