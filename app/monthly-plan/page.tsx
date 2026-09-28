@@ -1,8 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import TopBar from '@/components/TopBar';
-import Navigation from '@/components/Navigation';
 import MobileHelp from '@/components/MobileHelp';
 import { DashboardState, MonthlyPlanEntry, PlanCategory } from '@/types';
 import {
@@ -239,8 +237,6 @@ export default function MonthlyPlanPage() {
   if (!state || !hasLoadedMonthlyPlans) {
     return (
       <div className="min-h-screen bg-gray-50">
-        <TopBar />
-        <Navigation />
         <div className="px-3 py-4 sm:p-6">로딩 중...</div>
       </div>
     );
@@ -248,8 +244,6 @@ export default function MonthlyPlanPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <TopBar />
-      <Navigation />
       <div className="px-3 py-4 sm:p-6">
         <div className="max-w-7xl mx-auto">
           <div className="mb-6">

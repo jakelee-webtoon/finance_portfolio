@@ -1,8 +1,6 @@
 'use client';
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import TopBar from '@/components/TopBar';
-import Navigation from '@/components/Navigation';
 import Table, { Column } from '@/components/Table';
 import { StockHolding, DashboardState } from '@/types';
 import { getDashboardState, getStockHoldings, setStockHoldings, syncFromFirebase } from '@/lib/store';
@@ -549,8 +547,6 @@ export default function StocksPage() {
   if (!state) {
     return (
       <div className="min-h-screen bg-gray-50">
-        <TopBar />
-        <Navigation />
         <div className="px-3 py-4 sm:p-6">로딩 중...</div>
       </div>
     );
@@ -558,8 +554,6 @@ export default function StocksPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <TopBar />
-      <Navigation />
       <div className="px-3 py-4 sm:p-6">
         <div className="max-w-7xl mx-auto">
           <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

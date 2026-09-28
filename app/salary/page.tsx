@@ -2,8 +2,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LabelList } from 'recharts';
-import TopBar from '@/components/TopBar';
-import Navigation from '@/components/Navigation';
 import { Salary, DashboardState } from '@/types';
 import { getDashboardState, getSalaries, setSalaries, syncFromFirebase } from '@/lib/store';
 import { getExchangeRates } from '@/lib/exchangeRate';
@@ -440,8 +438,6 @@ export default function SalaryPage() {
   if (!state) {
     return (
       <div className="min-h-screen bg-gray-50">
-        <TopBar />
-        <Navigation />
         <div className="px-3 py-4 sm:p-6">로딩 중...</div>
       </div>
     );
@@ -449,8 +445,6 @@ export default function SalaryPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <TopBar />
-      <Navigation />
       <div className="px-3 py-4 sm:p-6">
         <div className="max-w-7xl mx-auto">
           <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

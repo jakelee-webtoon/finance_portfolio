@@ -2,8 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
-import TopBar from '@/components/TopBar';
-import Navigation from '@/components/Navigation';
 import Table, { Column } from '@/components/Table';
 import { DashboardState, StockHolding } from '@/types';
 import { getDashboardState, getStockHoldings, setStockHoldings, syncFromFirebase } from '@/lib/store';
@@ -464,8 +462,6 @@ export default function IsaPage() {
   if (!state) {
     return (
       <div className="min-h-screen bg-gray-50">
-        <TopBar />
-        <Navigation />
         <div className="px-3 py-4 sm:p-6">로딩 중...</div>
       </div>
     );
@@ -473,8 +469,6 @@ export default function IsaPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <TopBar />
-      <Navigation />
       <div className="px-3 py-4 sm:p-6">
         <div className="max-w-7xl mx-auto">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">

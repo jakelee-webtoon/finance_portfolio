@@ -1,8 +1,6 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import TopBar from '@/components/TopBar';
-import Navigation from '@/components/Navigation';
 import Table, { Column } from '@/components/Table';
 import { Asset, DashboardState } from '@/types';
 import { getDashboardState, getAssets, setAssets, syncFromFirebase } from '@/lib/store';
@@ -235,8 +233,6 @@ export default function OtherPage() {
   if (!state) {
     return (
       <div className="min-h-screen bg-gray-50">
-        <TopBar />
-        <Navigation />
         <div className="p-6">로딩 중...</div>
       </div>
     );
@@ -244,8 +240,6 @@ export default function OtherPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 min-w-0 max-w-[100vw] overflow-x-clip">
-      <TopBar />
-      <Navigation />
       <div className="px-3 py-4 sm:p-6 min-w-0">
         <div className="max-w-7xl mx-auto min-w-0">
           {/* 헤더 */}
