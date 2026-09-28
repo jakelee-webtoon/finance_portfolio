@@ -5,6 +5,8 @@ require('sucrase/register/ts');
 
 const {
   FIRESTORE_COLLECTIONS,
+  mergeCollectionItems,
+  planCollectionUpserts,
   planCollectionWrites,
 } = require('../lib/persistenceConfig.ts');
 const { parseStoredJson } = require('../lib/storageJson.ts');
@@ -77,6 +79,31 @@ test('Firestore collection plan resolves duplicate ids to the latest item', () =
 test('Firestore collection plan rejects invalid batch sizes', () => {
   assert.throws(() => planCollectionWrites([], [], 0), /between 1 and 500/);
   assert.throws(() => planCollectionWrites([], [], 501), /between 1 and 500/);
+});
+
+test('Firestore upsert plan never deletes documents omitted from an update', () => {
+  const plan = planCollectionUpserts([
+    { id: 'changed', value: 1 },
+    { id: 'changed', value: 2 },
+  ]);
+  const operations = plan.batches.flat();
+
+  assert.equal(plan.savedCount, 1);
+  assert.equal(operations.length, 1);
+  assert.equal(operations[0].type, 'set');
+  assert.equal(operations[0].item.value, 2);
+});
+
+test('local upserts preserve untouched finance entries', () => {
+  const merged = mergeCollectionItems(
+    [{ id: 'untouched', value: 1 }, { id: 'changed', value: 1 }],
+    [{ id: 'changed', value: 2 }]
+  );
+
+  assert.deepEqual(merged, [
+    { id: 'untouched', value: 1 },
+    { id: 'changed', value: 2 },
+  ]);
 });
 
 test('local cache parsing falls back safely when stored JSON is damaged', () => {

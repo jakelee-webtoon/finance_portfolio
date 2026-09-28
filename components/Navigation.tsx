@@ -23,14 +23,14 @@ export default function Navigation() {
   const navItems = [
     { href: '/dashboard', label: '대시보드' },
     { href: '/portfolio', label: '포트폴리오' },
+    { href: '/monthly-plan', label: '월간플랜' },
     { href: '/apartment', label: '아파트' },
-    { href: '/stocks', label: '주식' },
-    { href: '/isa', label: 'ISA' },
     { href: '/rsu', label: 'RSU' },
+    { href: '/isa', label: 'ISA' },
+    { href: '/stocks', label: '주식' },
     { href: '/cash', label: '현금' },
     { href: '/income', label: '수입' },
     { href: '/salary', label: '연봉' },
-    { href: '/monthly-plan', label: '월간플랜' },
     { href: '/ledger', label: '가계부' },
   ];
 
@@ -39,10 +39,10 @@ export default function Navigation() {
   ) ?? navItems[0];
 
   const primaryNavItems = [
-    { href: '/dashboard', label: '홈', icon: '⌂' },
-    { href: '/isa', label: 'ISA', icon: '$' },
-    { href: '/rsu', label: 'RSU', icon: 'R' },
+    { href: '/dashboard', label: '대시보드', icon: '⌂' },
+    { href: '/portfolio', label: '포트폴리오', icon: '◇' },
     { href: '/monthly-plan', label: '플랜', icon: '✓' },
+    { href: '/apartment', label: '아파트', icon: '▥' },
   ];
   const isPrimaryRoute = primaryNavItems.some((item) => item.href === currentItem.href);
 
@@ -216,7 +216,7 @@ export default function Navigation() {
               <Link
                 key={item.href}
                 href={item.href}
-                className={`flex min-w-0 flex-col items-center justify-center gap-0.5 text-[13px] font-bold ${
+                className={`flex min-w-0 flex-col items-center justify-center gap-0.5 text-[11px] font-bold ${
                   isActive ? 'text-blue-600' : 'text-gray-400'
                 }`}
                 aria-current={isActive ? 'page' : undefined}
@@ -231,7 +231,7 @@ export default function Navigation() {
             aria-expanded={isMenuOpen}
             aria-controls="mobile-navigation-menu"
             onClick={() => setIsMenuOpen((open) => !open)}
-            className={`flex min-w-0 flex-col items-center justify-center gap-0.5 text-[13px] font-bold ${
+            className={`flex min-w-0 flex-col items-center justify-center gap-0.5 text-[11px] font-bold ${
               !isPrimaryRoute || isMenuOpen ? 'text-blue-600' : 'text-gray-400'
             }`}
           >

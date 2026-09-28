@@ -55,6 +55,12 @@ export type CollectionWriteOperation<T extends { id: string }> =
   | { type: 'delete'; id: string }
   | { type: 'set'; id: string; item: T };
 
+export function mergeCollectionItems<T extends { id: string }>(existing: T[], updates: T[]): T[] {
+  const merged = new Map(existing.map(item => [item.id, item]));
+  updates.forEach(item => merged.set(item.id, item));
+  return Array.from(merged.values());
+}
+
 export function planCollectionWrites<T extends { id: string }>(
   existingIds: Iterable<string>,
   items: T[],
@@ -87,4 +93,27 @@ export function planCollectionWrites<T extends { id: string }>(
   }
 
   return { batches, deletedCount, savedCount: uniqueItems.size };
+}
+
+export function planCollectionUpserts<T extends { id: string }>(
+  items: T[],
+  maxBatchSize = 450
+): { batches: CollectionWriteOperation<T>[][]; savedCount: number } {
+  if (!Number.isInteger(maxBatchSize) || maxBatchSize < 1 || maxBatchSize > 500) {
+    throw new Error('maxBatchSize must be an integer between 1 and 500.');
+  }
+
+  const uniqueItems = new Map<string, T>();
+  items.forEach((item) => uniqueItems.set(item.id, item));
+
+  const operations: CollectionWriteOperation<T>[] = Array.from(
+    uniqueItems,
+    ([id, item]) => ({ type: 'set', id, item })
+  );
+  const batches: CollectionWriteOperation<T>[][] = [];
+  for (let index = 0; index < operations.length; index += maxBatchSize) {
+    batches.push(operations.slice(index, index + maxBatchSize));
+  }
+
+  return { batches, savedCount: uniqueItems.size };
 }

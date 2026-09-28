@@ -12,7 +12,12 @@ import {
   type Firestore
 } from 'firebase/firestore';
 import { db } from './firebase';
-import { FIRESTORE_COLLECTIONS, planCollectionWrites } from './persistenceConfig';
+import {
+  FIRESTORE_COLLECTIONS,
+  mergeCollectionItems,
+  planCollectionUpserts,
+  planCollectionWrites,
+} from './persistenceConfig';
 import { parseStoredJson } from './storageJson';
 
 // db가 null이면 함수들이 에러를 반환하도록 처리
@@ -113,6 +118,25 @@ const replaceCollection = async <T extends FirestoreEntity>(
   }
 
   return plan.deletedCount;
+};
+
+const upsertCollection = async <T extends FirestoreEntity>(
+  firestore: Firestore,
+  collectionPath: string,
+  items: T[],
+  dateFields: readonly string[] = []
+): Promise<void> => {
+  const plan = planCollectionUpserts(items);
+
+  for (const operations of plan.batches) {
+    const batch = writeBatch(firestore);
+    operations.forEach(operation => {
+      if (operation.type !== 'set') return;
+      const documentRef = doc(firestore, collectionPath, operation.id);
+      batch.set(documentRef, prepareFirestoreData(operation.item, dateFields));
+    });
+    await batch.commit();
+  }
 };
 
 const saveCollection = async <T extends FirestoreEntity>(
@@ -425,5 +449,21 @@ export async function getMonthlyPlanEntries(): Promise<MonthlyPlanEntry[]> {
 }
 
 export async function setMonthlyPlanEntries(entries: MonthlyPlanEntry[]): Promise<void> {
-  await saveCollection(entries, FIRESTORE_COLLECTIONS.monthlyPlanEntries);
+  if (typeof window === 'undefined') return;
+  if (!db) {
+    const storageKey = FIRESTORE_COLLECTIONS.monthlyPlanEntries.storageKey;
+    const existing = readLocalStorage<MonthlyPlanEntry[]>(storageKey, []);
+    writeLocalStorage(storageKey, mergeCollectionItems(existing, entries));
+    return;
+  }
+
+  const config = FIRESTORE_COLLECTIONS.monthlyPlanEntries;
+  try {
+    const collectionPath = getCollectionPath(config.collectionName);
+    await upsertCollection(db, collectionPath, entries, config.dateFields);
+    console.log(`[Firestore] ${entries.length} ${config.label} upserted to Firebase: ${collectionPath}`);
+  } catch (error) {
+    console.error(`[Firestore] Failed to upsert ${config.label}:`, error);
+    throw error;
+  }
 }

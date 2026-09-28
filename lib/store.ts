@@ -1,6 +1,6 @@
 import { DashboardState, Asset, Income, Transaction, Portfolio, Liability, StockHolding, Apartment, Salary, Scope, LedgerEntry, MonthlyPlanEntry } from '@/types';
 import { mockIncome, mockTransactions, mockPortfolios } from '@/data/mockData';
-import { FIRESTORE_COLLECTIONS } from '@/lib/persistenceConfig';
+import { FIRESTORE_COLLECTIONS, mergeCollectionItems } from '@/lib/persistenceConfig';
 import { parseStoredJson } from '@/lib/storageJson';
 
 const STORAGE_KEY = 'finance-dashboard-state';
@@ -296,6 +296,17 @@ export function getMonthlyPlanEntries(): MonthlyPlanEntry[] {
   return readLocalJson<MonthlyPlanEntry[]>(FIRESTORE_COLLECTIONS.monthlyPlanEntries.storageKey, []);
 }
 
-export async function setMonthlyPlanEntries(entries: MonthlyPlanEntry[]): Promise<void> {
-  await persistCollection(FIRESTORE_COLLECTIONS.monthlyPlanEntries.storageKey, entries, 'Monthly Plan Entries', firestore => firestore.setMonthlyPlanEntries(entries));
+export async function upsertMonthlyPlanEntries(entries: MonthlyPlanEntry[]): Promise<void> {
+  if (typeof window === 'undefined' || entries.length === 0) return;
+
+  const merged = mergeCollectionItems(getMonthlyPlanEntries(), entries);
+  writeLocalJson(FIRESTORE_COLLECTIONS.monthlyPlanEntries.storageKey, merged);
+
+  if (!useFirebase()) return;
+  try {
+    const firestore = await getFirestoreFunctions();
+    if (firestore) await firestore.setMonthlyPlanEntries(entries);
+  } catch (error: unknown) {
+    console.error('[Store] Failed to upsert Monthly Plan Entries to Firebase:', error);
+  }
 }

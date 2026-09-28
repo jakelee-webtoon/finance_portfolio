@@ -8,7 +8,7 @@ import { DashboardState, MonthlyPlanEntry, PlanCategory } from '@/types';
 import {
   getDashboardState,
   getMonthlyPlanEntries,
-  setMonthlyPlanEntries,
+  upsertMonthlyPlanEntries,
   syncFromFirebase,
 } from '@/lib/store';
 import { useAuth } from '@/hooks/useAuth';
@@ -85,10 +85,6 @@ function getPlanMonthlyTarget(item: (typeof MANAGED_PLAN_ITEMS)[number], month: 
   return item.monthlyTarget;
 }
 
-function hasVariableMonthlyTarget(item: (typeof MANAGED_PLAN_ITEMS)[number]): boolean {
-  return item.key === 'husband-cash' || item.key === 'wife-saving';
-}
-
 function getPlanAnnualTarget(item: (typeof MANAGED_PLAN_ITEMS)[number], year: string): number {
   if (year !== '2026') return item.annualTarget;
   const targetMonths = ['2026-08', '2026-09', '2026-10', '2026-11', '2026-12'];
@@ -99,20 +95,16 @@ export default function MonthlyPlanPage() {
   const isAuthenticated = useAuth();
   const [state, setState] = useState<DashboardState | null>(null);
   const [monthlyPlans, setMonthlyPlans] = useState<MonthlyPlanEntry[]>([]);
+  const [hasLoadedMonthlyPlans, setHasLoadedMonthlyPlans] = useState(false);
 
   useEffect(() => {
     if (isAuthenticated !== true) return;
 
-    const applyCachedData = () => {
+    const loadData = async () => {
+      await syncFromFirebase({ force: true });
       setState(getDashboardState());
       setMonthlyPlans(getMonthlyPlanEntries());
-    };
-
-    applyCachedData();
-
-    const loadData = async () => {
-      await syncFromFirebase();
-      applyCachedData();
+      setHasLoadedMonthlyPlans(true);
     };
 
     loadData();
@@ -127,76 +119,6 @@ export default function MonthlyPlanPage() {
       window.removeEventListener('storage', handleStateChange);
     };
   }, []);
-
-  useEffect(() => {
-    if (!state?.baseMonth) return;
-
-    const ensureManagedEntries = async () => {
-      const today = new Date().toISOString().split('T')[0];
-      const currentUser: 'husband' | 'wife' = state.scope === 'wife' ? 'wife' : 'husband';
-      let changed = false;
-      const nextEntries = [...monthlyPlans];
-
-      MANAGED_PLAN_ITEMS.forEach((item, index) => {
-        const monthlyTarget = getPlanMonthlyTarget(item, state.baseMonth);
-        const existingIndex = nextEntries.findIndex((entry) =>
-          entry.month === state.baseMonth &&
-          (entry.planKey === item.key ||
-            (
-              entry.owner === item.owner &&
-              entry.category === item.category &&
-              (entry.title === item.title || isLegacyManagedPlanEntry(entry, item))
-            ))
-        );
-
-        if (existingIndex >= 0) {
-          const existing = nextEntries[existingIndex];
-          const shouldResetTarget =
-            !existing.planKey ||
-            (hasVariableMonthlyTarget(item) && existing.targetAmount !== monthlyTarget) ||
-            existing.title !== item.title;
-
-          if (shouldResetTarget) {
-            nextEntries[existingIndex] = {
-              ...existing,
-              planKey: item.key,
-              title: item.title,
-              targetAmount: monthlyTarget,
-              notes: existing.notes || '',
-              as_of_date: today,
-              last_modified_by: currentUser,
-            };
-            changed = true;
-          }
-          return;
-        }
-
-        nextEntries.push({
-          id: `plan-${state.baseMonth}-${index}-${Date.now()}`,
-          planKey: item.key,
-          owner: item.owner,
-          category: item.category,
-          title: item.title,
-          month: state.baseMonth,
-          targetAmount: monthlyTarget,
-          actualAmount: 0,
-          isCompleted: false,
-          notes: '',
-          source_type: 'manual',
-          as_of_date: today,
-          last_modified_by: currentUser,
-        });
-        changed = true;
-      });
-
-      if (changed) {
-        setMonthlyPlans(nextEntries);
-        await setMonthlyPlanEntries(nextEntries);
-      }
-    };
-
-    ensureManagedEntries();
-  }, [monthlyPlans, state]);
 
   const currentMonthPlans = useMemo(() => {
     if (!state?.baseMonth) return [];
@@ -250,14 +172,19 @@ export default function MonthlyPlanPage() {
   }, [monthlyPlans, state]);
 
   const createDefaultMonthlyPlan = useCallback(async () => {
-    if (!state?.baseMonth) return;
+    if (!hasLoadedMonthlyPlans || !state?.baseMonth) return;
     const today = new Date().toISOString().split('T')[0];
     const currentUser: 'husband' | 'wife' = state.scope === 'wife' ? 'wife' : 'husband';
-    const template = MANAGED_PLAN_ITEMS;
-
-    const nextEntries: MonthlyPlanEntry[] = [
-      ...monthlyPlans.filter((entry) => entry.month !== state.baseMonth || !isManagedPlanEntry(entry)),
-      ...template.map((entry, index) => {
+    const missingEntries: MonthlyPlanEntry[] = MANAGED_PLAN_ITEMS
+      .filter(item => !monthlyPlans.some(entry =>
+        entry.month === state.baseMonth &&
+        (entry.planKey === item.key || (
+          entry.owner === item.owner &&
+          entry.category === item.category &&
+          (entry.title === item.title || isLegacyManagedPlanEntry(entry, item))
+        ))
+      ))
+      .map((entry, index) => {
         const { owner, category, title } = entry;
         const monthlyTarget = getPlanMonthlyTarget(entry, state.baseMonth);
         return {
@@ -275,22 +202,28 @@ export default function MonthlyPlanPage() {
           as_of_date: today,
           last_modified_by: currentUser,
         };
-      }),
-    ];
+      });
 
+    if (missingEntries.length === 0) return;
+    const nextEntries = [...monthlyPlans, ...missingEntries];
     setMonthlyPlans(nextEntries);
-    await setMonthlyPlanEntries(nextEntries);
-  }, [monthlyPlans, state]);
+    await upsertMonthlyPlanEntries(missingEntries);
+  }, [hasLoadedMonthlyPlans, monthlyPlans, state]);
 
   const updateMonthlyPlanEntry = useCallback(async (id: string, patch: Partial<MonthlyPlanEntry>) => {
+    if (!hasLoadedMonthlyPlans) return;
     const today = new Date().toISOString().split('T')[0];
     const currentUser: 'husband' | 'wife' = state?.scope === 'wife' ? 'wife' : 'husband';
-    const nextEntries = monthlyPlans.map((entry) =>
-      entry.id === id ? { ...entry, ...patch, as_of_date: today, last_modified_by: currentUser } : entry
-    );
+    let updatedEntry: MonthlyPlanEntry | undefined;
+    const nextEntries = monthlyPlans.map((entry) => {
+      if (entry.id !== id) return entry;
+      updatedEntry = { ...entry, ...patch, as_of_date: today, last_modified_by: currentUser };
+      return updatedEntry;
+    });
+    if (!updatedEntry) return;
     setMonthlyPlans(nextEntries);
-    await setMonthlyPlanEntries(nextEntries);
-  }, [monthlyPlans, state?.scope]);
+    await upsertMonthlyPlanEntries([updatedEntry]);
+  }, [hasLoadedMonthlyPlans, monthlyPlans, state?.scope]);
 
   if (isAuthenticated !== true) {
     return (
@@ -303,7 +236,7 @@ export default function MonthlyPlanPage() {
     );
   }
 
-  if (!state) {
+  if (!state || !hasLoadedMonthlyPlans) {
     return (
       <div className="min-h-screen bg-gray-50">
         <TopBar />
