@@ -26,6 +26,7 @@ export interface Liability extends BaseEntity {
   owner: 'husband' | 'wife' | 'joint';
   currency: string;
   interestRate?: number; // 연 이자율(%)
+  monthlyPayment?: number; // 월 총 납부액
 }
 
 export interface Income extends BaseEntity {

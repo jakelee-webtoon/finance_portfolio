@@ -9,6 +9,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useModalDismiss } from '@/hooks/useModalDismiss';
 import { useToast } from '@/components/Toast';
 import { calculateFinancialSummary, isOtherAsset } from '@/lib/financialSummary';
+import { calculateCurrentPaymentBreakdown, calculateEqualPaymentBreakdown } from '@/lib/liabilityPayments';
 
 type TabType = 'assets' | 'liabilities';
 
@@ -34,6 +35,7 @@ export default function PortfolioPage() {
     category: 'cash' as 'cash' | 'stocks' | 'bonds' | 'real_estate' | 'other' | 'loan' | 'credit_card' | 'mortgage',
     currency: 'KRW',
     interestRate: '',
+    monthlyPayment: '',
   });
 
   useEffect(() => {
@@ -88,8 +90,33 @@ export default function PortfolioPage() {
       await setAssets(assets);
     }
 
+    let liabilities = getLiabilities();
+    let hasLiabilityChanges = false;
+    liabilities = liabilities.map((liability) => {
+      const isCurrentMortgage = liability.category === 'mortgage'
+        && liability.name === '주택담보대출'
+        && liability.currency === 'KRW'
+        && liability.monthlyPayment == null
+        && (liability.amount === 600000000 || liability.amount === 591814427);
+
+      if (!isCurrentMortgage) return liability;
+
+      hasLiabilityChanges = true;
+      return {
+        ...liability,
+        amount: 591814427,
+        interestRate: 4.48,
+        monthlyPayment: 3032365,
+        as_of_date: new Date().toISOString().split('T')[0],
+      };
+    });
+
+    if (hasLiabilityChanges) {
+      await setLiabilities(liabilities);
+    }
+
     setAssetsState(assets);
-    setLiabilitiesState(getLiabilities());
+    setLiabilitiesState(liabilities);
     setHoldings(getStockHoldings());
     
     };
@@ -180,6 +207,9 @@ export default function PortfolioPage() {
     const currentUser: 'husband' | 'wife' = state?.scope === 'husband' ? 'husband' : state?.scope === 'wife' ? 'wife' : 'husband';
     const today = new Date().toISOString().split('T')[0];
     const interestRate = formData.interestRate === '' ? undefined : Number(formData.interestRate);
+    const monthlyPayment = formData.category === 'mortgage' && formData.monthlyPayment !== ''
+      ? Number(formData.monthlyPayment)
+      : undefined;
 
     if (activeTab === 'assets') {
       if (editingId) {
@@ -256,6 +286,7 @@ export default function PortfolioPage() {
                 category: formData.category as Liability['category'],
                 currency: formData.currency,
                 interestRate,
+                monthlyPayment,
                 as_of_date: today,
                 last_modified_by: currentUser,
               }
@@ -275,6 +306,7 @@ export default function PortfolioPage() {
           category: formData.category as Liability['category'],
           currency: formData.currency,
           interestRate,
+          monthlyPayment,
           source_type: 'manual',
           as_of_date: today,
           last_modified_by: currentUser,
@@ -296,6 +328,7 @@ export default function PortfolioPage() {
       category: activeTab === 'assets' ? 'cash' : 'loan',
       currency: 'KRW',
       interestRate: '',
+      monthlyPayment: '',
     });
     setIsFormOpen(false);
   };
@@ -308,6 +341,7 @@ export default function PortfolioPage() {
       category: asset.category,
       currency: asset.currency,
       interestRate: '',
+      monthlyPayment: '',
     });
     setEditingId(asset.id);
     setActiveTab('assets');
@@ -322,6 +356,7 @@ export default function PortfolioPage() {
       category: liability.category,
       currency: liability.currency,
       interestRate: liability.interestRate == null ? '' : String(liability.interestRate),
+      monthlyPayment: liability.monthlyPayment == null ? '' : String(liability.monthlyPayment),
     });
     setEditingId(liability.id);
     setActiveTab('liabilities');
@@ -356,6 +391,7 @@ export default function PortfolioPage() {
       category: activeTab === 'assets' ? 'cash' : 'loan',
       currency: 'KRW',
       interestRate: '',
+      monthlyPayment: '',
     });
   };
 
@@ -489,7 +525,7 @@ export default function PortfolioPage() {
     },
     {
       key: 'interestRate',
-      label: '이자',
+      label: '이자/상환',
       sortable: true,
       render: (_, row) => {
         const rate = row.interestRate;
@@ -507,7 +543,9 @@ export default function PortfolioPage() {
         if (row.category === 'mortgage') {
           const mortgagePayment = krwAmount == null
             ? null
-            : calculateEqualPaymentBreakdown(krwAmount, rate, 30 * 12);
+            : row.monthlyPayment != null && row.monthlyPayment > 0
+              ? calculateCurrentPaymentBreakdown(krwAmount, rate, row.monthlyPayment)
+              : calculateEqualPaymentBreakdown(krwAmount, rate, 30 * 12);
 
           return (
             <span className="inline-block min-w-[9rem] text-xs leading-5 text-rose-600">
@@ -516,6 +554,8 @@ export default function PortfolioPage() {
               월 원금 {mortgagePayment == null ? '환율 필요' : formatKrw(mortgagePayment.principal)}
               <br />
               월 이자 {mortgagePayment == null ? '환율 필요' : formatKrw(mortgagePayment.interest)}
+              <br />
+              월 합계 {mortgagePayment == null ? '환율 필요' : formatKrw(mortgagePayment.total)}
             </span>
           );
         }
@@ -785,7 +825,7 @@ export default function PortfolioPage() {
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      금액 *
+                      {activeTab === 'liabilities' && formData.category === 'mortgage' ? '현재 대출잔액 *' : '금액 *'}
                     </label>
                     <input
                       type="number"
@@ -879,7 +919,26 @@ export default function PortfolioPage() {
                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                         placeholder="예: 5.256"
                       />
-                      <p className="mt-1 text-xs text-gray-400">소수점 셋째 자리까지 입력할 수 있습니다. 주담대는 30년 원리금균등 상환의 첫 달 예상 원금과 이자를 계산합니다.</p>
+                      <p className="mt-1 text-xs text-gray-400">소수점 셋째 자리까지 입력할 수 있습니다.</p>
+                    </div>
+                  )}
+
+                  {activeTab === 'liabilities' && formData.category === 'mortgage' && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        월 총 납부액
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        inputMode="numeric"
+                        value={formData.monthlyPayment}
+                        onChange={(e) => setFormData({ ...formData, monthlyPayment: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="예: 3032365"
+                      />
+                      <p className="mt-1 text-xs text-gray-400">현재 잔액과 월 납부액을 기준으로 이번 달 원금과 이자를 계산합니다.</p>
                     </div>
                   )}
 
@@ -1003,24 +1062,6 @@ function formatInterestRate(rate: number): string {
     minimumFractionDigits: 0,
     maximumFractionDigits: 3,
   }).format(rate)}%`;
-}
-
-function calculateEqualPaymentBreakdown(
-  principal: number,
-  annualRate: number,
-  months: number
-): { principal: number; interest: number } {
-  const monthlyRate = annualRate / 100 / 12;
-  const interest = principal * monthlyRate;
-  const payment = monthlyRate === 0
-    ? principal / months
-    : principal * (monthlyRate * Math.pow(1 + monthlyRate, months))
-      / (Math.pow(1 + monthlyRate, months) - 1);
-
-  return {
-    principal: Math.round(payment - interest),
-    interest: Math.round(interest),
-  };
 }
 
 function formatKrw(amount: number): string {

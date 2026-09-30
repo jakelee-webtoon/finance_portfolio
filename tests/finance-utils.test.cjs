@@ -26,6 +26,24 @@ const {
   isStandaloneInvestmentHolding,
 } = require('../lib/financialSummary.ts');
 const { buildRsuAssets } = require('../lib/rsuAssets.ts');
+const {
+  calculateCurrentPaymentBreakdown,
+  calculateEqualPaymentBreakdown,
+} = require('../lib/liabilityPayments.ts');
+
+test('mortgage payment breakdown matches the current bank statement', () => {
+  assert.deepEqual(
+    calculateCurrentPaymentBreakdown(591814427, 4.48, 3032365),
+    { principal: 819864, interest: 2212501, total: 3032365 }
+  );
+});
+
+test('mortgage payment breakdown supports a fresh 30-year estimate', () => {
+  assert.deepEqual(
+    calculateEqualPaymentBreakdown(600000000, 4.48, 360),
+    { principal: 792986, interest: 2240000, total: 3032986 }
+  );
+});
 
 const salaryStats = {
   year: '2025',
