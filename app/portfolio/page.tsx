@@ -33,6 +33,7 @@ export default function PortfolioPage() {
     owner: 'joint' as 'husband' | 'wife' | 'joint',
     category: 'cash' as 'cash' | 'stocks' | 'bonds' | 'real_estate' | 'other' | 'loan' | 'credit_card' | 'mortgage',
     currency: 'KRW',
+    interestRate: '',
   });
 
   useEffect(() => {
@@ -178,6 +179,7 @@ export default function PortfolioPage() {
 
     const currentUser: 'husband' | 'wife' = state?.scope === 'husband' ? 'husband' : state?.scope === 'wife' ? 'wife' : 'husband';
     const today = new Date().toISOString().split('T')[0];
+    const interestRate = formData.interestRate === '' ? undefined : Number(formData.interestRate);
 
     if (activeTab === 'assets') {
       if (editingId) {
@@ -253,6 +255,7 @@ export default function PortfolioPage() {
                 owner: formData.owner,
                 category: formData.category as Liability['category'],
                 currency: formData.currency,
+                interestRate,
                 as_of_date: today,
                 last_modified_by: currentUser,
               }
@@ -271,6 +274,7 @@ export default function PortfolioPage() {
           owner: formData.owner,
           category: formData.category as Liability['category'],
           currency: formData.currency,
+          interestRate,
           source_type: 'manual',
           as_of_date: today,
           last_modified_by: currentUser,
@@ -291,6 +295,7 @@ export default function PortfolioPage() {
       owner: 'joint',
       category: activeTab === 'assets' ? 'cash' : 'loan',
       currency: 'KRW',
+      interestRate: '',
     });
     setIsFormOpen(false);
   };
@@ -302,6 +307,7 @@ export default function PortfolioPage() {
       owner: asset.owner,
       category: asset.category,
       currency: asset.currency,
+      interestRate: '',
     });
     setEditingId(asset.id);
     setActiveTab('assets');
@@ -315,6 +321,7 @@ export default function PortfolioPage() {
       owner: liability.owner,
       category: liability.category,
       currency: liability.currency,
+      interestRate: liability.interestRate == null ? '' : String(liability.interestRate),
     });
     setEditingId(liability.id);
     setActiveTab('liabilities');
@@ -348,6 +355,7 @@ export default function PortfolioPage() {
       owner: 'joint',
       category: activeTab === 'assets' ? 'cash' : 'loan',
       currency: 'KRW',
+      interestRate: '',
     });
   };
 
@@ -477,6 +485,32 @@ export default function PortfolioPage() {
         }
         
         return `${new Intl.NumberFormat('ko-KR').format(Math.floor(krwAmount))}원`;
+      },
+    },
+    {
+      key: 'interestRate',
+      label: '이자',
+      sortable: true,
+      render: (_, row) => {
+        const rate = row.interestRate;
+        if (rate == null || !Number.isFinite(rate) || rate <= 0) {
+          return (
+            <span className="text-xs text-gray-300 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
+              -
+            </span>
+          );
+        }
+
+        const krwAmount = getKrwAmount(row.amount, row.currency, exchangeRates);
+        const monthlyInterest = krwAmount == null ? null : Math.floor((krwAmount * rate) / 100 / 12);
+
+        return (
+          <span className="inline-block min-w-[8rem] text-xs leading-5 text-rose-600 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
+            연 {formatInterestRate(rate)}
+            <br />
+            월 {monthlyInterest == null ? '환율 필요' : `${new Intl.NumberFormat('ko-KR').format(monthlyInterest)}원`}
+          </span>
+        );
       },
     },
     {
@@ -814,6 +848,23 @@ export default function PortfolioPage() {
                     </select>
                   </div>
 
+                  {activeTab === 'liabilities' && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        연 이자율
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={formData.interestRate}
+                        onChange={(e) => setFormData({ ...formData, interestRate: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="예: 4.5"
+                      />
+                      <p className="mt-1 text-xs text-gray-400">대출/마통은 연 이자율을 입력하면 목록에서 월 예상 이자를 계산합니다.</p>
+                    </div>
+                  )}
 
                   <div className="flex gap-2 pt-4">
                     <button
@@ -912,4 +963,27 @@ function getOwnerLabel(owner: string): string {
     joint: '공동',
   };
   return labels[owner] || owner;
+}
+
+function getKrwAmount(
+  amount: number,
+  currency: string | undefined,
+  exchangeRates: Record<string, number> | null
+): number | null {
+  if (!Number.isFinite(amount)) return null;
+
+  if (!currency || currency === 'KRW') return amount;
+  if (!exchangeRates) return null;
+
+  if (currency === 'USD') return amount * exchangeRates.USD_TO_KRW;
+  if (currency === 'EUR') return amount * exchangeRates.EUR_TO_KRW;
+
+  return null;
+}
+
+function formatInterestRate(rate: number): string {
+  return `${new Intl.NumberFormat('ko-KR', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(rate)}%`;
 }
