@@ -493,9 +493,9 @@ export default function PortfolioPage() {
       sortable: true,
       render: (_, row) => {
         const rate = row.interestRate;
-        if (rate == null || !Number.isFinite(rate) || rate <= 0) {
+        if (rate == null || !Number.isFinite(rate) || rate < 0) {
           return (
-            <span className="text-xs text-gray-300 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
+            <span className="text-xs text-gray-300">
               -
             </span>
           );
@@ -504,11 +504,27 @@ export default function PortfolioPage() {
         const krwAmount = getKrwAmount(row.amount, row.currency, exchangeRates);
         const monthlyInterest = krwAmount == null ? null : Math.floor((krwAmount * rate) / 100 / 12);
 
+        if (row.category === 'mortgage') {
+          const mortgagePayment = krwAmount == null
+            ? null
+            : calculateEqualPaymentBreakdown(krwAmount, rate, 30 * 12);
+
+          return (
+            <span className="inline-block min-w-[9rem] text-xs leading-5 text-rose-600">
+              연 {formatInterestRate(rate)}
+              <br />
+              월 원금 {mortgagePayment == null ? '환율 필요' : formatKrw(mortgagePayment.principal)}
+              <br />
+              월 이자 {mortgagePayment == null ? '환율 필요' : formatKrw(mortgagePayment.interest)}
+            </span>
+          );
+        }
+
         return (
-          <span className="inline-block min-w-[8rem] text-xs leading-5 text-rose-600 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
+          <span className="inline-block min-w-[8rem] text-xs leading-5 text-rose-600">
             연 {formatInterestRate(rate)}
             <br />
-            월 {monthlyInterest == null ? '환율 필요' : `${new Intl.NumberFormat('ko-KR').format(monthlyInterest)}원`}
+            월 이자 {monthlyInterest == null ? '환율 필요' : formatKrw(monthlyInterest)}
           </span>
         );
       },
@@ -856,13 +872,14 @@ export default function PortfolioPage() {
                       <input
                         type="number"
                         min="0"
-                        step="0.01"
+                        step="0.001"
+                        inputMode="decimal"
                         value={formData.interestRate}
                         onChange={(e) => setFormData({ ...formData, interestRate: e.target.value })}
                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="예: 4.5"
+                        placeholder="예: 5.256"
                       />
-                      <p className="mt-1 text-xs text-gray-400">대출/마통은 연 이자율을 입력하면 목록에서 월 예상 이자를 계산합니다.</p>
+                      <p className="mt-1 text-xs text-gray-400">소수점 셋째 자리까지 입력할 수 있습니다. 주담대는 30년 원리금균등 상환의 첫 달 예상 원금과 이자를 계산합니다.</p>
                     </div>
                   )}
 
@@ -984,6 +1001,28 @@ function getKrwAmount(
 function formatInterestRate(rate: number): string {
   return `${new Intl.NumberFormat('ko-KR', {
     minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
+    maximumFractionDigits: 3,
   }).format(rate)}%`;
+}
+
+function calculateEqualPaymentBreakdown(
+  principal: number,
+  annualRate: number,
+  months: number
+): { principal: number; interest: number } {
+  const monthlyRate = annualRate / 100 / 12;
+  const interest = principal * monthlyRate;
+  const payment = monthlyRate === 0
+    ? principal / months
+    : principal * (monthlyRate * Math.pow(1 + monthlyRate, months))
+      / (Math.pow(1 + monthlyRate, months) - 1);
+
+  return {
+    principal: Math.round(payment - interest),
+    interest: Math.round(interest),
+  };
+}
+
+function formatKrw(amount: number): string {
+  return `${new Intl.NumberFormat('ko-KR').format(amount)}원`;
 }
