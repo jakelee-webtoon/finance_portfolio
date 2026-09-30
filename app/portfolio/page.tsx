@@ -942,7 +942,7 @@ export default function PortfolioPage() {
                     </div>
                   )}
 
-                  <div className="flex gap-2 pt-4">
+                  <div className="app-modal-actions flex gap-2 pt-4">
                     <button
                       type="submit"
                       className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
