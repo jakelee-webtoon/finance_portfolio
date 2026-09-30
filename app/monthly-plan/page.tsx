@@ -251,9 +251,9 @@ export default function MonthlyPlanPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="px-3 py-4 sm:p-6">
-        <div className="max-w-7xl mx-auto">
+    <div className="min-h-screen min-w-0 max-w-[100vw] overflow-x-clip bg-gray-50">
+      <div className="min-w-0 px-3 py-4 sm:p-6">
+        <div className="mx-auto max-w-7xl min-w-0">
           <div className="mb-6">
             <div className="flex items-center gap-2">
               <h1 className="text-2xl font-bold text-gray-900">월간플랜</h1>
@@ -271,8 +271,8 @@ export default function MonthlyPlanPage() {
             <CompactMetric label="남은 실행 금액" value={formatKrw(planSummary.remaining)} tone={planSummary.remaining <= 0 ? 'green' : 'rose'} />
           </div>
 
-          <div className="grid grid-cols-12 gap-6 items-start">
-            <div className="col-span-12 lg:col-span-8 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="grid min-w-0 grid-cols-12 items-start gap-6">
+            <div className="col-span-12 min-w-0 max-w-full overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm lg:col-span-8">
               <div className="p-5 border-b border-gray-100 bg-gray-50/50 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h2 className="text-lg font-bold text-gray-900">이번 달 실행 계획</h2>
@@ -299,7 +299,7 @@ export default function MonthlyPlanPage() {
                   <p className="text-xs text-gray-400 mt-2">종한: 투자, 현금 모으기, 주담대 원리금 · 민지: 저축(마통상환), 비정기 지출 모으기, 생활비</p>
                 </div>
               ) : (
-                <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid min-w-0 grid-cols-1 gap-4 p-5 md:grid-cols-2">
                   {visiblePlanOwners.map((owner) => (
                     <MonthlyOwnerPlanCard
                       key={owner}
@@ -321,7 +321,7 @@ export default function MonthlyPlanPage() {
               )}
             </div>
 
-            <div className="col-span-12 lg:col-span-4 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="col-span-12 min-w-0 max-w-full overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm lg:col-span-4">
               <div className="p-5 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
                 <div>
                   <h2 className="text-lg font-bold text-gray-900">2026 목표 진행</h2>
@@ -382,9 +382,9 @@ function MonthlyOwnerPlanCard({
   const completionRate = ownerEntries.length > 0 ? (completed / ownerEntries.length) * 100 : 0;
 
   return (
-    <div className="rounded-xl border border-gray-100 bg-gray-50/40 p-4">
-      <div className="flex items-center justify-between gap-3 mb-3">
-        <div>
+    <div className="min-w-0 max-w-full rounded-xl border border-gray-100 bg-gray-50/40 p-4">
+      <div className="mb-3 flex min-w-0 items-center justify-between gap-3">
+        <div className="min-w-0">
           <h3 className="text-sm font-bold text-gray-900">{getOwnerLabel(owner)} 월간 플랜</h3>
           <p className="text-xs text-gray-500">{formatKrw(actual)} / {formatKrw(target)}</p>
         </div>
@@ -394,8 +394,8 @@ function MonthlyOwnerPlanCard({
       </div>
       <div className="space-y-2">
         {ownerEntries.map((entry) => (
-          <div key={entry.id} className="rounded-lg bg-white p-3 ring-1 ring-gray-100">
-            <div className="flex items-start gap-3">
+          <div key={entry.id} className="min-w-0 rounded-lg bg-white p-3 ring-1 ring-gray-100">
+            <div className="flex min-w-0 items-start gap-3">
               <input
                 type="checkbox"
                 checked={entry.isCompleted}
@@ -422,7 +422,7 @@ function MonthlyOwnerPlanCard({
                     {getPlanCategoryLabel(entry.category)}
                   </span>
                 </div>
-                <div className="mt-3 grid grid-cols-2 gap-2">
+                <div className="mt-3 grid min-w-0 grid-cols-2 gap-2">
                   <AmountInput
                     label="목표"
                     value={entry.targetAmount}
@@ -502,9 +502,9 @@ function formatAmountInput(value: number): string {
 function CompactMetric({ label, value, tone = 'gray' }: { label: string; value: string; tone?: 'gray' | 'green' | 'rose' }) {
   const toneClass = tone === 'green' ? 'text-emerald-600' : tone === 'rose' ? 'text-rose-600' : 'text-gray-900';
   return (
-    <div className="col-span-12 sm:col-span-6 lg:col-span-3 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+    <div className="col-span-12 min-w-0 max-w-full overflow-hidden rounded-2xl border border-gray-100 bg-white p-5 shadow-sm sm:col-span-6 lg:col-span-3">
       <div className="text-xs font-medium text-gray-500">{label}</div>
-      <div className={`mt-2 text-lg font-bold sm:text-2xl ${toneClass}`}>{value}</div>
+      <div className={`mt-2 min-w-0 text-lg font-bold sm:text-2xl ${toneClass}`}>{value}</div>
     </div>
   );
 }

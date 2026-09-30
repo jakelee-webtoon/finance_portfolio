@@ -105,17 +105,20 @@ body:has(.app-modal-overlay) {
 
 .page-transition {
   position: relative;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   overflow-x: clip;
   animation: page-enter 300ms cubic-bezier(.2, .8, .2, 1) both;
 }
 
 @keyframes page-enter {
   from {
-    left: 28px;
+    transform: translateX(28px);
     opacity: 0;
   }
   to {
-    left: 0;
+    transform: translateX(0);
     opacity: 1;
   }
 }
@@ -394,7 +397,9 @@ html[data-mobile-topbar='hidden'] .top-navigation {
 
   .mobile-metrics > * {
     grid-column: span 1 / span 1;
+    max-width: 100%;
     min-width: 0;
+    overflow: hidden;
     padding: 1rem;
     border-radius: 0.5rem;
   }
