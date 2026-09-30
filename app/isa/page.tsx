@@ -627,8 +627,8 @@ export default function IsaPage() {
             <SummaryCard label="총 한도 잔여" value={formatKrw(summary.remainingTotalContribution)} badge="LIMIT" tone="amber" />
           </div>
 
-          <div className="grid grid-cols-12 gap-6 mb-8 items-start">
-            <div className="col-span-12 lg:col-span-4 bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+          <div className="grid grid-cols-12 gap-6 mb-8 items-stretch">
+            <div className="col-span-12 h-full lg:col-span-4 bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-bold text-gray-900">ISA 세금 예상</h2>
                 <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-lg">일반형 기준</span>
@@ -644,7 +644,7 @@ export default function IsaPage() {
               </p>
             </div>
 
-            <div className="col-span-12 lg:col-span-8 bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+            <div className="col-span-12 h-full lg:col-span-8 bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
               <div className="flex items-center justify-between mb-4">
                 <div>
                   <h2 className="text-lg font-bold text-gray-900">ETF 구성과 성과</h2>

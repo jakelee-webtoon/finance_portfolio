@@ -165,7 +165,15 @@ export default function MonthlyPlanPage() {
         return sum + (entry.isCompleted ? entry.targetAmount : 0);
       }, 0);
       const pct = annualTarget > 0 ? Math.min(100, (actual / annualTarget) * 100) : 0;
-      return { ...item, annualTarget, actual, pct, remaining: Math.max(0, annualTarget - actual) };
+      const currentEntry = matchingEntries.find((entry) => entry.month === state.baseMonth);
+      return {
+        ...item,
+        title: currentEntry?.title || item.title,
+        annualTarget,
+        actual,
+        pct,
+        remaining: Math.max(0, annualTarget - actual),
+      };
     });
   }, [monthlyPlans, state]);
 
@@ -302,6 +310,10 @@ export default function MonthlyPlanPage() {
                         actualAmount: !entry.isCompleted ? entry.targetAmount : entry.actualAmount,
                       })}
                       onAmountChange={(entry, field, amount) => updateMonthlyPlanEntry(entry.id, { [field]: amount })}
+                      onTitleChange={(entry, title) => updateMonthlyPlanEntry(entry.id, {
+                        title,
+                        planKey: entry.planKey || getManagedPlanItem(entry)?.key,
+                      })}
                       onNotesChange={(entry, notes) => updateMonthlyPlanEntry(entry.id, { notes })}
                     />
                   ))}
@@ -353,12 +365,14 @@ function MonthlyOwnerPlanCard({
   entries,
   onToggle,
   onAmountChange,
+  onTitleChange,
   onNotesChange,
 }: {
   owner: 'husband' | 'wife';
   entries: MonthlyPlanEntry[];
   onToggle: (entry: MonthlyPlanEntry) => void;
   onAmountChange: (entry: MonthlyPlanEntry, field: 'targetAmount' | 'actualAmount', amount: number) => void;
+  onTitleChange: (entry: MonthlyPlanEntry, title: string) => void;
   onNotesChange: (entry: MonthlyPlanEntry, notes: string) => void;
 }) {
   const ownerEntries = [...entries].sort((a, b) => getPlanCategoryOrder(a.category) - getPlanCategoryOrder(b.category));
@@ -390,7 +404,20 @@ function MonthlyOwnerPlanCard({
               />
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-sm font-semibold text-gray-800">{entry.title}</span>
+                  <input
+                    type="text"
+                    defaultValue={entry.title}
+                    aria-label={`${getOwnerLabel(owner)} 플랜 항목명`}
+                    onBlur={(event) => {
+                      const title = event.target.value.trim();
+                      if (!title) {
+                        event.target.value = entry.title;
+                        return;
+                      }
+                      if (title !== entry.title) onTitleChange(entry, title);
+                    }}
+                    className="min-w-0 flex-1 border-b border-transparent bg-transparent text-sm font-semibold text-gray-800 outline-none hover:border-gray-200 focus:border-blue-400"
+                  />
                   <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold text-gray-500">
                     {getPlanCategoryLabel(entry.category)}
                   </span>
@@ -427,22 +454,49 @@ function MonthlyOwnerPlanCard({
 }
 
 function AmountInput({ label, value, onCommit }: { label: string; value: number; onCommit: (amount: number) => void }) {
+  const [draft, setDraft] = useState(formatAmountInput(value));
+
+  useEffect(() => {
+    setDraft(formatAmountInput(value));
+  }, [value]);
+
+  const commit = () => {
+    const amount = parseAmountInput(draft);
+    setDraft(formatAmountInput(amount));
+    if (amount !== value) onCommit(amount);
+  };
+
   return (
     <label className="block">
       <span className="mb-1 block text-xs font-semibold text-gray-500">{label}</span>
       <div className="relative">
         <input
-          type="number"
-          min="0"
-          step="10000"
-          defaultValue={value}
-          onBlur={(event) => onCommit(Number(event.target.value || 0))}
+          type="text"
+          inputMode="numeric"
+          value={draft}
+          onChange={(event) => {
+            const digits = event.target.value.replace(/[^0-9]/g, '');
+            setDraft(digits ? formatAmountInput(Number(digits)) : '');
+          }}
+          onBlur={commit}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') event.currentTarget.blur();
+          }}
           className="monthly-amount-input w-full rounded-md border border-gray-200 px-3 py-2 pr-8 text-sm font-semibold text-gray-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
         />
         <span className="monthly-amount-suffix pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-gray-400">원</span>
       </div>
     </label>
   );
+}
+
+function parseAmountInput(value: string): number {
+  const digits = value.replace(/[^0-9]/g, '');
+  return digits ? Number(digits) : 0;
+}
+
+function formatAmountInput(value: number): string {
+  return new Intl.NumberFormat('ko-KR').format(Math.max(0, Math.floor(value)));
 }
 
 function CompactMetric({ label, value, tone = 'gray' }: { label: string; value: string; tone?: 'gray' | 'green' | 'rose' }) {
@@ -484,7 +538,11 @@ function getPlanCategoryOrder(category: PlanCategory): number {
 }
 
 function isManagedPlanEntry(entry: MonthlyPlanEntry): boolean {
-  return MANAGED_PLAN_ITEMS.some((item) =>
+  return getManagedPlanItem(entry) != null;
+}
+
+function getManagedPlanItem(entry: MonthlyPlanEntry) {
+  return MANAGED_PLAN_ITEMS.find((item) =>
     entry.planKey === item.key ||
     (
       item.owner === entry.owner &&
