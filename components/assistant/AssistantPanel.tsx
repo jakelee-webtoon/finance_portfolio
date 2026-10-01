@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { buildFinanceChatContext } from '@/lib/assistantChatContext';
 import { runLocalAssistantFallback } from '@/lib/assistantFallback';
+import { refreshAssistantSummary } from '@/lib/assistantSummary';
 import { runAgentTurn } from '@/lib/assistantClient';
 import { commandRequiresConfirmation, type AssistantOutcome, type AssistantResult, type AssistantStep, type AssistantView } from '@/lib/assistantCommand';
 import { assistantViewPath, executeAssistantStep, previewAssistantStep } from '@/lib/assistantExecutor';
@@ -176,10 +177,14 @@ export default function AssistantPanel() {
     lastUserMessage.current = value;
     transcript.current = trimAgentTranscript([...transcript.current, { role: 'user', content: value }]);
     try {
+      setState('inspect');
+      await refreshAssistantSummary().catch(() => undefined);
       await converse();
       setState('success');
       window.setTimeout(() => setState('idle'), 1400);
     } catch (error) {
+      setState('inspect');
+      await refreshAssistantSummary().catch(() => undefined);
       const fallback = await runLocalAssistantFallback(value);
       if (fallback) {
         add({

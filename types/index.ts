@@ -143,6 +143,31 @@ export interface MonthlyPlanEntry extends BaseEntity {
   notes?: string;
 }
 
+export interface AssistantSummary {
+  id: string;
+  month: string;
+  scope: Scope;
+  generatedAt: string;
+  summaryText: string;
+  highlights: string[];
+  improvementIdeas: string[];
+  snapshot: {
+    netWorth: number;
+    totalAssets: number;
+    totalLiabilities: number;
+    assetAllocation: Array<{ label: string; amount: number; percent: number }>;
+    liabilityAllocation: Array<{ label: string; amount: number; percent: number }>;
+    cashflow?: {
+      income: number;
+      expense: number;
+      savings: number;
+      netCashflow: number;
+      savingsRate: number | null;
+    };
+    alerts: Array<{ level: 'info' | 'warning' | 'critical'; code: string; message: string }>;
+  };
+}
+
 // 가계부 항목 타입
 export type LedgerType = 'expense_fixed' | 'expense_variable' | 'income' | 'savings';
 export type LedgerCategory = 

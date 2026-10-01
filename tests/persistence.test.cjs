@@ -15,6 +15,7 @@ test('every persisted finance area has one unique Firestore and local-storage ma
   const expectedDateFields = {
     apartments: ['as_of_date'],
     assets: ['as_of_date'],
+    assistantSummaries: [],
     income: ['as_of_date'],
     ledgerEntries: ['date', 'as_of_date'],
     liabilities: ['as_of_date'],

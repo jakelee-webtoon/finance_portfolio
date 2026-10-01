@@ -33,6 +33,7 @@ function tool(name: string, description: string, properties: Record<string, Sche
 
 export const assistantToolDefinitions = [
   tool('get_finance_summary', '코드가 계산한 재무상태 점검 snapshot을 조회합니다.', { period: e(assistantPeriods), month: s('YYYY-MM') }),
+  tool('get_asset_review', '저장된 assistant summary와 코드 계산값으로 자산구성/부채구성/보강 후보를 점검합니다.', { owner: e(assistantOwners) }),
   tool('query_transactions', '최근/기간별 가계부 거래를 조회합니다.', { period: e(assistantPeriods), month: s('YYYY-MM'), category: s(), owner: e(assistantOwners), limit: i }),
   tool('summarize_spending', '지출 합계와 카테고리별 지출을 요약합니다.', { period: e(assistantPeriods), month: s('YYYY-MM'), owner: e(assistantOwners) }),
   tool('query_budget', '월간플랜 예산/실행 현황을 조회합니다.', { month: s('YYYY-MM'), owner: e(assistantOwners) }),

@@ -1,5 +1,6 @@
 import { calculateFinancialSummary } from '@/lib/financialSummary';
 import { buildFinanceSnapshot } from '@/lib/assistantSnapshot';
+import { getCurrentAssistantSummary } from '@/lib/assistantSummary';
 import { getAssets, getDashboardState, getIncome, getLedgerEntries, getLiabilities, getMonthlyPlanEntries, getStockHoldings, getTransactions } from '@/lib/store';
 import type { Asset, DashboardState, Income, LedgerEntry, Liability, MonthlyPlanEntry, StockHolding, Transaction } from '@/types';
 
@@ -15,6 +16,10 @@ export type FinanceAssistantData = {
 };
 
 const MAX_CHARACTERS = 3600;
+const ASSISTANT_EXCHANGE_RATES = {
+  USD_TO_KRW: 1300,
+  EUR_TO_KRW: 1300 / 0.92,
+};
 
 function krw(value: number) {
   return `${new Intl.NumberFormat('ko-KR').format(Math.round(value))}원`;
@@ -63,8 +68,9 @@ export function buildFinanceChatContext(data = collectFinanceAssistantData(), no
     liabilities: data.liabilities,
     holdings: data.holdings,
     scope,
-    exchangeRates: null,
+    exchangeRates: ASSISTANT_EXCHANGE_RATES,
   });
+  const assistantSummary = getCurrentAssistantSummary();
   const ledgerThisMonth = data.ledgerEntries.filter((entry) => entry.month === baseMonth);
   const expenses = ledgerThisMonth.filter((entry) => entry.type === 'expense_fixed' || entry.type === 'expense_variable');
   const income = ledgerThisMonth.filter((entry) => entry.type === 'income');
@@ -80,6 +86,8 @@ export function buildFinanceChatContext(data = collectFinanceAssistantData(), no
 
   const lines = [
     `현재: ${new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', dateStyle: 'medium', timeStyle: 'short' }).format(now)} · 기준월 ${baseMonth} · 범위 ${scope}`,
+    '[storedAssistantSummary · Firestore/local · 코드 계산 요약]',
+    assistantSummary ? assistantSummary.summaryText : '- 저장된 assistant summary 없음. 필요한 경우 tool로 먼저 조회/계산하세요.',
     '[financeSnapshot · 코드 계산값]',
     JSON.stringify(snapshot),
     '[순자산 요약]',

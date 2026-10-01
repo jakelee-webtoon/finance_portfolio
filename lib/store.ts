@@ -1,4 +1,4 @@
-import { DashboardState, Asset, Income, Transaction, Portfolio, Liability, StockHolding, Apartment, Salary, Scope, LedgerEntry, MonthlyPlanEntry } from '@/types';
+import { DashboardState, Asset, Income, Transaction, Portfolio, Liability, StockHolding, Apartment, Salary, Scope, LedgerEntry, MonthlyPlanEntry, AssistantSummary } from '@/types';
 import { mockIncome, mockTransactions, mockPortfolios } from '@/data/mockData';
 import { FIRESTORE_COLLECTIONS, mergeCollectionItems } from '@/lib/persistenceConfig';
 import { parseStoredJson } from '@/lib/storageJson';
@@ -126,6 +126,9 @@ async function performFirebaseSync(): Promise<void> {
         .catch(() => undefined),
       firestore.getMonthlyPlanEntries()
         .then((entries: MonthlyPlanEntry[]) => updateUnchangedCache(FIRESTORE_COLLECTIONS.monthlyPlanEntries.storageKey, entries))
+        .catch(() => undefined),
+      firestore.getAssistantSummaries()
+        .then((summaries: AssistantSummary[]) => updateUnchangedCache(FIRESTORE_COLLECTIONS.assistantSummaries.storageKey, summaries))
         .catch(() => undefined),
     ]);
   } catch (error) {
@@ -308,5 +311,24 @@ export async function upsertMonthlyPlanEntries(entries: MonthlyPlanEntry[]): Pro
     if (firestore) await firestore.setMonthlyPlanEntries(entries);
   } catch (error: unknown) {
     console.error('[Store] Failed to upsert Monthly Plan Entries to Firebase:', error);
+  }
+}
+
+export function getAssistantSummaries(): AssistantSummary[] {
+  return readLocalJson<AssistantSummary[]>(FIRESTORE_COLLECTIONS.assistantSummaries.storageKey, []);
+}
+
+export async function upsertAssistantSummaries(summaries: AssistantSummary[]): Promise<void> {
+  if (typeof window === 'undefined' || summaries.length === 0) return;
+
+  const merged = mergeCollectionItems(getAssistantSummaries(), summaries);
+  writeLocalJson(FIRESTORE_COLLECTIONS.assistantSummaries.storageKey, merged);
+
+  if (!useFirebase()) return;
+  try {
+    const firestore = await getFirestoreFunctions();
+    if (firestore) await firestore.setAssistantSummaries(summaries);
+  } catch (error: unknown) {
+    console.error('[Store] Failed to upsert Assistant Summaries to Firebase:', error);
   }
 }

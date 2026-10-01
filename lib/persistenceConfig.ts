@@ -47,6 +47,12 @@ export const FIRESTORE_COLLECTIONS = {
     label: 'Monthly Plan Entries',
     dateFields: ['as_of_date'],
   },
+  assistantSummaries: {
+    collectionName: 'assistantSummaries',
+    storageKey: 'finance-assistant-summaries',
+    label: 'Assistant Summaries',
+    dateFields: [],
+  },
 } as const;
 
 export type FirestoreCollectionKey = keyof typeof FIRESTORE_COLLECTIONS;

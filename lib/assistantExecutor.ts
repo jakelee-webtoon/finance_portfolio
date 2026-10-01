@@ -1,5 +1,6 @@
 import { calculateFinancialSummary } from '@/lib/financialSummary';
 import { buildFinanceSnapshot } from '@/lib/assistantSnapshot';
+import { buildAssistantSummary, refreshAssistantSummary } from '@/lib/assistantSummary';
 import {
   getAssets,
   getDashboardState,
@@ -127,6 +128,27 @@ export async function executeAssistantStep(step: AssistantStep): Promise<Assista
           { title: 'Top spending', detail: snapshot.categories.slice(0, 3).map((item) => `${item.name} ${krw(item.spent)}`).join(' · ') || '없음' },
           { title: '위험 신호', detail: snapshot.alerts.map((item) => item.message).join(' / ') },
         ], 'dashboard')],
+      };
+    }
+    case 'get_asset_review': {
+      const assistantSummary = await refreshAssistantSummary().catch(() => buildAssistantSummary());
+      const snapshot = assistantSummary.snapshot;
+      const allocationItems = [
+        ...snapshot.assetAllocation.slice(0, 5).map((item) => ({
+          title: `자산 · ${item.label}`,
+          detail: `${krw(item.amount)} · ${item.percent}%`,
+        })),
+        ...snapshot.liabilityAllocation.slice(0, 4).map((item) => ({
+          title: `부채 · ${item.label}`,
+          detail: `${krw(item.amount)} · ${item.percent}%`,
+        })),
+      ];
+      return {
+        message: '자산구성과 보강 후보를 점검했습니다.',
+        results: [result('account', '자산구성 점검', `순자산 ${krw(snapshot.netWorth)} · 자산 ${krw(snapshot.totalAssets)} · 부채 ${krw(snapshot.totalLiabilities)}`, [
+          ...allocationItems,
+          ...assistantSummary.improvementIdeas.slice(0, 5).map((idea) => ({ title: '보강 후보', detail: idea })),
+        ], 'portfolio')],
       };
     }
     case 'summarize_spending': {

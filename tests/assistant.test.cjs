@@ -31,6 +31,7 @@ const baseEntity = {
 
 test('assistant command parser validates finance payloads', () => {
   assert.deepEqual(parseAssistantStep('query_cashflow', { month: '2026-10' }).action, 'query_cashflow');
+  assert.deepEqual(parseAssistantStep('get_asset_review', {}).action, 'get_asset_review');
   assert.throws(() => parseAssistantStep('query_cashflow', { month: '202610' }), /YYYY-MM/);
   assert.throws(() => parseAssistantStep('create_budget', { title: '식비' }), /targetAmount/);
 });
@@ -39,6 +40,7 @@ test('destructive and sensitive assistant actions require confirmation', () => {
   assert.equal(commandRequiresConfirmation(parseAssistantStep('update_budget', { id: 'b1', targetAmount: 200000 })), true);
   assert.equal(commandRequiresConfirmation(parseAssistantStep('categorize_transaction', { id: 'tx1', category: 'food' })), true);
   assert.equal(commandRequiresConfirmation(parseAssistantStep('query_budget', { month: '2026-10' })), false);
+  assert.equal(commandRequiresConfirmation(parseAssistantStep('get_asset_review', {})), false);
 });
 
 test('finance snapshot calculates totals, savings rate, budgets, and alerts in code', () => {
@@ -111,6 +113,7 @@ test('Gemini API key errors are normalized without exposing secrets', async () =
 
 test('local assistant fallback handles monthly report requests without Gemini', () => {
   assert.equal(getLocalAssistantFallbackStep('월간 리포트 만들어줘 아주 심플하게').action, 'get_monthly_report');
+  assert.equal(getLocalAssistantFallbackStep('자산구성 설명해주고 보강해야할것').action, 'get_asset_review');
   assert.equal(getLocalAssistantFallbackStep('이번 달 돈 어디서 많이 썼어?').action, 'summarize_spending');
   assert.equal(getLocalAssistantFallbackStep('그냥 잡담'), null);
 });

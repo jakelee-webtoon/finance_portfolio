@@ -1,5 +1,6 @@
 export const assistantActions = [
   'get_finance_summary',
+  'get_asset_review',
   'query_transactions',
   'summarize_spending',
   'query_budget',
@@ -121,6 +122,9 @@ function validatePayload(action: AssistantAction, payload: Record<string, unknow
       requireEnum(payload, 'period', periods);
       optionalMonth(payload);
       optionalLimit(payload);
+      return;
+    case 'get_asset_review':
+      requireEnum(payload, 'owner', owners);
       return;
     case 'summarize_spending':
       requireEnum(payload, 'period', periods);

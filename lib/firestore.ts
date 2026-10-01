@@ -22,7 +22,7 @@ import { parseStoredJson } from './storageJson';
 
 // db가 null이면 함수들이 에러를 반환하도록 처리
 // (런타임에만 체크, 빌드 시 에러 방지)
-import { DashboardState, Asset, Income, Liability, StockHolding, Apartment, Salary, LedgerEntry, MonthlyPlanEntry } from '@/types';
+import { DashboardState, Asset, Income, Liability, StockHolding, Apartment, Salary, LedgerEntry, MonthlyPlanEntry, AssistantSummary } from '@/types';
 
 type FirestoreEntity = { id: string };
 
@@ -462,6 +462,44 @@ export async function setMonthlyPlanEntries(entries: MonthlyPlanEntry[]): Promis
     const collectionPath = getCollectionPath(config.collectionName);
     await upsertCollection(db, collectionPath, entries, config.dateFields);
     console.log(`[Firestore] ${entries.length} ${config.label} upserted to Firebase: ${collectionPath}`);
+  } catch (error) {
+    console.error(`[Firestore] Failed to upsert ${config.label}:`, error);
+    throw error;
+  }
+}
+
+export async function getAssistantSummaries(): Promise<AssistantSummary[]> {
+  if (typeof window === 'undefined') return [];
+  const config = FIRESTORE_COLLECTIONS.assistantSummaries;
+  if (!db) {
+    return readLocalStorage(config.storageKey, []);
+  }
+
+  try {
+    const firestore = db;
+    const collectionPath = getCollectionPath(config.collectionName);
+    const q = query(collection(firestore, collectionPath), orderBy('generatedAt', 'desc'));
+    const querySnapshot = await getDocs(q);
+    return querySnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+    } as AssistantSummary));
+  } catch (error) {
+    return readLocalStorage(config.storageKey, []);
+  }
+}
+
+export async function setAssistantSummaries(summaries: AssistantSummary[]): Promise<void> {
+  if (typeof window === 'undefined' || summaries.length === 0) return;
+  const config = FIRESTORE_COLLECTIONS.assistantSummaries;
+  const existing = readLocalStorage<AssistantSummary[]>(config.storageKey, []);
+  writeLocalStorage(config.storageKey, mergeCollectionItems(existing, summaries));
+
+  if (!db) return;
+  try {
+    const collectionPath = getCollectionPath(config.collectionName);
+    await upsertCollection(db, collectionPath, summaries, config.dateFields);
+    console.log(`[Firestore] ${summaries.length} ${config.label} upserted to Firebase: ${collectionPath}`);
   } catch (error) {
     console.error(`[Firestore] Failed to upsert ${config.label}:`, error);
     throw error;

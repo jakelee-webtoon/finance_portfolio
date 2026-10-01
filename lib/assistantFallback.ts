@@ -9,6 +9,9 @@ export function getLocalAssistantFallbackStep(message: string): AssistantStep | 
   const text = message.replace(/\s+/g, ' ').trim();
   if (!text) return null;
 
+  if (/자산\s*구성|자산구성|포트폴리오|리밸런싱|보강|개선|분산|비중/i.test(text)) {
+    return step('get_asset_review');
+  }
   if (/재무\s*상태|건강|점검|위험|신호/i.test(text)) {
     return step('get_finance_summary');
   }
