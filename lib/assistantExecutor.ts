@@ -41,6 +41,11 @@ const PLAN_CATEGORIES = new Set<PlanCategory>([
   'debt_repayment',
 ]);
 
+const ASSISTANT_EXCHANGE_RATES = {
+  USD_TO_KRW: 1300,
+  EUR_TO_KRW: 1300 / 0.92,
+};
+
 function krw(value: number) {
   return `${new Intl.NumberFormat('ko-KR').format(Math.round(value))}원`;
 }
@@ -69,6 +74,14 @@ function snapshotForMonth(month: string) {
 
 function result(kind: AssistantResult['kind'], title: string, detail?: string, items?: AssistantResult['items'], target?: AssistantView): AssistantResult {
   return { kind, title, detail, items, target };
+}
+
+async function summaryForAssistant() {
+  return refreshAssistantSummary().catch(() => buildAssistantSummary());
+}
+
+async function refreshSummaryAfterMutation() {
+  await refreshAssistantSummary().catch(() => undefined);
 }
 
 function ownerMatches(entryOwner: 'husband' | 'wife' | 'joint', owner: Scope | 'joint') {
@@ -118,20 +131,18 @@ export async function executeAssistantStep(step: AssistantStep): Promise<Assista
       };
     }
     case 'get_finance_summary': {
-      const month = baseMonth(step.payload);
-      const snapshot = snapshotForMonth(month);
+      const assistantSummary = await summaryForAssistant();
+      const cashflow = assistantSummary.snapshot.cashflow;
       return {
-        message: `${month} 재무상태를 점검했습니다.`,
-        results: [result('report', `${month} 재무상태 점검`, `순현금흐름 ${krw(snapshot.totals.netCashflow)} · 저축률 ${snapshot.totals.savingsRate ?? '계산 불가'}%`, [
-          { title: '수입', detail: krw(snapshot.totals.income) },
-          { title: '지출', detail: krw(snapshot.totals.expense) },
-          { title: 'Top spending', detail: snapshot.categories.slice(0, 3).map((item) => `${item.name} ${krw(item.spent)}`).join(' · ') || '없음' },
-          { title: '위험 신호', detail: snapshot.alerts.map((item) => item.message).join(' / ') },
+        message: `${assistantSummary.month} 재무상태를 점검했습니다.`,
+        results: [result('report', `${assistantSummary.month} 재무상태 점검`, cashflow ? `순현금흐름 ${krw(cashflow.netCashflow)} · 저축률 ${cashflow.savingsRate ?? '계산 불가'}%` : `순자산 ${krw(assistantSummary.snapshot.netWorth)}`, [
+          ...assistantSummary.briefings.monthly.map((line) => ({ title: '월간 요약', detail: line })),
+          ...assistantSummary.aggregates.riskSignals.slice(0, 4).map((signal) => ({ title: signal.level === 'critical' ? '위험 신호' : '점검 신호', detail: signal.message })),
         ], 'dashboard')],
       };
     }
     case 'get_asset_review': {
-      const assistantSummary = await refreshAssistantSummary().catch(() => buildAssistantSummary());
+      const assistantSummary = await summaryForAssistant();
       const snapshot = assistantSummary.snapshot;
       const allocationItems = [
         ...snapshot.assetAllocation.slice(0, 5).map((item) => ({
@@ -152,31 +163,31 @@ export async function executeAssistantStep(step: AssistantStep): Promise<Assista
       };
     }
     case 'summarize_spending': {
-      const month = baseMonth(step.payload);
-      const entries = ledgerForPeriod(month).filter((entry) => entry.type === 'expense_fixed' || entry.type === 'expense_variable');
-      const byCategory = new Map<string, number>();
-      for (const entry of entries) byCategory.set(entry.category, (byCategory.get(entry.category) ?? 0) + entry.amount);
-      const total = entries.reduce((sum, entry) => sum + entry.amount, 0);
+      const assistantSummary = await summaryForAssistant();
+      const total = assistantSummary.aggregates.categorySpend.reduce((sum, entry) => sum + entry.amount, 0);
       return {
-        message: `${month} 지출은 ${krw(total)}입니다.`,
-        results: [result('summary', `${month} 지출 요약`, `총 ${krw(total)} · ${entries.length}건`, [...byCategory.entries()].sort((a, b) => b[1] - a[1]).map(([category, amount]) => ({
-          title: category,
-          detail: krw(amount),
-        })), 'ledger')],
+        message: `${assistantSummary.month} 지출은 ${krw(total)}입니다.`,
+        results: [result('summary', `${assistantSummary.month} 지출 요약`, `총 ${krw(total)} · 카테고리 ${assistantSummary.aggregates.categorySpend.length}개`, [
+          ...assistantSummary.briefings.spending.map((line) => ({ title: '지출 해석', detail: line })),
+          ...assistantSummary.aggregates.categorySpend.slice(0, 8).map((item) => ({
+            title: item.category,
+            detail: `${krw(item.amount)} · ${item.sharePercent}%${item.deltaFromPrevious === undefined ? '' : ` · 전월 대비 ${krw(item.deltaFromPrevious)}`}`,
+          })),
+        ], 'ledger')],
       };
     }
     case 'query_budget': {
-      const month = baseMonth(step.payload);
-      const owner = ownerFilter(step.payload);
-      const plans = getMonthlyPlanEntries().filter((entry) => entry.month === month && ownerMatches(entry.owner, owner));
-      const target = plans.reduce((sum, entry) => sum + entry.targetAmount, 0);
-      const actual = plans.reduce((sum, entry) => sum + (entry.actualAmount ?? 0), 0);
+      const assistantSummary = await summaryForAssistant();
+      const budget = assistantSummary.aggregates.budgetStatus;
       return {
-        message: `${month} 월간플랜은 ${plans.length}개입니다.`,
-        results: [result('budget', `${month} 월간플랜`, `목표 ${krw(target)} · 실적 ${krw(actual)} · 완료 ${plans.filter((entry) => entry.isCompleted).length}/${plans.length}`, plans.map((entry) => ({
-          title: `${entry.id} · ${entry.title}`,
-          detail: `${entry.owner} · 목표 ${krw(entry.targetAmount)} · 실적 ${krw(entry.actualAmount ?? 0)}${entry.isCompleted ? ' · 완료' : ''}`,
-        })), 'monthly-plan')],
+        message: `${assistantSummary.month} 월간플랜은 ${budget.totalCount}개입니다.`,
+        results: [result('budget', `${assistantSummary.month} 월간플랜`, `목표 ${krw(budget.targetTotal)} · 실적 ${krw(budget.actualTotal)} · 완료 ${budget.completedCount}/${budget.totalCount}`, [
+          ...assistantSummary.briefings.budget.map((line) => ({ title: '예산 해석', detail: line })),
+          ...budget.overBudget.slice(0, 8).map((item) => ({
+            title: item.title,
+            detail: `${item.category} · 실적 ${krw(item.amount)} · 예산 ${krw(item.budget)} · ${krw(item.overBy)} 초과`,
+          })),
+        ], 'monthly-plan')],
       };
     }
     case 'create_budget': {
@@ -201,6 +212,7 @@ export async function executeAssistantStep(step: AssistantStep): Promise<Assista
         last_modified_by: state.scope === 'wife' ? 'wife' : 'husband',
       };
       await upsertMonthlyPlanEntries([entry]);
+      await refreshSummaryAfterMutation();
       return {
         message: `월간플랜에 ${entry.title}을 추가했습니다.`,
         results: [result('budget', '월간플랜 추가', `${entry.title} · 목표 ${krw(entry.targetAmount)}`, undefined, 'monthly-plan')],
@@ -218,6 +230,7 @@ export async function executeAssistantStep(step: AssistantStep): Promise<Assista
         as_of_date: new Date().toISOString().slice(0, 10),
       };
       await upsertMonthlyPlanEntries([updated]);
+      await refreshSummaryAfterMutation();
       return {
         message: `${entry.title}을 수정했습니다.`,
         results: [result('budget', '월간플랜 수정', `${updated.title} · 목표 ${krw(updated.targetAmount)} · 실적 ${krw(updated.actualAmount ?? 0)}`, undefined, 'monthly-plan')],
@@ -238,6 +251,7 @@ export async function executeAssistantStep(step: AssistantStep): Promise<Assista
       });
       if (!found) throw new Error('거래를 찾지 못했습니다.');
       await setLedgerEntries(next);
+      await refreshSummaryAfterMutation();
       return {
         message: `거래 카테고리를 ${category}로 변경했습니다.`,
         results: [result('info', '거래 카테고리 변경', `${id} → ${category}`, undefined, 'ledger')],
@@ -251,7 +265,7 @@ export async function executeAssistantStep(step: AssistantStep): Promise<Assista
         liabilities: getLiabilities(),
         holdings: getStockHoldings(),
         scope: owner === 'joint' ? state.scope : owner,
-        exchangeRates: null,
+        exchangeRates: ASSISTANT_EXCHANGE_RATES,
       });
       return {
         message: `계정 요약을 조회했습니다.`,
@@ -263,30 +277,29 @@ export async function executeAssistantStep(step: AssistantStep): Promise<Assista
       };
     }
     case 'query_cashflow': {
-      const month = baseMonth(step.payload);
-      const snapshot = snapshotForMonth(month);
+      const assistantSummary = await summaryForAssistant();
+      const cashflow = assistantSummary.snapshot.cashflow;
       return {
-        message: `${month} 현금흐름을 계산했습니다.`,
-        results: [result('cashflow', `${month} 현금흐름`, `순현금흐름 ${krw(snapshot.totals.netCashflow)} · 저축률 ${snapshot.totals.savingsRate ?? '계산 불가'}%`, [
-          { title: '수입', detail: krw(snapshot.totals.income) },
-          { title: '지출', detail: krw(snapshot.totals.expense) },
-          { title: '알림', detail: snapshot.alerts[0]?.message ?? '특이사항 없음' },
+        message: `${assistantSummary.month} 현금흐름을 계산했습니다.`,
+        results: [result('cashflow', `${assistantSummary.month} 현금흐름`, cashflow ? `순현금흐름 ${krw(cashflow.netCashflow)} · 저축률 ${cashflow.savingsRate ?? '계산 불가'}%` : '현금흐름 데이터 부족', [
+          ...assistantSummary.briefings.cashflow.map((line) => ({ title: '현금흐름 해석', detail: line })),
+          ...assistantSummary.aggregates.monthlyCashflow.slice(-4).map((item) => ({
+            title: item.month,
+            detail: `수입 ${krw(item.income)} · 지출 ${krw(item.expense)} · 저축 ${krw(item.savings)} · 순 ${krw(item.netCashflow)}`,
+          })),
         ], 'ledger')],
       };
     }
     case 'get_monthly_report': {
-      const month = baseMonth(step.payload);
-      const snapshot = snapshotForMonth(month);
-      const plans = getMonthlyPlanEntries().filter((entry) => entry.month === month);
-      const actualPlan = plans.reduce((sum, entry) => sum + (entry.actualAmount ?? 0), 0);
+      const assistantSummary = await summaryForAssistant();
+      const cashflow = assistantSummary.snapshot.cashflow;
       return {
-        message: `${month} 월간 리포트입니다.`,
-        results: [result('report', `${month} 월간 리포트`, `수입 ${krw(snapshot.totals.income)} · 지출 ${krw(snapshot.totals.expense)} · 저축률 ${snapshot.totals.savingsRate ?? '계산 불가'}%`, [
-          { title: '월간플랜 완료', detail: `${plans.filter((entry) => entry.isCompleted).length}/${plans.length}` },
-          { title: '플랜 실적', detail: krw(actualPlan) },
-          { title: 'Top spending', detail: snapshot.categories.slice(0, 3).map((item) => `${item.name} ${krw(item.spent)}`).join(' · ') || '없음' },
-          { title: '반복 결제', detail: `${snapshot.recurringPayments.length}건` },
-          { title: '위험 신호', detail: snapshot.alerts.map((item) => item.message).join(' / ') },
+        message: `${assistantSummary.month} 월간 리포트입니다.`,
+        results: [result('report', `${assistantSummary.month} 월간 리포트`, cashflow ? `수입 ${krw(cashflow.income)} · 지출 ${krw(cashflow.expense)} · 저축률 ${cashflow.savingsRate ?? '계산 불가'}%` : `순자산 ${krw(assistantSummary.snapshot.netWorth)}`, [
+          ...assistantSummary.briefings.monthly.map((line) => ({ title: '월간 브리핑', detail: line })),
+          ...assistantSummary.briefings.spending.slice(0, 2).map((line) => ({ title: '소비 패턴', detail: line })),
+          ...assistantSummary.briefings.assets.slice(0, 2).map((line) => ({ title: '자산 점검', detail: line })),
+          ...assistantSummary.aggregates.riskSignals.slice(0, 3).map((signal) => ({ title: signal.level === 'critical' ? '위험 신호' : '점검 신호', detail: signal.message })),
         ], 'dashboard')],
       };
     }
@@ -302,6 +315,7 @@ export async function executeAssistantStep(step: AssistantStep): Promise<Assista
       });
       if (!found) throw new Error('거래를 찾지 못했습니다.');
       await setLedgerEntries(next);
+      await refreshSummaryAfterMutation();
       return {
         message: '거래 메모를 추가했습니다.',
         results: [result('info', '거래 메모 추가', `${id} · ${memo}`, undefined, 'ledger')],

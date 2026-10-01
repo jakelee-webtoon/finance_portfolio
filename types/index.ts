@@ -166,6 +166,64 @@ export interface AssistantSummary {
     };
     alerts: Array<{ level: 'info' | 'warning' | 'critical'; code: string; message: string }>;
   };
+  aggregates: {
+    dataQuality: {
+      assetCount: number;
+      liabilityCount: number;
+      holdingCount: number;
+      ledgerEntryCount: number;
+      planEntryCount: number;
+      monthsCovered: string[];
+    };
+    monthlyCashflow: Array<{
+      month: string;
+      income: number;
+      expense: number;
+      savings: number;
+      netCashflow: number;
+      savingsRate: number | null;
+    }>;
+    weeklyCashflow: Array<{
+      weekStart: string;
+      weekEnd: string;
+      income: number;
+      expense: number;
+      savings: number;
+      netCashflow: number;
+    }>;
+    categorySpend: Array<{
+      category: string;
+      amount: number;
+      sharePercent: number;
+      budget?: number;
+      budgetUsedPercent?: number;
+      previousAmount?: number;
+      deltaFromPrevious?: number;
+    }>;
+    budgetStatus: {
+      targetTotal: number;
+      actualTotal: number;
+      remaining: number;
+      completedCount: number;
+      totalCount: number;
+      overBudget: Array<{ title: string; category: string; amount: number; budget: number; overBy: number }>;
+    };
+    fixedCosts: {
+      amount: number;
+      incomePercent: number | null;
+      items: Array<{ title: string; amount: number; category: string }>;
+    };
+    recurringPayments: Array<{ merchant: string; amount: number; cadence: string; categoryName?: string }>;
+    upcomingBills: Array<{ title: string; amount: number; dueDate: string }>;
+    riskSignals: Array<{ level: 'info' | 'warning' | 'critical'; code: string; message: string }>;
+  };
+  briefings: {
+    monthly: string[];
+    spending: string[];
+    budget: string[];
+    cashflow: string[];
+    assets: string[];
+  };
 }
 
 // 가계부 항목 타입

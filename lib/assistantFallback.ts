@@ -9,16 +9,19 @@ export function getLocalAssistantFallbackStep(message: string): AssistantStep | 
   const text = message.replace(/\s+/g, ' ').trim();
   if (!text) return null;
 
+  if (/월간\s*(요약|리포트|브리핑)|이번\s*달\s*(요약|리포트|브리핑)|요약|리포트|브리핑|심플|전체|전반|종합/i.test(text)) {
+    return step('get_monthly_report');
+  }
   if (/자산\s*구성|자산구성|포트폴리오|리밸런싱|보강|개선|분산|비중/i.test(text)) {
     return step('get_asset_review');
   }
-  if (/재무\s*상태|건강|점검|위험|신호/i.test(text)) {
+  if (/재무\s*상태|건강|점검|위험|신호|문제|괜찮|괜찬|상태/i.test(text)) {
     return step('get_finance_summary');
   }
-  if (/지출|소비|많이\s*썼|카테고리/i.test(text)) {
+  if (/지출|소비|많이\s*썼|카테고리|왜\s*이렇게|아끼|줄여|절감/i.test(text)) {
     return step('summarize_spending');
   }
-  if (/현금흐름|캐시플로|cash\s*flow|저축률|고정비/i.test(text)) {
+  if (/현금흐름|캐시플로|cash\s*flow|저축률|고정비|월급|남은\s*돈|runway|런웨이/i.test(text)) {
     return step('query_cashflow');
   }
   if (/예산|월간플랜|초과/i.test(text)) {
@@ -27,10 +30,6 @@ export function getLocalAssistantFallbackStep(message: string): AssistantStep | 
   if (/거래|내역|최근/i.test(text)) {
     return step('query_transactions', { limit: 10 });
   }
-  if (/월간|이번 달|이번달|요약|리포트|브리핑|심플/i.test(text)) {
-    return step('get_monthly_report');
-  }
-
   return null;
 }
 

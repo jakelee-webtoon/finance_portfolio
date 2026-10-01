@@ -18,6 +18,7 @@ Module._resolveFilename = function resolveAlias(request, parent, isMain, options
 
 const { parseAssistantStep, commandRequiresConfirmation } = require('../lib/assistantCommand.ts');
 const { buildFinanceSnapshot } = require('../lib/assistantSnapshot.ts');
+const { buildAssistantSummaryFromData } = require('../lib/assistantSummary.ts');
 const { buildFinanceChatContext } = require('../lib/assistantChatContext.ts');
 const { getLocalAssistantFallbackStep } = require('../lib/assistantFallback.ts');
 const { removeUndefinedDeep } = require('../lib/financeRepository.ts');
@@ -68,6 +69,36 @@ test('finance snapshot handles zero income savings rate', () => {
   const snapshot = buildFinanceSnapshot({ month: '2026-10', ledgerEntries: [], monthlyPlans: [] });
   assert.equal(snapshot.totals.savingsRate, null);
   assert.equal(snapshot.alerts[0].code, 'no_major_alerts');
+});
+
+test('assistant summary builds aggregate data mart without LLM', () => {
+  const ledgerEntries = [
+    { ...baseEntity, id: 'income', date: '2026-10-01', month: '2026-10', type: 'income', category: 'salary', amount: 4000000, payment_method: 'transfer', owner: 'joint', is_fixed: true },
+    { ...baseEntity, id: 'food', date: '2026-10-02', month: '2026-10', type: 'expense_variable', category: 'food', amount: 700000, payment_method: 'card', owner: 'joint', is_fixed: false },
+    { ...baseEntity, id: 'rent', date: '2026-10-05', month: '2026-10', type: 'expense_fixed', category: 'management_fee', amount: 1200000, payment_method: 'transfer', owner: 'joint', is_fixed: true, subcategory: '월세' },
+    { ...baseEntity, id: 'save', date: '2026-10-06', month: '2026-10', type: 'savings', category: 'savings', amount: 500000, payment_method: 'transfer', owner: 'joint', is_fixed: true },
+    { ...baseEntity, id: 'old-food', date: '2026-09-02', month: '2026-09', type: 'expense_variable', category: 'food', amount: 400000, payment_method: 'card', owner: 'joint', is_fixed: false },
+  ];
+  const monthlyPlans = [
+    { ...baseEntity, id: 'budget-food', month: '2026-10', owner: 'joint', category: 'fixed_expense', title: '식비', targetAmount: 500000, actualAmount: 700000, isCompleted: false },
+  ];
+  const summary = buildAssistantSummaryFromData({
+    state: { householdName: '우리집', baseMonth: '2026-10', scope: 'combined' },
+    assets: [{ ...baseEntity, id: 'cash', name: '현금', category: 'cash', amount: 1000000, owner: 'joint', currency: 'KRW' }],
+    liabilities: [{ ...baseEntity, id: 'loan', name: '대출', category: 'loan', amount: 500000, owner: 'joint', currency: 'KRW' }],
+    holdings: [],
+    ledgerEntries,
+    monthlyPlans,
+    now: new Date('2026-10-10T00:00:00+09:00'),
+  });
+
+  assert.equal(summary.aggregates.monthlyCashflow.length >= 6, true);
+  assert.equal(summary.aggregates.monthlyCashflow.some((item) => item.month === '2026-10'), true);
+  assert.equal(summary.aggregates.weeklyCashflow.length > 0, true);
+  assert.equal(summary.aggregates.categorySpend.find((item) => item.category === '식비').deltaFromPrevious, 300000);
+  assert.equal(summary.aggregates.budgetStatus.overBudget[0].overBy, 200000);
+  assert.equal(summary.briefings.monthly.length > 0, true);
+  assert.doesNotMatch(JSON.stringify(summary), /"name":/);
 });
 
 test('assistant context trims large transaction lists and avoids raw unlimited ledger', () => {
