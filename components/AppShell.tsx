@@ -5,6 +5,7 @@ import Navigation from '@/components/Navigation';
 import PageTransition from '@/components/PageTransition';
 import TopBar from '@/components/TopBar';
 import { useFinanceAccess } from '@/hooks/useFinanceAccess';
+import AssistantPanel from '@/components/assistant/AssistantPanel';
 
 const APP_ROUTES = new Set([
   '/dashboard',
@@ -32,6 +33,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         <>
           <TopBar />
           <Navigation />
+          <AssistantPanel />
         </>
       )}
       <PageTransition>{children}</PageTransition>

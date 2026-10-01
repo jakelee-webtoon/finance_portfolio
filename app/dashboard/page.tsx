@@ -99,7 +99,7 @@ export default function DashboardPage() {
 
   // 커스텀 라벨 컴포넌트 - 색상을 세그먼트와 동일하게, 겹치지 않도록 위치 조정
   const CustomLabel = useMemo(() => {
-    return (props: any) => {
+    const DashboardAssetPieLabel = (props: any) => {
       const { cx, cy, midAngle, innerRadius, outerRadius, percent, name } = props;
       
       // assetByCategory에서 현재 항목의 인덱스 찾기
@@ -135,6 +135,8 @@ export default function DashboardPage() {
         </text>
       );
     };
+    DashboardAssetPieLabel.displayName = 'DashboardAssetPieLabel';
+    return DashboardAssetPieLabel;
   }, [assetByCategory]);
 
   const netWorthData = useMemo(() => {
