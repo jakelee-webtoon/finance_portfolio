@@ -19,6 +19,7 @@ Module._resolveFilename = function resolveAlias(request, parent, isMain, options
 const { parseAssistantStep, commandRequiresConfirmation } = require('../lib/assistantCommand.ts');
 const { buildFinanceSnapshot } = require('../lib/assistantSnapshot.ts');
 const { buildFinanceChatContext } = require('../lib/assistantChatContext.ts');
+const { getLocalAssistantFallbackStep } = require('../lib/assistantFallback.ts');
 const { removeUndefinedDeep } = require('../lib/financeRepository.ts');
 const { geminiErrorResponse } = require('../lib/server/gemini.ts');
 
@@ -106,4 +107,10 @@ test('Gemini API key errors are normalized without exposing secrets', async () =
   const body = await response.json();
   assert.match(body.error, /GEMINI_API_KEY/);
   assert.doesNotMatch(body.error, /AIza|secret|token/i);
+});
+
+test('local assistant fallback handles monthly report requests without Gemini', () => {
+  assert.equal(getLocalAssistantFallbackStep('월간 리포트 만들어줘 아주 심플하게').action, 'get_monthly_report');
+  assert.equal(getLocalAssistantFallbackStep('이번 달 돈 어디서 많이 썼어?').action, 'summarize_spending');
+  assert.equal(getLocalAssistantFallbackStep('그냥 잡담'), null);
 });

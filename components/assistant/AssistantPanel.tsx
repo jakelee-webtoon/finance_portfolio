@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { buildFinanceChatContext } from '@/lib/assistantChatContext';
+import { runLocalAssistantFallback } from '@/lib/assistantFallback';
 import { runAgentTurn } from '@/lib/assistantClient';
 import { commandRequiresConfirmation, type AssistantOutcome, type AssistantResult, type AssistantStep, type AssistantView } from '@/lib/assistantCommand';
 import { assistantViewPath, executeAssistantStep, previewAssistantStep } from '@/lib/assistantExecutor';
@@ -179,6 +180,17 @@ export default function AssistantPanel() {
       setState('success');
       window.setTimeout(() => setState('idle'), 1400);
     } catch (error) {
+      const fallback = await runLocalAssistantFallback(value);
+      if (fallback) {
+        add({
+          role: 'assistant',
+          text: 'Gemini가 잠시 바빠서, 앱 데이터로 계산한 간단 요약을 먼저 보여드릴게요.',
+          results: fallback.results,
+        });
+        setState('success');
+        window.setTimeout(() => setState('idle'), 1400);
+        return;
+      }
       add({ role: 'assistant', text: error instanceof Error ? error.message : '요청을 처리하지 못했습니다.' });
       setState('error');
     }
