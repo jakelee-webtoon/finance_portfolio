@@ -169,9 +169,12 @@ export interface AssistantSummary {
   aggregates: {
     dataQuality: {
       assetCount: number;
+      cashAssetCount: number;
       liabilityCount: number;
       holdingCount: number;
+      incomeCount: number;
       ledgerEntryCount: number;
+      currentMonthLedgerEntryCount: number;
       planEntryCount: number;
       monthsCovered: string[];
     };

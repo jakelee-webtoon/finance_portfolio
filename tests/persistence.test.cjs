@@ -8,6 +8,7 @@ const {
   mergeCollectionItems,
   planCollectionUpserts,
   planCollectionWrites,
+  removeUndefinedDeep,
 } = require('../lib/persistenceConfig.ts');
 const { parseStoredJson } = require('../lib/storageJson.ts');
 
@@ -113,4 +114,22 @@ test('local cache parsing falls back safely when stored JSON is damaged', () => 
   assert.deepEqual(parseStoredJson(null, fallback), fallback);
   assert.deepEqual(parseStoredJson('{broken', fallback), fallback);
   assert.deepEqual(parseStoredJson('[{"id":"saved"}]', fallback), [{ id: 'saved' }]);
+});
+
+test('Firestore serialization removes nested undefined values before writes', () => {
+  assert.deepEqual(
+    removeUndefinedDeep({
+      id: 'summary',
+      keep: 1,
+      skip: undefined,
+      nested: { keep: 'yes', skip: undefined },
+      list: [{ keep: true, skip: undefined }, undefined, { value: 2 }],
+    }),
+    {
+      id: 'summary',
+      keep: 1,
+      nested: { keep: 'yes' },
+      list: [{ keep: true }, { value: 2 }],
+    }
+  );
 });

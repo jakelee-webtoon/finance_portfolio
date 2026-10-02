@@ -21,7 +21,7 @@ export function getLocalAssistantFallbackStep(message: string): AssistantStep | 
   if (/지출|소비|많이\s*썼|카테고리|왜\s*이렇게|아끼|줄여|절감/i.test(text)) {
     return step('summarize_spending');
   }
-  if (/현금흐름|캐시플로|cash\s*flow|저축률|고정비|월급|남은\s*돈|runway|런웨이/i.test(text)) {
+  if (/현금흐름|캐시플로|cash\s*flow|저축률|고정비|월급|수입|급여|남은\s*돈|runway|런웨이/i.test(text)) {
     return step('query_cashflow');
   }
   if (/예산|월간플랜|초과/i.test(text)) {

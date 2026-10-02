@@ -4,13 +4,14 @@ import {
   getAssets,
   getAssistantSummaries,
   getDashboardState,
+  getIncome,
   getLedgerEntries,
   getLiabilities,
   getMonthlyPlanEntries,
   getStockHoldings,
   upsertAssistantSummaries,
 } from '@/lib/store';
-import type { Asset, AssistantSummary, DashboardState, LedgerEntry, Liability, MonthlyPlanEntry, StockHolding } from '@/types';
+import type { Asset, AssistantSummary, DashboardState, Income, LedgerEntry, Liability, MonthlyPlanEntry, StockHolding } from '@/types';
 
 const ASSISTANT_EXCHANGE_RATES = {
   USD_TO_KRW: 1300,
@@ -127,7 +128,7 @@ function buildAggregates(
   ledgerEntries: LedgerEntry[],
   monthlyPlans: MonthlyPlanEntry[],
   cashflow: ReturnType<typeof buildFinanceSnapshot>,
-  counts: { assetCount: number; liabilityCount: number; holdingCount: number }
+  counts: { assetCount: number; cashAssetCount: number; liabilityCount: number; holdingCount: number; incomeCount: number }
 ): AssistantSummary['aggregates'] {
   const monthsCovered = [...new Set([...previousMonths(month, 6), ...ledgerEntries.map((entry) => entry.month || monthKey(entry.date))])].sort();
   const monthlyCashflow = monthsCovered.map((entryMonth) => ({
@@ -182,9 +183,12 @@ function buildAggregates(
   return {
     dataQuality: {
       assetCount: counts.assetCount,
+      cashAssetCount: counts.cashAssetCount,
       liabilityCount: counts.liabilityCount,
       holdingCount: counts.holdingCount,
+      incomeCount: counts.incomeCount,
       ledgerEntryCount: ledgerEntries.length,
+      currentMonthLedgerEntryCount: ledgerEntries.filter((entry) => (entry.month || monthKey(entry.date)) === month).length,
       planEntryCount: monthlyPlans.length,
       monthsCovered,
     },
@@ -220,21 +224,25 @@ function buildAggregates(
 function buildBriefings(summary: ReturnType<typeof calculateFinancialSummary>, cashflow: ReturnType<typeof buildFinanceSnapshot>, aggregates: AssistantSummary['aggregates']) {
   const topCategories = aggregates.categorySpend.slice(0, 3).map((entry) => `${entry.category} ${krw(entry.amount)} (${entry.sharePercent}%)`);
   const overBudget = aggregates.budgetStatus.overBudget.slice(0, 3).map((entry) => `${entry.title} ${krw(entry.overBy)} 초과`);
+  const usesLedger = aggregates.dataQuality.currentMonthLedgerEntryCount > 0;
   return {
-    monthly: [
+    monthly: usesLedger ? [
       `순자산은 ${krw(summary.netWorth)}이고 이번 달 순현금흐름은 ${krw(cashflow.totals.netCashflow)}입니다.`,
       `수입 ${krw(cashflow.totals.income)}, 지출 ${krw(cashflow.totals.expense)}, 저축 ${krw(cashflow.totals.savings)}입니다.`,
       `저축률은 ${cashflow.totals.savingsRate === null ? '계산 불가' : `${cashflow.totals.savingsRate}%`}입니다.`,
+    ] : [
+      '현금/수입/가계부 탭은 아직 사용 중이 아니라 월간 수입·지출·저축률은 계산하지 않습니다.',
+      `자산/부채 기준 순자산은 ${krw(summary.netWorth)}입니다.`,
     ],
-    spending: topCategories.length ? topCategories : ['지출 데이터가 부족합니다.'],
+    spending: usesLedger && topCategories.length ? topCategories : ['가계부 탭 데이터가 없어 지출 패턴은 계산하지 않습니다.'],
     budget: [
       `월간플랜 목표 ${krw(aggregates.budgetStatus.targetTotal)}, 실적 ${krw(aggregates.budgetStatus.actualTotal)}, 잔여 ${krw(aggregates.budgetStatus.remaining)}입니다.`,
       overBudget.length ? `예산 초과: ${overBudget.join(' · ')}` : '예산 초과 항목은 계산되지 않았습니다.',
     ],
-    cashflow: [
+    cashflow: usesLedger ? [
       `고정비/저축성 반복 항목은 ${krw(aggregates.fixedCosts.amount)}로 수입 대비 ${aggregates.fixedCosts.incomePercent === null ? '계산 불가' : `${aggregates.fixedCosts.incomePercent}%`}입니다.`,
       aggregates.weeklyCashflow.length ? `최근 주차 순현금흐름: ${aggregates.weeklyCashflow.map((entry) => `${entry.weekStart} ${krw(entry.netCashflow)}`).slice(-4).join(' · ')}` : '주차별 현금흐름 데이터가 부족합니다.',
-    ],
+    ] : ['현금흐름은 가계부 또는 수입 데이터가 들어오면 자동으로 계산합니다.'],
     assets: [
       `자산 ${krw(summary.totalAssets)}, 부채 ${krw(summary.totalLiabilities)}, 순자산 ${krw(summary.netWorth)}입니다.`,
       `자산 데이터 ${aggregates.dataQuality.assetCount}건, 부채 ${aggregates.dataQuality.liabilityCount}건, 보유종목 ${aggregates.dataQuality.holdingCount}건 기준입니다.`,
@@ -267,6 +275,7 @@ export function buildAssistantSummaryFromData({
   assets,
   liabilities,
   holdings,
+  income,
   ledgerEntries,
   monthlyPlans,
   now = new Date(),
@@ -275,6 +284,7 @@ export function buildAssistantSummaryFromData({
   assets: Asset[];
   liabilities: Liability[];
   holdings: StockHolding[];
+  income?: Income[];
   ledgerEntries: LedgerEntry[];
   monthlyPlans: MonthlyPlanEntry[];
   now?: Date;
@@ -290,8 +300,10 @@ export function buildAssistantSummaryFromData({
   const cashflow = buildFinanceSnapshot({ month, ledgerEntries, monthlyPlans });
   const aggregates = buildAggregates(month, ledgerEntries, monthlyPlans, cashflow, {
     assetCount: assets.length,
+    cashAssetCount: assets.filter((asset) => asset.category === 'cash').length,
     liabilityCount: liabilities.length,
     holdingCount: holdings.length,
+    incomeCount: income?.length ?? 0,
   });
   const assetAllocation = summary.assetCategoryTotals
     .filter((item) => !item.isOther)
@@ -340,6 +352,7 @@ export function buildAssistantSummary(now = new Date()): AssistantSummary {
     assets: getAssets(),
     liabilities: getLiabilities(),
     holdings: getStockHoldings(),
+    income: getIncome(),
     ledgerEntries: getLedgerEntries(),
     monthlyPlans: getMonthlyPlanEntries(),
     now,

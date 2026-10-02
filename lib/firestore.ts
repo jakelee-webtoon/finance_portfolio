@@ -17,6 +17,7 @@ import {
   mergeCollectionItems,
   planCollectionUpserts,
   planCollectionWrites,
+  removeUndefinedDeep,
 } from './persistenceConfig';
 import { parseStoredJson } from './storageJson';
 
@@ -89,7 +90,7 @@ const prepareFirestoreData = <T extends FirestoreEntity>(
     }
   });
 
-  return data;
+  return removeUndefinedDeep(data);
 };
 
 const replaceCollection = async <T extends FirestoreEntity>(
@@ -450,14 +451,14 @@ export async function getMonthlyPlanEntries(): Promise<MonthlyPlanEntry[]> {
 
 export async function setMonthlyPlanEntries(entries: MonthlyPlanEntry[]): Promise<void> {
   if (typeof window === 'undefined') return;
+  const config = FIRESTORE_COLLECTIONS.monthlyPlanEntries;
+  const existing = readLocalStorage<MonthlyPlanEntry[]>(config.storageKey, []);
+  writeLocalStorage(config.storageKey, mergeCollectionItems(existing, entries));
+
   if (!db) {
-    const storageKey = FIRESTORE_COLLECTIONS.monthlyPlanEntries.storageKey;
-    const existing = readLocalStorage<MonthlyPlanEntry[]>(storageKey, []);
-    writeLocalStorage(storageKey, mergeCollectionItems(existing, entries));
     return;
   }
 
-  const config = FIRESTORE_COLLECTIONS.monthlyPlanEntries;
   try {
     const collectionPath = getCollectionPath(config.collectionName);
     await upsertCollection(db, collectionPath, entries, config.dateFields);

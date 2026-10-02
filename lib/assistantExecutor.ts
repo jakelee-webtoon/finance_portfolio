@@ -4,6 +4,7 @@ import { buildAssistantSummary, refreshAssistantSummary } from '@/lib/assistantS
 import {
   getAssets,
   getDashboardState,
+  getIncome,
   getLedgerEntries,
   getLiabilities,
   getMonthlyPlanEntries,
@@ -76,6 +77,16 @@ function result(kind: AssistantResult['kind'], title: string, detail?: string, i
   return { kind, title, detail, items, target };
 }
 
+function unavailableTabResult(title: string, detail: string, target: AssistantView): AssistantOutcome {
+  return {
+    message: detail,
+    results: [result('warning', title, detail, [
+      { title: '현재 상태', detail: '이 탭은 아직 데이터가 없어 계산/요약하지 않았습니다.' },
+      { title: '자동 응답 조건', detail: '해당 탭에 값을 입력하면 다음 질문부터 코드가 자동으로 집계해서 답합니다.' },
+    ], target)],
+  };
+}
+
 async function summaryForAssistant() {
   return refreshAssistantSummary().catch(() => buildAssistantSummary());
 }
@@ -122,6 +133,9 @@ export async function executeAssistantStep(step: AssistantStep): Promise<Assista
       const month = baseMonth(step.payload);
       const limit = typeof step.payload.limit === 'number' ? Math.min(50, Math.max(1, step.payload.limit)) : 10;
       const entries = ledgerForPeriod(month).sort((a, b) => b.date.localeCompare(a.date)).slice(0, limit);
+      if (!entries.length) {
+        return unavailableTabResult('가계부 데이터 없음', `${month} 가계부 탭에 거래가 없어 거래 내역은 답하지 않겠습니다.`, 'ledger');
+      }
       return {
         message: `${month} 거래 ${entries.length}건을 찾았습니다.`,
         results: [result('list', `${month} 거래 내역`, `${entries.length}건`, entries.map((entry) => ({
@@ -133,9 +147,11 @@ export async function executeAssistantStep(step: AssistantStep): Promise<Assista
     case 'get_finance_summary': {
       const assistantSummary = await summaryForAssistant();
       const cashflow = assistantSummary.snapshot.cashflow;
+      const hasLedgerData = assistantSummary.aggregates.dataQuality.currentMonthLedgerEntryCount > 0;
       return {
         message: `${assistantSummary.month} 재무상태를 점검했습니다.`,
         results: [result('report', `${assistantSummary.month} 재무상태 점검`, cashflow ? `순현금흐름 ${krw(cashflow.netCashflow)} · 저축률 ${cashflow.savingsRate ?? '계산 불가'}%` : `순자산 ${krw(assistantSummary.snapshot.netWorth)}`, [
+          ...(!hasLedgerData ? [{ title: '현금흐름 제외', detail: '현금/수입/가계부 탭은 아직 사용 중이 아니라 이번 점검에서는 자산·부채 중심으로 봅니다.' }] : []),
           ...assistantSummary.briefings.monthly.map((line) => ({ title: '월간 요약', detail: line })),
           ...assistantSummary.aggregates.riskSignals.slice(0, 4).map((signal) => ({ title: signal.level === 'critical' ? '위험 신호' : '점검 신호', detail: signal.message })),
         ], 'dashboard')],
@@ -164,6 +180,9 @@ export async function executeAssistantStep(step: AssistantStep): Promise<Assista
     }
     case 'summarize_spending': {
       const assistantSummary = await summaryForAssistant();
+      if (assistantSummary.aggregates.dataQuality.currentMonthLedgerEntryCount === 0) {
+        return unavailableTabResult('가계부 데이터 없음', `${assistantSummary.month} 가계부 탭을 아직 사용하지 않아 소비/지출 요약은 답하지 않겠습니다.`, 'ledger');
+      }
       const total = assistantSummary.aggregates.categorySpend.reduce((sum, entry) => sum + entry.amount, 0);
       return {
         message: `${assistantSummary.month} 지출은 ${krw(total)}입니다.`,
@@ -278,6 +297,24 @@ export async function executeAssistantStep(step: AssistantStep): Promise<Assista
     }
     case 'query_cashflow': {
       const assistantSummary = await summaryForAssistant();
+      const dataQuality = assistantSummary.aggregates.dataQuality;
+      if (dataQuality.currentMonthLedgerEntryCount === 0 && dataQuality.incomeCount === 0 && dataQuality.cashAssetCount === 0) {
+        return unavailableTabResult('현금흐름 데이터 없음', '현금/수입/가계부 탭을 아직 사용하지 않아 현금흐름은 답하지 않겠습니다.', 'cash');
+      }
+      if (dataQuality.currentMonthLedgerEntryCount === 0 && dataQuality.incomeCount > 0) {
+        const monthlyIncome = getIncome().reduce((sum, entry) => {
+          if (entry.period === 'monthly') return sum + entry.amount;
+          if (entry.period === 'yearly') return sum + Math.round(entry.amount / 12);
+          return sum + entry.amount;
+        }, 0);
+        return {
+          message: '수입 탭 기준으로만 확인했습니다.',
+          results: [result('cashflow', '수입 데이터만 있음', `월 환산 수입 ${krw(monthlyIncome)}`, [
+            { title: '주의', detail: '가계부 지출/저축 데이터가 없어 순현금흐름과 저축률은 계산하지 않았습니다.' },
+            { title: '자동 응답 조건', detail: '가계부에 지출/저축을 입력하면 현금흐름, 저축률, 고정비 비율까지 자동 계산합니다.' },
+          ], 'income')],
+        };
+      }
       const cashflow = assistantSummary.snapshot.cashflow;
       return {
         message: `${assistantSummary.month} 현금흐름을 계산했습니다.`,
@@ -293,11 +330,13 @@ export async function executeAssistantStep(step: AssistantStep): Promise<Assista
     case 'get_monthly_report': {
       const assistantSummary = await summaryForAssistant();
       const cashflow = assistantSummary.snapshot.cashflow;
+      const hasLedgerData = assistantSummary.aggregates.dataQuality.currentMonthLedgerEntryCount > 0;
       return {
         message: `${assistantSummary.month} 월간 리포트입니다.`,
-        results: [result('report', `${assistantSummary.month} 월간 리포트`, cashflow ? `수입 ${krw(cashflow.income)} · 지출 ${krw(cashflow.expense)} · 저축률 ${cashflow.savingsRate ?? '계산 불가'}%` : `순자산 ${krw(assistantSummary.snapshot.netWorth)}`, [
+        results: [result('report', `${assistantSummary.month} 월간 리포트`, hasLedgerData && cashflow ? `수입 ${krw(cashflow.income)} · 지출 ${krw(cashflow.expense)} · 저축률 ${cashflow.savingsRate ?? '계산 불가'}%` : `순자산 ${krw(assistantSummary.snapshot.netWorth)} · 현금흐름 제외`, [
+          ...(!hasLedgerData ? [{ title: '현금흐름 제외', detail: '현금/수입/가계부 탭은 아직 사용 중이 아니라 월간 수입·지출 요약은 제외했습니다.' }] : []),
           ...assistantSummary.briefings.monthly.map((line) => ({ title: '월간 브리핑', detail: line })),
-          ...assistantSummary.briefings.spending.slice(0, 2).map((line) => ({ title: '소비 패턴', detail: line })),
+          ...(hasLedgerData ? assistantSummary.briefings.spending.slice(0, 2).map((line) => ({ title: '소비 패턴', detail: line })) : []),
           ...assistantSummary.briefings.assets.slice(0, 2).map((line) => ({ title: '자산 점검', detail: line })),
           ...assistantSummary.aggregates.riskSignals.slice(0, 3).map((signal) => ({ title: signal.level === 'critical' ? '위험 신호' : '점검 신호', detail: signal.message })),
         ], 'dashboard')],

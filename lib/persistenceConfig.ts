@@ -67,6 +67,22 @@ export function mergeCollectionItems<T extends { id: string }>(existing: T[], up
   return Array.from(merged.values());
 }
 
+export function removeUndefinedDeep<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => removeUndefinedDeep(item))
+      .filter((item) => item !== undefined) as T;
+  }
+  if (!value || typeof value !== 'object') return value;
+  if (value instanceof Date) return value;
+  if ((value as { constructor?: { name?: string } }).constructor?.name === 'Timestamp') return value;
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(([, item]) => item !== undefined)
+      .map(([key, item]) => [key, removeUndefinedDeep(item)])
+  ) as T;
+}
+
 export function planCollectionWrites<T extends { id: string }>(
   existingIds: Iterable<string>,
   items: T[],

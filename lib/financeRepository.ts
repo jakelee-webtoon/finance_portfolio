@@ -7,6 +7,7 @@ import {
   setLedgerEntries,
   upsertMonthlyPlanEntries,
 } from '@/lib/store';
+import { removeUndefinedDeep } from '@/lib/persistenceConfig';
 import type { Asset, LedgerEntry, Liability, MonthlyPlanEntry, StockHolding } from '@/types';
 
 export type FinanceRepositorySnapshot = {
@@ -17,15 +18,7 @@ export type FinanceRepositorySnapshot = {
   monthlyPlans: MonthlyPlanEntry[];
 };
 
-export function removeUndefinedDeep<T>(value: T): T {
-  if (Array.isArray(value)) return value.map((item) => removeUndefinedDeep(item)) as T;
-  if (!value || typeof value !== 'object') return value;
-  return Object.fromEntries(
-    Object.entries(value as Record<string, unknown>)
-      .filter(([, item]) => item !== undefined)
-      .map(([key, item]) => [key, removeUndefinedDeep(item)])
-  ) as T;
-}
+export { removeUndefinedDeep };
 
 export function getFinanceRepositorySnapshot(): FinanceRepositorySnapshot {
   return {

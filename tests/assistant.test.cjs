@@ -20,6 +20,7 @@ const { parseAssistantStep, commandRequiresConfirmation } = require('../lib/assi
 const { buildFinanceSnapshot } = require('../lib/assistantSnapshot.ts');
 const { buildAssistantSummaryFromData } = require('../lib/assistantSummary.ts');
 const { buildFinanceChatContext } = require('../lib/assistantChatContext.ts');
+const { executeAssistantStep } = require('../lib/assistantExecutor.ts');
 const { getLocalAssistantFallbackStep } = require('../lib/assistantFallback.ts');
 const { removeUndefinedDeep } = require('../lib/financeRepository.ts');
 const { geminiErrorResponse } = require('../lib/server/gemini.ts');
@@ -147,4 +148,18 @@ test('local assistant fallback handles monthly report requests without Gemini', 
   assert.equal(getLocalAssistantFallbackStep('자산구성 설명해주고 보강해야할것').action, 'get_asset_review');
   assert.equal(getLocalAssistantFallbackStep('이번 달 돈 어디서 많이 썼어?').action, 'summarize_spending');
   assert.equal(getLocalAssistantFallbackStep('그냥 잡담'), null);
+});
+
+test('assistant harness refuses unused cash income ledger tabs until data exists', async () => {
+  const transactions = await executeAssistantStep({ action: 'query_transactions', payload: { month: '2026-10' } });
+  assert.equal(transactions.results[0].kind, 'warning');
+  assert.match(transactions.message, /가계부 탭에 거래가 없어/);
+
+  const spending = await executeAssistantStep({ action: 'summarize_spending', payload: {} });
+  assert.equal(spending.results[0].kind, 'warning');
+  assert.match(spending.message, /가계부 탭을 아직 사용하지 않아/);
+
+  const cashflow = await executeAssistantStep({ action: 'query_cashflow', payload: {} });
+  assert.equal(cashflow.results[0].kind, 'warning');
+  assert.match(cashflow.message, /현금\/수입\/가계부 탭을 아직 사용하지 않아/);
 });
