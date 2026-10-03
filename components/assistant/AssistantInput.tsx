@@ -24,7 +24,7 @@ export default function AssistantInput({
         aria-label="Finance Assistant 질문"
         value={value}
         onChange={(event) => setValue(event.target.value)}
-        placeholder="이번 달 지출이나 예산을 물어보세요"
+        placeholder="자산구성이나 월간플랜을 물어보세요"
         maxLength={500}
         disabled={disabled}
       />

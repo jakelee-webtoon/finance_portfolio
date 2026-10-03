@@ -31,15 +31,15 @@ function summarizeOutcome(outcome: AssistantOutcome) {
   });
 }
 
-const helpMessage = '재무 데이터를 요약하고, 지출/예산/현금흐름을 조회해 드릴게요.';
+const helpMessage = '자산구성, 부채, 월간플랜을 앱 데이터로 계산해 드릴게요.';
 const helpResult: AssistantResult = {
   kind: 'info',
   title: '예시 질문',
-  detail: '조회와 계산은 앱 데이터로 직접 확인합니다.',
+  detail: '현금/수입/가계부는 값이 입력된 뒤부터 답합니다.',
   items: [
-    { title: '이번 달 지출 요약해줘' },
-    { title: '예산 초과 항목 알려줘' },
-    { title: '고정비와 저축률 보여줘' },
+    { title: '자산구성 설명해줘' },
+    { title: '보강해야 할 점 알려줘' },
+    { title: '월간플랜 상태 점검해줘' },
     { title: '월간플랜에서 생활비 목표를 200만원으로 바꿔줘' },
   ],
 };
@@ -236,9 +236,9 @@ export default function AssistantPanel() {
             ) : (
               <div className="assistant-welcome">
                 <strong>무엇을 볼까요?</strong>
-                <span>“이번 달 지출 요약해줘”</span>
-                <span>“예산 초과 항목 알려줘”</span>
-                <span>“고정비와 저축률 보여줘”</span>
+                <span>“자산구성 설명해줘”</span>
+                <span>“보강해야 할 점 알려줘”</span>
+                <span>“월간플랜 상태 점검해줘”</span>
                 <span>“월간 리포트 만들어줘”</span>
                 <span className="assistant-welcome-hint">/help 를 입력하면 예시를 볼 수 있어요</span>
               </div>
