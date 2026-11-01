@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts';
 import { LedgerEntry, LedgerType, LedgerCategory, DashboardState } from '@/types';
-import { getDashboardState, getLedgerEntries, setLedgerEntries, syncFromFirebase } from '@/lib/store';
+import { getDashboardState, getLedgerEntries, saveLedgerEntries, syncFromFirebase } from '@/lib/store';
 import { useAuth } from '@/hooks/useAuth';
 import { useModalDismiss } from '@/hooks/useModalDismiss';
 
@@ -176,7 +176,7 @@ export default function LedgerPage() {
     if (newEntries.length > 0) {
       const updated = [...allEntries, ...newEntries];
       setEntriesState(updated);
-      await setLedgerEntries(updated);
+      if (!await saveLedgerEntries(newEntries)) return;
     }
   };
 
@@ -288,7 +288,7 @@ export default function LedgerPage() {
 
       const updated = allEntries.map(e => e.id === editingId ? updatedEntry : e);
       setEntriesState(updated);
-      await setLedgerEntries(updated);
+      if (!await saveLedgerEntries([updatedEntry], [], entries)) return;
       setIsFormOpen(false);
       setEditingId(null);
       resetForm();
@@ -313,7 +313,10 @@ export default function LedgerPage() {
       const allEntries = getLedgerEntries();
       const updated = [...allEntries, newEntry];
       setEntriesState(updated);
-      await setLedgerEntries(updated);
+      if (!await saveLedgerEntries([newEntry], [], entries)) {
+        setEditingId(newEntry.id);
+        return;
+      }
       setIsFormOpen(false);
       resetForm();
     }
@@ -355,7 +358,7 @@ export default function LedgerPage() {
     const allEntries = getLedgerEntries();
     const updated = allEntries.filter(e => e.id !== id);
     setEntriesState(updated);
-    await setLedgerEntries(updated);
+    if (!await saveLedgerEntries([], [id], entries)) return;
   };
 
   const handleCancel = () => {

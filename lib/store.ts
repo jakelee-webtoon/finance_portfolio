@@ -1,21 +1,9 @@
 import { DashboardState, Asset, Income, Transaction, Portfolio, Liability, StockHolding, Apartment, Salary, Scope, LedgerEntry, MonthlyPlanEntry, AssistantSummary } from '@/types';
-import { mockIncome, mockTransactions, mockPortfolios } from '@/data/mockData';
-import { FIRESTORE_COLLECTIONS, mergeCollectionItems } from '@/lib/persistenceConfig';
+import { mockTransactions, mockPortfolios } from '@/data/mockData';
+import { FIRESTORE_COLLECTIONS, applyItemChanges, stableData, type ItemChange, type FirestoreCollectionKey } from '@/lib/persistenceConfig';
 import { parseStoredJson } from '@/lib/storageJson';
 
 const STORAGE_KEY = 'finance-dashboard-state';
-
-const isMockIncomeItem = (income: Income): boolean => {
-  return mockIncome.some(mock =>
-    income.id === mock.id &&
-    income.source === mock.source &&
-    income.amount === mock.amount &&
-    income.owner === mock.owner &&
-    income.category === mock.category
-  );
-};
-
-const withoutMockIncome = (income: Income[]): Income[] => income.filter(item => !isMockIncomeItem(item));
 
 // Firebase 사용 여부 확인 (하드코딩된 경우 항상 true)
 const useFirebase = (): boolean => {
@@ -49,35 +37,157 @@ const writeLocalJson = <T>(key: string, value: T): void => {
   localStorage.setItem(key, JSON.stringify(value));
 };
 
-const persistCollection = async <T>(
-  storageKey: string,
-  value: T,
-  label: string,
-  saveToFirestore: (firestore: FirestoreModule) => Promise<void>
-): Promise<void> => {
-  if (typeof window === 'undefined') return;
-  writeLocalJson(storageKey, value);
-  if (!useFirebase()) return;
-
+const PENDING_KEY = 'finance-pending-saves';
+const PENDING_DASHBOARD_KEY = 'finance-pending-dashboard';
+type PendingSaves = Partial<Record<FirestoreCollectionKey, ItemChange<any>[]>>;
+export function getPendingSaves(): PendingSaves {
+  return readLocalJson<PendingSaves>(PENDING_KEY, {});
+}
+export function getPendingSaveBackup() {
+  return { collections: getPendingSaves(), dashboard: readLocalJson(PENDING_DASHBOARD_KEY, null) };
+}
+export function hasPendingSaves(): boolean {
+  return !!localStorage.getItem(PENDING_DASHBOARD_KEY) || Object.values(getPendingSaves()).some(items => items && items.length > 0);
+}
+function notifySaveStatus(message = '') {
+  window.dispatchEvent(new CustomEvent('financeSaveStatus', { detail: message }));
+}
+let saving = Promise.resolve();
+function serializeSave(work: () => Promise<boolean>): Promise<boolean> {
+  const result = saving.then(work, work);
+  saving = result.then(() => undefined, () => undefined);
+  return result;
+}
+async function flushPending(): Promise<boolean> {
+  const pending = getPendingSaves();
+  if (!Object.values(pending).some(changes => changes?.length)) return true;
   try {
     const firestore = await getFirestoreFunctions();
-    if (firestore) await saveToFirestore(firestore);
-  } catch (error: unknown) {
-    console.error(`[Store] Failed to save ${label} to Firebase:`, error);
+    if (!firestore) throw new Error('서버에 연결되지 않았습니다.');
+    await firestore.savePendingChanges(pending);
+    const latest = getPendingSaves();
+    for (const key of Object.keys(pending) as FirestoreCollectionKey[]) {
+      const changes = pending[key] || [];
+      latest[key] = (latest[key] || []).filter(change => !changes.some(sent => stableData(sent) === stableData(change)));
+      if (!latest[key]?.length) delete latest[key];
+    }
+    writeLocalJson(PENDING_KEY, latest);
+    notifySaveStatus();
+    return true;
+  } catch (error) {
+    notifySaveStatus(error instanceof Error ? error.message : '서버 저장에 실패했습니다.');
+    return false;
   }
-};
+}
+
+export function saveCollectionItems<T extends { id: string }>(key: FirestoreCollectionKey, items: T[], deletedIds: string[] = [], expectedItems?: T[], check?: { key: FirestoreCollectionKey; items: { id: string }[] }): Promise<boolean> {
+  return serializeSave(async () => {
+    if (typeof window === 'undefined') return false;
+    try {
+      const config = FIRESTORE_COLLECTIONS[key];
+      const existing = readLocalJson<T[]>(config.storageKey, []);
+      const previous = new Map(existing.map(item => [item.id, item]));
+      const expected = expectedItems ? new Map(expectedItems.map(item => [item.id, item])) : previous;
+      const pending = getPendingSaves();
+      const changes = new Map((pending[key] || []).map(change => [change.id, change]));
+      const record = (id: string, after: T | null) => {
+        const queued = changes.get(id);
+        const before = queued ? queued.before : expected.get(id) || null;
+        changes.set(id, { id, before, after });
+      };
+      items.forEach(item => record(item.id, item));
+      deletedIds.forEach(id => record(id, null));
+      pending[key] = [...changes.values()];
+      if (check) {
+        const checks = new Map((pending[check.key] || []).map(change => [change.id, change]));
+        check.items.forEach(item => {
+          if (!checks.has(item.id)) checks.set(item.id, { id: item.id, before: item, after: item, verifyOnly: true });
+        });
+        pending[check.key] = [...checks.values()];
+      }
+      // Persist retry intent before changing the display cache.
+      writeLocalJson(PENDING_KEY, pending);
+      writeLocalJson(config.storageKey, applyItemChanges(existing, [
+        ...items.map(item => ({ id: item.id, before: previous.get(item.id) || null, after: item })),
+        ...deletedIds.map(id => ({ id, before: previous.get(id) || null, after: null })),
+      ]));
+      notifySaveStatus();
+      return await flushPending();
+    } catch (error) {
+      notifySaveStatus(error instanceof Error ? error.message : '로컬 저장에 실패했습니다.');
+      return false;
+    }
+  });
+}
+
+export function retryPendingSaves(): Promise<boolean> {
+  return serializeSave(async () => {
+    let success = await flushPending();
+    if (!await flushDashboard()) success = false;
+    return success;
+  });
+}
+
+async function flushDashboard(): Promise<boolean> {
+  const pending = localStorage.getItem(PENDING_DASHBOARD_KEY);
+  if (!pending) return true;
+  try {
+    const firestore = await getFirestoreFunctions();
+    if (!firestore) throw new Error('서버에 연결되지 않았습니다.');
+    await firestore.setDashboardState(JSON.parse(pending));
+    if (localStorage.getItem(PENDING_DASHBOARD_KEY) === pending) localStorage.removeItem(PENDING_DASHBOARD_KEY);
+    notifySaveStatus();
+    return true;
+  } catch (error) {
+    notifySaveStatus(error instanceof Error ? error.message : '설정 저장에 실패했습니다.');
+    return false;
+  }
+}
+
+export async function discardPendingSaves(): Promise<boolean> {
+  return serializeSave(async () => {
+    const pending = getPendingSaves();
+    const dashboard = localStorage.getItem(PENDING_DASHBOARD_KEY);
+    localStorage.removeItem(PENDING_KEY);
+    localStorage.removeItem(PENDING_DASHBOARD_KEY);
+    const success = await syncFromFirebase({ force: true });
+    if (!success) {
+      writeLocalJson(PENDING_KEY, pending);
+      if (dashboard) localStorage.setItem(PENDING_DASHBOARD_KEY, dashboard);
+      // Restore the user's local view after any partial reads.
+      for (const key of Object.keys(pending) as FirestoreCollectionKey[]) {
+        const config = FIRESTORE_COLLECTIONS[key];
+        writeLocalJson(config.storageKey, applyItemChanges(readLocalJson(config.storageKey, []), pending[key] || []));
+      }
+      notifySaveStatus('서버 조회에 실패해 미저장 변경을 유지했습니다.');
+    } else notifySaveStatus();
+    return success;
+  });
+}
+
+// Explicit IDs only: callers pass the actual edited/created records, never a whole snapshot.
+export const saveAssets = (items: Asset[], deletedIds: string[] = [], expectedItems?: Asset[]) => saveCollectionItems('assets', items, deletedIds, expectedItems);
+export const saveApartmentAssets = (apartment: Apartment, items: Asset[], expectedAssets: Asset[]) =>
+  saveCollectionItems('assets', items, [], expectedAssets, { key: 'apartments', items: [apartment] });
+export const saveAssetApartment = (asset: Asset, apartment: Apartment, expectedApartments: Apartment[]) =>
+  saveCollectionItems('apartments', [apartment], [], expectedApartments, { key: 'assets', items: [asset] });
+export const saveLiabilities = (items: Liability[], deletedIds: string[] = [], expectedItems?: Liability[]) => saveCollectionItems('liabilities', items, deletedIds, expectedItems);
+export const saveStockHoldings = (items: StockHolding[], deletedIds: string[] = [], expectedItems?: StockHolding[]) => saveCollectionItems('stockHoldings', items, deletedIds, expectedItems);
+export const saveLedgerEntries = (items: LedgerEntry[], deletedIds: string[] = [], expectedItems?: LedgerEntry[]) => saveCollectionItems('ledgerEntries', items, deletedIds, expectedItems);
+export const saveApartments = (items: Apartment[], deletedIds: string[] = [], expectedItems?: Apartment[]) => saveCollectionItems('apartments', items, deletedIds, expectedItems);
+export const saveIncome = (items: Income[], deletedIds: string[] = [], expectedItems?: Income[]) => saveCollectionItems('income', items, deletedIds, expectedItems);
+export const saveSalaries = (items: Salary[], deletedIds: string[] = [], expectedItems?: Salary[]) => saveCollectionItems('salaries', items, deletedIds, expectedItems);
 
 const FIREBASE_SYNC_TTL_MS = 30_000;
-let firebaseSyncPromise: Promise<void> | null = null;
+let firebaseSyncPromise: Promise<boolean> | null = null;
 let lastFirebaseSyncAt = 0;
 
-async function performFirebaseSync(): Promise<void> {
-  if (typeof window === 'undefined') return;
-  if (!useFirebase()) return;
+async function performFirebaseSync(): Promise<boolean> {
+  if (typeof window === 'undefined' || !useFirebase()) return false;
 
   try {
     const firestore = await getFirestoreFunctions();
-    if (!firestore) return;
+    if (!firestore) return false;
 
     const cacheKeys = [
       STORAGE_KEY,
@@ -85,69 +195,57 @@ async function performFirebaseSync(): Promise<void> {
     ];
     const cacheSnapshot = new Map(cacheKeys.map((key) => [key, localStorage.getItem(key)]));
     const updateUnchangedCache = (key: string, value: unknown) => {
+      if (key === STORAGE_KEY && localStorage.getItem(PENDING_DASHBOARD_KEY)) return;
+      const collectionKey = (Object.keys(FIRESTORE_COLLECTIONS) as FirestoreCollectionKey[]).find(item => FIRESTORE_COLLECTIONS[item].storageKey === key);
+      if (collectionKey && getPendingSaves()[collectionKey]?.length) return;
       if (localStorage.getItem(key) === cacheSnapshot.get(key)) {
         localStorage.setItem(key, JSON.stringify(value));
       }
     };
 
-    await Promise.all([
+    const results = await Promise.allSettled([
       firestore.getDashboardState()
-        .then((dashboardState: DashboardState) => updateUnchangedCache(STORAGE_KEY, dashboardState))
-        .catch(() => undefined),
+        .then((dashboardState: DashboardState) => updateUnchangedCache(STORAGE_KEY, dashboardState)),
       firestore.getAssets()
-        .then((assets: Asset[]) => updateUnchangedCache(FIRESTORE_COLLECTIONS.assets.storageKey, assets))
-        .catch(() => undefined),
+        .then((assets: Asset[]) => updateUnchangedCache(FIRESTORE_COLLECTIONS.assets.storageKey, assets)),
       firestore.getStockHoldings()
         .then((holdings: StockHolding[]) => {
-          const realHoldings = holdings.filter((holding) => {
-            if (holding.id === 'stock-1' || holding.id === 'stock-2' || holding.id === 'stock-3') return false;
-            if (holding.symbol === '005930' && holding.name === '삼성전자' && holding.quantity === 50 && holding.purchasePrice === 60000) return false;
-            if (holding.symbol === '035720' && holding.name === '카카오' && holding.quantity === 20 && holding.purchasePrice === 75000) return false;
-            if (holding.symbol === 'AAPL' && holding.name === 'Apple Inc.' && holding.quantity === 10 && holding.purchasePrice === 150) return false;
-            return true;
-          });
-          updateUnchangedCache(FIRESTORE_COLLECTIONS.stockHoldings.storageKey, realHoldings);
-        })
-        .catch(() => undefined),
+          updateUnchangedCache(FIRESTORE_COLLECTIONS.stockHoldings.storageKey, holdings);
+        }),
       firestore.getSalaries()
-        .then((salaries: Salary[]) => updateUnchangedCache(FIRESTORE_COLLECTIONS.salaries.storageKey, salaries))
-        .catch(() => undefined),
+        .then((salaries: Salary[]) => updateUnchangedCache(FIRESTORE_COLLECTIONS.salaries.storageKey, salaries)),
       firestore.getApartments()
-        .then((apartments: Apartment[]) => updateUnchangedCache(FIRESTORE_COLLECTIONS.apartments.storageKey, apartments))
-        .catch(() => undefined),
+        .then((apartments: Apartment[]) => updateUnchangedCache(FIRESTORE_COLLECTIONS.apartments.storageKey, apartments)),
       firestore.getIncome()
-        .then((income: Income[]) => updateUnchangedCache(FIRESTORE_COLLECTIONS.income.storageKey, withoutMockIncome(income)))
-        .catch(() => undefined),
+        .then((income: Income[]) => updateUnchangedCache(FIRESTORE_COLLECTIONS.income.storageKey, income)),
       firestore.getLiabilities()
-        .then((liabilities: Liability[]) => updateUnchangedCache(FIRESTORE_COLLECTIONS.liabilities.storageKey, liabilities))
-        .catch(() => undefined),
+        .then((liabilities: Liability[]) => updateUnchangedCache(FIRESTORE_COLLECTIONS.liabilities.storageKey, liabilities)),
       firestore.getLedgerEntries()
-        .then((entries: LedgerEntry[]) => updateUnchangedCache(FIRESTORE_COLLECTIONS.ledgerEntries.storageKey, entries))
-        .catch(() => undefined),
+        .then((entries: LedgerEntry[]) => updateUnchangedCache(FIRESTORE_COLLECTIONS.ledgerEntries.storageKey, entries)),
       firestore.getMonthlyPlanEntries()
-        .then((entries: MonthlyPlanEntry[]) => updateUnchangedCache(FIRESTORE_COLLECTIONS.monthlyPlanEntries.storageKey, entries))
-        .catch(() => undefined),
+        .then((entries: MonthlyPlanEntry[]) => updateUnchangedCache(FIRESTORE_COLLECTIONS.monthlyPlanEntries.storageKey, entries)),
       firestore.getAssistantSummaries()
-        .then((summaries: AssistantSummary[]) => updateUnchangedCache(FIRESTORE_COLLECTIONS.assistantSummaries.storageKey, summaries))
-        .catch(() => undefined),
+        .then((summaries: AssistantSummary[]) => updateUnchangedCache(FIRESTORE_COLLECTIONS.assistantSummaries.storageKey, summaries)),
     ]);
+    return results.every(result => result.status === 'fulfilled');
   } catch (error) {
-    // 전체 에러 무시 (Firebase 연결 실패 시 localStorage만 사용)
+    return false;
   }
 }
 
 // 캐시를 먼저 렌더링한 뒤 호출한다. 짧은 탭 이동 동안에는 같은 동기화 결과를 재사용한다.
-export function syncFromFirebase(options: { force?: boolean } = {}): Promise<void> {
-  if (typeof window === 'undefined' || !useFirebase()) return Promise.resolve();
+export function syncFromFirebase(options: { force?: boolean } = {}): Promise<boolean> {
+  if (typeof window === 'undefined' || !useFirebase()) return Promise.resolve(false);
 
   if (!options.force && Date.now() - lastFirebaseSyncAt < FIREBASE_SYNC_TTL_MS) {
-    return Promise.resolve();
+    return Promise.resolve(true);
   }
   if (firebaseSyncPromise) return firebaseSyncPromise;
 
   firebaseSyncPromise = performFirebaseSync()
-    .then(() => {
-      lastFirebaseSyncAt = Date.now();
+    .then(success => {
+      if (success) lastFirebaseSyncAt = Date.now();
+      return success;
     })
     .finally(() => {
       firebaseSyncPromise = null;
@@ -185,23 +283,16 @@ export function getDashboardState(): DashboardState {
   return defaultState;
 }
 
-export function setDashboardState(state: DashboardState): void {
-  if (typeof window === 'undefined') return;
-  
-  // localStorage에 저장
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  
-  // Firebase 사용 가능하면 백그라운드에서 Firebase에 저장 (비동기)
-  if (useFirebase()) {
-    getFirestoreFunctions().then(firestore => {
-      if (firestore) {
-        firestore.setDashboardState(state).catch(() => {
-          // 에러 무시 (이미 localStorage에 저장됨)
-        });
-      }
-    }).catch(() => {
-      // 에러 무시
-    });
+export function setDashboardState(state: DashboardState): Promise<boolean> {
+  if (typeof window === 'undefined') return Promise.resolve(false);
+  try {
+    writeLocalJson(PENDING_DASHBOARD_KEY, state);
+    writeLocalJson(STORAGE_KEY, state);
+    notifySaveStatus();
+    return serializeSave(flushDashboard);
+  } catch (error) {
+    notifySaveStatus('설정을 브라우저에 저장하지 못했습니다.');
+    return Promise.resolve(false);
   }
 }
 
@@ -211,19 +302,16 @@ export function getAssets(): Asset[] {
 }
 
 export async function setAssets(assets: Asset[]): Promise<void> {
-  await persistCollection(FIRESTORE_COLLECTIONS.assets.storageKey, assets, 'Assets', firestore => firestore.setAssets(assets));
+  throw new Error('전체 목록 교체 저장은 비활성화되었습니다. 항목별 저장을 사용해주세요.');
 }
 
 // 동기 버전 (기존 코드 호환성 유지 - 기본 export)
 export function getIncome(): Income[] {
-  const income = withoutMockIncome(readLocalJson<Income[]>(FIRESTORE_COLLECTIONS.income.storageKey, []));
-  if (typeof window === 'undefined') return income;
-  writeLocalJson(FIRESTORE_COLLECTIONS.income.storageKey, income);
-  return income;
+  return readLocalJson<Income[]>(FIRESTORE_COLLECTIONS.income.storageKey, []);
 }
 
 export async function setIncome(income: Income[]): Promise<void> {
-  await persistCollection(FIRESTORE_COLLECTIONS.income.storageKey, income, 'Income', firestore => firestore.setIncome(income));
+  throw new Error('전체 목록 교체 저장은 비활성화되었습니다. 항목별 저장을 사용해주세요.');
 }
 
 export function getTransactions(): Transaction[] {
@@ -255,7 +343,7 @@ export function getLiabilities(): Liability[] {
 }
 
 export async function setLiabilities(liabilities: Liability[]): Promise<void> {
-  await persistCollection(FIRESTORE_COLLECTIONS.liabilities.storageKey, liabilities, 'Liabilities', firestore => firestore.setLiabilities(liabilities));
+  throw new Error('전체 목록 교체 저장은 비활성화되었습니다. 항목별 저장을 사용해주세요.');
 }
 
 // 동기 버전 (기존 코드 호환성 유지 - 기본 export)
@@ -265,7 +353,7 @@ export function getStockHoldings(): StockHolding[] {
 }
 
 export async function setStockHoldings(holdings: StockHolding[]): Promise<void> {
-  await persistCollection(FIRESTORE_COLLECTIONS.stockHoldings.storageKey, holdings, 'Stock Holdings', firestore => firestore.setStockHoldings(holdings));
+  throw new Error('전체 목록 교체 저장은 비활성화되었습니다. 항목별 저장을 사용해주세요.');
 }
 
 // 동기 버전 (기존 코드 호환성 유지 - 기본 export)
@@ -274,7 +362,7 @@ export function getApartments(): Apartment[] {
 }
 
 export async function setApartments(apartments: Apartment[]): Promise<void> {
-  await persistCollection(FIRESTORE_COLLECTIONS.apartments.storageKey, apartments, 'Apartments', firestore => firestore.setApartments(apartments));
+  throw new Error('전체 목록 교체 저장은 비활성화되었습니다. 항목별 저장을 사용해주세요.');
 }
 
 // 동기 버전 (기존 코드 호환성 유지 - 기본 export)
@@ -283,7 +371,7 @@ export function getSalaries(): Salary[] {
 }
 
 export async function setSalaries(salaries: Salary[]): Promise<void> {
-  await persistCollection(FIRESTORE_COLLECTIONS.salaries.storageKey, salaries, 'Salaries', firestore => firestore.setSalaries(salaries));
+  throw new Error('전체 목록 교체 저장은 비활성화되었습니다. 항목별 저장을 사용해주세요.');
 }
 
 // 가계부 항목
@@ -292,43 +380,21 @@ export function getLedgerEntries(): LedgerEntry[] {
 }
 
 export async function setLedgerEntries(entries: LedgerEntry[]): Promise<void> {
-  await persistCollection(FIRESTORE_COLLECTIONS.ledgerEntries.storageKey, entries, 'Ledger Entries', firestore => firestore.setLedgerEntries(entries));
+  throw new Error('전체 목록 교체 저장은 비활성화되었습니다. 항목별 저장을 사용해주세요.');
 }
 
 export function getMonthlyPlanEntries(): MonthlyPlanEntry[] {
   return readLocalJson<MonthlyPlanEntry[]>(FIRESTORE_COLLECTIONS.monthlyPlanEntries.storageKey, []);
 }
 
-export async function upsertMonthlyPlanEntries(entries: MonthlyPlanEntry[]): Promise<void> {
-  if (typeof window === 'undefined' || entries.length === 0) return;
-
-  const merged = mergeCollectionItems(getMonthlyPlanEntries(), entries);
-  writeLocalJson(FIRESTORE_COLLECTIONS.monthlyPlanEntries.storageKey, merged);
-
-  if (!useFirebase()) return;
-  try {
-    const firestore = await getFirestoreFunctions();
-    if (firestore) await firestore.setMonthlyPlanEntries(entries);
-  } catch (error: unknown) {
-    console.error('[Store] Failed to upsert Monthly Plan Entries to Firebase:', error);
-  }
+export function upsertMonthlyPlanEntries(entries: MonthlyPlanEntry[]): Promise<boolean> {
+  return saveCollectionItems('monthlyPlanEntries', entries);
 }
 
 export function getAssistantSummaries(): AssistantSummary[] {
   return readLocalJson<AssistantSummary[]>(FIRESTORE_COLLECTIONS.assistantSummaries.storageKey, []);
 }
 
-export async function upsertAssistantSummaries(summaries: AssistantSummary[]): Promise<void> {
-  if (typeof window === 'undefined' || summaries.length === 0) return;
-
-  const merged = mergeCollectionItems(getAssistantSummaries(), summaries);
-  writeLocalJson(FIRESTORE_COLLECTIONS.assistantSummaries.storageKey, merged);
-
-  if (!useFirebase()) return;
-  try {
-    const firestore = await getFirestoreFunctions();
-    if (firestore) await firestore.setAssistantSummaries(summaries);
-  } catch (error: unknown) {
-    console.error('[Store] Failed to upsert Assistant Summaries to Firebase:', error);
-  }
+export function upsertAssistantSummaries(summaries: AssistantSummary[]): Promise<boolean> {
+  return saveCollectionItems('assistantSummaries', summaries);
 }

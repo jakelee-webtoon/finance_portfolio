@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import Table, { Column } from '@/components/Table';
 import { Asset, DashboardState } from '@/types';
-import { getDashboardState, getAssets, setAssets, syncFromFirebase } from '@/lib/store';
+import { getDashboardState, getAssets, saveAssets, syncFromFirebase } from '@/lib/store';
 import { getExchangeRates } from '@/lib/exchangeRate';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -97,7 +97,7 @@ export default function OtherPage() {
           : a
       );
       setAssetsState(updated.filter((a) => a.category === 'other'));
-      await setAssets(updated);
+      if (!await saveAssets(updated.filter(item => item.id === editingId), [], assets)) return;
       setEditingId(null);
     } else {
       const newAsset: Asset = {
@@ -114,7 +114,10 @@ export default function OtherPage() {
       };
       const updated = [...allAssets, newAsset];
       setAssetsState(updated.filter((a) => a.category === 'other'));
-      await setAssets(updated);
+      if (!await saveAssets([newAsset], [], assets)) {
+        setEditingId(newAsset.id);
+        return;
+      }
     }
 
     setFormData({ name: '', amount: '', owner: 'joint', currency: 'KRW', notes: '' });
@@ -138,7 +141,7 @@ export default function OtherPage() {
     const allAssets = getAssets();
     const updated = allAssets.filter((a) => a.id !== id);
     setAssetsState(updated.filter((a) => a.category === 'other'));
-    await setAssets(updated);
+    if (!await saveAssets([], [id], assets)) return;
   };
 
   const handleCancel = () => {

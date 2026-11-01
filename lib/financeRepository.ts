@@ -4,7 +4,7 @@ import {
   getLiabilities,
   getMonthlyPlanEntries,
   getStockHoldings,
-  setLedgerEntries,
+  saveLedgerEntries,
   upsertMonthlyPlanEntries,
 } from '@/lib/store';
 import { removeUndefinedDeep } from '@/lib/persistenceConfig';
@@ -35,10 +35,9 @@ export function getMonthlyLedgerEntries(month: string) {
 }
 
 export async function updateLedgerEntry(entry: LedgerEntry) {
-  const entries = getLedgerEntries();
-  await setLedgerEntries(entries.map((item) => item.id === entry.id ? removeUndefinedDeep(entry) : item));
+  if (!await saveLedgerEntries([removeUndefinedDeep(entry)])) throw new Error('서버 저장에 실패했습니다.');
 }
 
 export async function upsertBudget(entry: MonthlyPlanEntry) {
-  await upsertMonthlyPlanEntries([removeUndefinedDeep(entry)]);
+  if (!await upsertMonthlyPlanEntries([removeUndefinedDeep(entry)])) throw new Error('서버 저장에 실패했습니다.');
 }

@@ -139,3 +139,40 @@ export function planCollectionUpserts<T extends { id: string }>(
 
   return { batches, savedCount: uniqueItems.size };
 }
+
+// Explicit item intent; omitted IDs are never interpreted as deletions.
+export type ItemChange<T extends { id: string } = { id: string }> = {
+  id: string;
+  before: T | null;
+  after: T | null;
+  verifyOnly?: boolean;
+};
+
+export function stableData(value: unknown): string {
+  const normalize = (item: any): any => {
+    if (item?.toMillis instanceof Function) return item.toMillis();
+    if (Array.isArray(item)) return item.map(normalize);
+    if (item && typeof item === 'object') return Object.fromEntries(
+      Object.keys(item).sort().filter(key => item[key] !== undefined).map(key => [key, normalize(item[key])])
+    );
+    return item;
+  };
+  return JSON.stringify(normalize(value));
+}
+
+export function applyItemChanges<T extends { id: string }>(items: T[], changes: ItemChange<T>[]): T[] {
+  const merged = new Map(items.map(item => [item.id, item]));
+  changes.forEach(change => {
+    if (change.after) merged.set(change.id, change.after);
+    else merged.delete(change.id);
+  });
+  return [...merged.values()];
+}
+
+export function assertItemWrite(current: unknown, before: unknown, after: unknown): void {
+  // A lost acknowledgement can safely be retried.
+  if (stableData(current) === stableData(after)) return;
+  if (stableData(current) !== stableData(before)) {
+    throw new Error('다른 기기에서 같은 항목이 변경되었습니다. 미저장 변경을 확인한 뒤 서버 자료를 다시 불러와 주세요.');
+  }
+}

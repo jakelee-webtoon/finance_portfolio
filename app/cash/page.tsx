@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import Table, { Column } from '@/components/Table';
 import { Asset, DashboardState } from '@/types';
-import { getDashboardState, getAssets, setAssets, syncFromFirebase } from '@/lib/store';
+import { getDashboardState, getAssets, saveAssets, syncFromFirebase } from '@/lib/store';
 import { getExchangeRates } from '@/lib/exchangeRate';
 import { useAuth } from '@/hooks/useAuth';
 import { useModalDismiss } from '@/hooks/useModalDismiss';
@@ -111,7 +111,7 @@ export default function CashPage() {
           : asset
       );
       setAssetsState(updatedAllAssets.filter((a) => a.category === 'cash'));
-      await setAssets(updatedAllAssets);
+      if (!await saveAssets(updatedAllAssets.filter(item => item.id === editingId), [], assets)) return;
       setEditingId(null);
     } else {
       const newAsset: Asset = {
@@ -129,7 +129,10 @@ export default function CashPage() {
       const allAssets = getAssets();
       const updatedAll = [...allAssets, newAsset];
       setAssetsState(updatedAll.filter((a) => a.category === 'cash'));
-      await setAssets(updatedAll);
+      if (!await saveAssets([newAsset], [], assets)) {
+        setEditingId(newAsset.id);
+        return;
+      }
     }
 
     setFormData({
@@ -161,7 +164,7 @@ export default function CashPage() {
     const allAssets = getAssets();
     const updated = allAssets.filter((asset) => asset.id !== id);
     setAssetsState(updated.filter((a) => a.category === 'cash'));
-    await setAssets(updated);
+    if (!await saveAssets([], [id], assets)) return;
   };
 
   const handleCancel = () => {

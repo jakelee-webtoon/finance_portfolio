@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import Table, { Column } from '@/components/Table';
 import { StockHolding, DashboardState } from '@/types';
-import { getDashboardState, getStockHoldings, setStockHoldings, syncFromFirebase } from '@/lib/store';
+import { getDashboardState, getStockHoldings, saveStockHoldings, syncFromFirebase, hasPendingSaves } from '@/lib/store';
 import { getMarketIndices, getStockQuotes, getStockPrice } from '@/lib/stockApi';
 import { getExchangeRates } from '@/lib/exchangeRate';
 import { useAuth } from '@/hooks/useAuth';
@@ -113,6 +113,7 @@ export default function StocksPage() {
     if (!isInitialLoaded || !exchangeRates) return;
     
     const updatePrices = async () => {
+      if (hasPendingSaves()) return;
       // 매번 최신 holdings를 localStorage에서 가져옴
       const currentHoldings = getStockHoldings();
       const stockHoldings = currentHoldings.filter(isStockHolding);
@@ -140,7 +141,7 @@ export default function StocksPage() {
             return updated || h;
           });
           setHoldings(updatedAllHoldings);
-          await setStockHoldings(updatedAllHoldings);
+          if (!await saveStockHoldings(updatedStockHoldings.filter((holding, index) => holding !== stockHoldings[index]), [], currentHoldings)) return;
         }
       } catch {
         // 에러 무시
@@ -204,7 +205,7 @@ export default function StocksPage() {
       const stockHoldings = updatedAllHoldings.filter(isStockHolding);
       setHoldings(stockHoldings);
       setEditingId(null);
-      await setStockHoldings(updatedAllHoldings);
+      if (!await saveStockHoldings(updatedAllHoldings.filter(item => item.id === editingId), [], holdings)) return;
     } else {
       const newHolding: StockHolding = {
         id: `stock-${Date.now()}`,
@@ -220,7 +221,10 @@ export default function StocksPage() {
       const updatedAllHoldings = [...allHoldings, newHolding];
       const stockHoldings = updatedAllHoldings.filter(isStockHolding);
       setHoldings(stockHoldings);
-      await setStockHoldings(updatedAllHoldings);
+      if (!await saveStockHoldings([newHolding], [], holdings)) {
+        setEditingId(newHolding.id);
+        return;
+      }
     }
 
     // 폼 초기화
@@ -253,7 +257,7 @@ export default function StocksPage() {
     const updatedAllHoldings = allHoldings.filter((holding) => holding.id !== id);
     const stockHoldings = updatedAllHoldings.filter(isStockHolding);
     setHoldings(stockHoldings);
-    await setStockHoldings(updatedAllHoldings);
+    if (!await saveStockHoldings([], [id], holdings)) return;
   };
 
   const handleCancel = () => {

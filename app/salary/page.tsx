@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LabelList } from 'recharts';
 import { Salary, DashboardState } from '@/types';
-import { getDashboardState, getSalaries, setSalaries, syncFromFirebase } from '@/lib/store';
+import { getDashboardState, getSalaries, saveSalaries, syncFromFirebase } from '@/lib/store';
 import { getExchangeRates } from '@/lib/exchangeRate';
 import { useAuth } from '@/hooks/useAuth';
 import { useModalDismiss } from '@/hooks/useModalDismiss';
@@ -348,7 +348,7 @@ export default function SalaryPage() {
         salary.id === editingId ? updatedSalary : salary
       );
       setSalariesState(updated);
-      await setSalaries(updated);
+      if (!await saveSalaries(updated.filter(item => item.id === editingId), [], salaries)) return;
       setIsFormOpen(false);
       setEditingId(null);
       setFormData({
@@ -377,7 +377,10 @@ export default function SalaryPage() {
       const allSalaries = getSalaries();
       const updated = [...allSalaries, newSalary];
       setSalariesState(updated);
-      await setSalaries(updated);
+      if (!await saveSalaries([newSalary], [], salaries)) {
+        setEditingId(newSalary.id);
+        return;
+      }
       setIsFormOpen(false);
       setFormData({
         year: new Date().getFullYear().toString(),
@@ -408,7 +411,7 @@ export default function SalaryPage() {
     const allSalaries = getSalaries();
     const updated = allSalaries.filter((salary) => salary.id !== id);
     setSalariesState(updated);
-    await setSalaries(updated);
+    if (!await saveSalaries([], [id], salaries)) return;
   };
 
   const handleCancel = () => {

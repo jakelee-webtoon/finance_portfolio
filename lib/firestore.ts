@@ -2,21 +2,24 @@
 import { 
   collection, 
   doc, 
-  getDoc, 
-  getDocs, 
+  getDocFromServer as getDoc,
+  getDocsFromServer as getDocs,
   setDoc, 
   query,
   orderBy,
   Timestamp,
   writeBatch,
+  runTransaction,
   type Firestore
 } from 'firebase/firestore';
 import { db } from './firebase';
 import {
   FIRESTORE_COLLECTIONS,
+  type FirestoreCollectionKey,
+  type ItemChange,
+  assertItemWrite,
   mergeCollectionItems,
   planCollectionUpserts,
-  planCollectionWrites,
   removeUndefinedDeep,
 } from './persistenceConfig';
 import { parseStoredJson } from './storageJson';
@@ -93,34 +96,6 @@ const prepareFirestoreData = <T extends FirestoreEntity>(
   return removeUndefinedDeep(data);
 };
 
-const replaceCollection = async <T extends FirestoreEntity>(
-  firestore: Firestore,
-  collectionPath: string,
-  items: T[],
-  dateFields: readonly string[] = []
-): Promise<number> => {
-  const existingSnapshot = await getDocs(query(collection(firestore, collectionPath)));
-  const plan = planCollectionWrites(
-    existingSnapshot.docs.map(snapshotDoc => snapshotDoc.id),
-    items
-  );
-
-  for (const operations of plan.batches) {
-    const batch = writeBatch(firestore);
-    operations.forEach(operation => {
-      const documentRef = doc(firestore, collectionPath, operation.id);
-      if (operation.type === 'delete') {
-        batch.delete(documentRef);
-      } else {
-        batch.set(documentRef, prepareFirestoreData(operation.item, dateFields));
-      }
-    });
-    await batch.commit();
-  }
-
-  return plan.deletedCount;
-};
-
 const upsertCollection = async <T extends FirestoreEntity>(
   firestore: Firestore,
   collectionPath: string,
@@ -149,22 +124,7 @@ const saveCollection = async <T extends FirestoreEntity>(
     dateFields?: readonly string[];
   }
 ): Promise<void> => {
-  if (typeof window === 'undefined') return;
-  if (!db) {
-    writeLocalStorage(options.storageKey, items);
-    return;
-  }
-
-  try {
-    const collectionPath = getCollectionPath(options.collectionName);
-    const deletedCount = await replaceCollection(db, collectionPath, items, options.dateFields);
-    console.log(`[Firestore] ${items.length} ${options.label} saved to Firebase (deleted ${deletedCount}): ${collectionPath}`);
-    writeLocalStorage(options.storageKey, items);
-  } catch (error) {
-    writeLocalStorage(options.storageKey, items);
-    console.error(`[Firestore] Failed to save ${options.label}:`, error);
-    throw error;
-  }
+  throw new Error('전체 목록 교체 저장은 비활성화되었습니다. 항목별 저장을 사용해주세요.');
 };
 
 // Dashboard State
@@ -196,15 +156,9 @@ export async function getDashboardState(): Promise<DashboardState> {
       baseMonth: new Date().toISOString().slice(0, 7),
       scope: 'combined',
     };
-    await setDoc(docRef, defaultState);
     return defaultState;
   } catch (error) {
-    // 에러 발생 시 localStorage에서 가져오기 (fallback)
-    return readLocalStorage('finance-dashboard-state', {
-      householdName: '우리집',
-      baseMonth: new Date().toISOString().slice(0, 7),
-      scope: 'combined',
-    });
+    throw error;
   }
 }
 
@@ -236,7 +190,7 @@ export async function setDashboardState(state: DashboardState): Promise<void> {
 export async function getAssets(): Promise<Asset[]> {
   if (typeof window === 'undefined') return [];
   if (!db) {
-    return readLocalStorage('finance-assets', []);
+    throw new Error('자산 서버 조회에 실패했습니다.');
   }
   
   try {
@@ -249,7 +203,7 @@ export async function getAssets(): Promise<Asset[]> {
     } as Asset));
   } catch (error) {
     // Fallback to localStorage
-    return readLocalStorage('finance-assets', []);
+    throw new Error('자산 서버 조회에 실패했습니다.');
   }
 }
 
@@ -261,7 +215,7 @@ export async function setAssets(assets: Asset[]): Promise<void> {
 export async function getStockHoldings(): Promise<StockHolding[]> {
   if (typeof window === 'undefined') return [];
   if (!db) {
-    return readLocalStorage('finance-stock-holdings', []);
+    throw new Error('서버 자료를 불러오지 못했습니다.');
   }
   
   try {
@@ -290,7 +244,7 @@ export async function getStockHoldings(): Promise<StockHolding[]> {
   } catch (error) {
     console.error('[Firestore] Failed to get stock holdings:', error);
     // Fallback to localStorage
-    return readLocalStorage('finance-stock-holdings', []);
+    throw new Error('서버 자료를 불러오지 못했습니다.');
   }
 }
 
@@ -302,7 +256,7 @@ export async function setStockHoldings(holdings: StockHolding[]): Promise<void> 
 export async function getSalaries(): Promise<Salary[]> {
   if (typeof window === 'undefined') return [];
   if (!db) {
-    return readLocalStorage('finance-salaries', []);
+    throw new Error('서버 자료를 불러오지 못했습니다.');
   }
   
   try {
@@ -314,7 +268,7 @@ export async function getSalaries(): Promise<Salary[]> {
     } as Salary));
   } catch (error) {
     // Fallback to localStorage
-    return readLocalStorage('finance-salaries', []);
+    throw new Error('서버 자료를 불러오지 못했습니다.');
   }
 }
 
@@ -326,7 +280,7 @@ export async function setSalaries(salaries: Salary[]): Promise<void> {
 export async function getApartments(): Promise<Apartment[]> {
   if (typeof window === 'undefined') return [];
   if (!db) {
-    return readLocalStorage('finance-apartments', []);
+    throw new Error('서버 자료를 불러오지 못했습니다.');
   }
   
   try {
@@ -339,7 +293,7 @@ export async function getApartments(): Promise<Apartment[]> {
     } as Apartment));
   } catch (error) {
     // Fallback to localStorage
-    return readLocalStorage('finance-apartments', []);
+    throw new Error('서버 자료를 불러오지 못했습니다.');
   }
 }
 
@@ -351,7 +305,7 @@ export async function setApartments(apartments: Apartment[]): Promise<void> {
 export async function getIncome(): Promise<Income[]> {
   if (typeof window === 'undefined') return [];
   if (!db) {
-    return readLocalStorage('finance-income', []);
+    throw new Error('서버 자료를 불러오지 못했습니다.');
   }
   
   try {
@@ -364,7 +318,7 @@ export async function getIncome(): Promise<Income[]> {
     } as Income));
   } catch (error) {
     // Fallback to localStorage
-    return readLocalStorage('finance-income', []);
+    throw new Error('서버 자료를 불러오지 못했습니다.');
   }
 }
 
@@ -376,7 +330,7 @@ export async function setIncome(income: Income[]): Promise<void> {
 export async function getLiabilities(): Promise<Liability[]> {
   if (typeof window === 'undefined') return [];
   if (!db) {
-    return readLocalStorage('finance-liabilities', []);
+    throw new Error('서버 자료를 불러오지 못했습니다.');
   }
   
   try {
@@ -389,7 +343,7 @@ export async function getLiabilities(): Promise<Liability[]> {
     } as Liability));
   } catch (error) {
     // Fallback to localStorage
-    return readLocalStorage('finance-liabilities', []);
+    throw new Error('서버 자료를 불러오지 못했습니다.');
   }
 }
 
@@ -401,7 +355,7 @@ export async function setLiabilities(liabilities: Liability[]): Promise<void> {
 export async function getLedgerEntries(): Promise<LedgerEntry[]> {
   if (typeof window === 'undefined') return [];
   if (!db) {
-    return readLocalStorage('finance-ledger-entries', []);
+    throw new Error('서버 자료를 불러오지 못했습니다.');
   }
   
   try {
@@ -418,7 +372,7 @@ export async function getLedgerEntries(): Promise<LedgerEntry[]> {
     } as LedgerEntry));
   } catch (error) {
     // Fallback to localStorage
-    return readLocalStorage('finance-ledger-entries', []);
+    throw new Error('서버 자료를 불러오지 못했습니다.');
   }
 }
 
@@ -430,7 +384,7 @@ export async function setLedgerEntries(entries: LedgerEntry[]): Promise<void> {
 export async function getMonthlyPlanEntries(): Promise<MonthlyPlanEntry[]> {
   if (typeof window === 'undefined') return [];
   if (!db) {
-    return readLocalStorage('finance-monthly-plan-entries', []);
+    throw new Error('서버 자료를 불러오지 못했습니다.');
   }
 
   try {
@@ -445,7 +399,7 @@ export async function getMonthlyPlanEntries(): Promise<MonthlyPlanEntry[]> {
       as_of_date: timestampToDate(doc.data().as_of_date).toISOString().split('T')[0],
     } as MonthlyPlanEntry));
   } catch (error) {
-    return readLocalStorage('finance-monthly-plan-entries', []);
+    throw new Error('서버 자료를 불러오지 못했습니다.');
   }
 }
 
@@ -473,7 +427,7 @@ export async function getAssistantSummaries(): Promise<AssistantSummary[]> {
   if (typeof window === 'undefined') return [];
   const config = FIRESTORE_COLLECTIONS.assistantSummaries;
   if (!db) {
-    return readLocalStorage(config.storageKey, []);
+    throw new Error('서버 자료를 불러오지 못했습니다.');
   }
 
   try {
@@ -486,7 +440,7 @@ export async function getAssistantSummaries(): Promise<AssistantSummary[]> {
       ...doc.data(),
     } as AssistantSummary));
   } catch (error) {
-    return readLocalStorage(config.storageKey, []);
+    throw new Error('서버 자료를 불러오지 못했습니다.');
   }
 }
 
@@ -504,5 +458,41 @@ export async function setAssistantSummaries(summaries: AssistantSummary[]): Prom
   } catch (error) {
     console.error(`[Firestore] Failed to upsert ${config.label}:`, error);
     throw error;
+  }
+}
+
+export async function savePendingChanges(pending: Partial<Record<FirestoreCollectionKey, ItemChange<any>[]>>): Promise<void> {
+  if (!db) throw new Error('서버에 연결되지 않았습니다.');
+  const firestore = db;
+  const changes = (Object.keys(pending) as FirestoreCollectionKey[]).flatMap(key =>
+    (pending[key] || []).map(change => ({ key, change }))
+  );
+  for (let offset = 0; offset < changes.length; offset += 450) {
+    const chunk = changes.slice(offset, offset + 450);
+    await runTransaction(firestore, async transaction => {
+      const refs = chunk.map(({ key, change }) => doc(firestore, getCollectionPath(FIRESTORE_COLLECTIONS[key].collectionName), change.id));
+      const snapshots = await Promise.all(refs.map(ref => transaction.get(ref)));
+      chunk.forEach(({ key, change }, index) => {
+        const config = FIRESTORE_COLLECTIONS[key];
+        const snapshot = snapshots[index];
+        const current = snapshot.exists() ? snapshot.data() : null;
+        const before = change.before ? prepareFirestoreData(change.before, config.dateFields) : null;
+        const after = change.after ? prepareFirestoreData(change.after, config.dateFields) : null;
+        // Older holdings may have no date; the reader supplies a display default.
+        if (current && before && !('as_of_date' in current)) delete before.as_of_date;
+        const comparable = (value: Record<string, unknown> | null) => {
+          if (!value) return null;
+          const normalized = { ...value };
+          config.dateFields.forEach(field => {
+            if (normalized[field] != null) normalized[field] = timestampToDate(normalized[field]).toISOString().slice(0, 10);
+          });
+          return normalized;
+        };
+        assertItemWrite(comparable(current), comparable(before), comparable(after));
+        if (change.verifyOnly) return;
+        if (after) transaction.set(snapshot.ref, after);
+        else transaction.delete(snapshot.ref);
+      });
+    });
   }
 }

@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import Table, { Column } from '@/components/Table';
 import { Asset, Liability, DashboardState, StockHolding } from '@/types';
-import { getDashboardState, getAssets, setAssets, getLiabilities, setLiabilities, getApartments, setApartments, getStockHoldings, syncFromFirebase } from '@/lib/store';
+import { getDashboardState, getAssets, saveAssets, getLiabilities, saveLiabilities, getApartments, saveAssetApartment, getStockHoldings, syncFromFirebase } from '@/lib/store';
 import { getExchangeRates, convertCurrency } from '@/lib/exchangeRate';
 import { useAuth } from '@/hooks/useAuth';
 import { useModalDismiss } from '@/hooks/useModalDismiss';
@@ -49,48 +49,15 @@ export default function PortfolioPage() {
 
     // Firebase에서 데이터 동기화 후 로컬 데이터 로드
     const loadData = async () => {
-      await syncFromFirebase();
+      const synced = await syncFromFirebase();
+      if (!synced) return;
       
       const dashboardState = getDashboardState();
       setState(dashboardState);
-      let assets = getAssets();
-      
-      // 기존 아파트 자산명을 "아파트"로 업데이트
-      const apartments = getApartments();
-    let hasChanges = false;
-    assets = assets.map((asset) => {
-      if (asset.category === 'real_estate') {
-        // 아파트명 형식인 경우 (예: "e편한세상서울대입구 (208동 603호)")
-        if (asset.name.includes('(') && asset.name.includes('동')) {
-          const match = asset.name.match(/^(.+?)\s*\((\d+)동\s*(\d+)호\)$/);
-          if (match) {
-            const [, apartmentName, dong, ho] = match;
-            // 해당 아파트가 존재하는지 확인
-            const apartment = apartments.find(
-              (apt) => apt.apartmentName === apartmentName.trim() && 
-                       apt.dong === dong && 
-                       apt.ho === ho
-            );
-            if (apartment) {
-              hasChanges = true;
-              return {
-                ...asset,
-                id: `asset-apt-${apartment.id}`, // ID도 업데이트
-                name: '아파트',
-                amount: asset.amount, // 기존 금액 유지
-              };
-            }
-          }
-        }
-      }
-      return asset;
-    });
-    
-    if (hasChanges) {
-      await setAssets(assets);
-    }
+      const assets = getAssets();
 
-    let liabilities = getLiabilities();
+    const originalLiabilities = getLiabilities();
+    let liabilities = originalLiabilities;
     let hasLiabilityChanges = false;
     liabilities = liabilities.map((liability) => {
       const isCurrentMortgage = liability.category === 'mortgage'
@@ -112,7 +79,7 @@ export default function PortfolioPage() {
     });
 
     if (hasLiabilityChanges) {
-      await setLiabilities(liabilities);
+      if (!await saveLiabilities(liabilities.filter((liability, index) => liability !== originalLiabilities[index]), [], originalLiabilities)) return;
     }
 
     setAssetsState(assets);
@@ -163,23 +130,17 @@ export default function PortfolioPage() {
   } = financialSummary;
 
   // 포트폴리오 자산을 아파트로 동기화
-  const syncAssetToApartment = (asset: Asset) => {
-    // real_estate 카테고리이고 아파트 자산인 경우만 동기화
-    if (asset.category !== 'real_estate' || asset.name !== '아파트') return;
-    
+  const syncAssetToApartment = async (asset: Asset) => {
+    if (asset.category !== 'real_estate') return;
     const apartments = getApartments();
-    
-    // 자산 ID에서 아파트 ID 추출 (형식: "asset-apt-{apartmentId}")
-    if (!asset.id.startsWith('asset-apt-')) return;
-    
-    const apartmentId = asset.id.replace('asset-apt-', '');
-    
-    // 해당 아파트 찾기
-    const apartmentIndex = apartments.findIndex(
-      (apt) => apt.id === apartmentId
+    const apartmentIndex = apartments.findIndex(apt =>
+      asset.id === `asset-apt-${apt.id}` ||
+      asset.name === `${apt.apartmentName} (${apt.dong}동 ${apt.ho}호)`
     );
-    
+
     if (apartmentIndex >= 0) {
+      const apartment = apartments[apartmentIndex];
+      if (apartment.currentPrice === asset.amount && apartment.owner === asset.owner && apartment.currency === asset.currency) return true;
       const today = new Date().toISOString().split('T')[0];
       const currentUser: 'husband' | 'wife' = state?.scope === 'husband' ? 'husband' : state?.scope === 'wife' ? 'wife' : 'husband';
       
@@ -197,7 +158,7 @@ export default function PortfolioPage() {
             }
           : apt
       );
-      setApartments(updatedApartments);
+      return saveAssetApartment(asset, updatedApartments[apartmentIndex], apartments);
     }
   };
 
@@ -237,11 +198,11 @@ export default function PortfolioPage() {
           asset.id === editingId ? updatedAsset : asset
         );
         setAssetsState(updated);
-        await setAssets(updated);
+        if (!await saveAssets([updatedAsset], [], assets)) return;
 
         // 아파트도 동기화 (real_estate 카테고리이고 아파트명 형식인 경우)
         if (updatedAsset.category === 'real_estate') {
-          syncAssetToApartment(updatedAsset);
+          if (await syncAssetToApartment(updatedAsset) === false) return;
         }
         
         setEditingId(null);
@@ -263,11 +224,14 @@ export default function PortfolioPage() {
         const allAssets = getAssets();
         const updated = [...allAssets, newAsset];
         setAssetsState(updated);
-        await setAssets(updated);
+        if (!await saveAssets([newAsset], [], assets)) {
+          setEditingId(newAsset.id);
+          return;
+        }
 
         // 아파트도 동기화 (real_estate 카테고리인 경우)
         if (newAsset.category === 'real_estate') {
-          syncAssetToApartment(newAsset);
+          if (await syncAssetToApartment(newAsset) === false) return;
         }
         showToast('새로운 자산이 추가되었습니다.');
       }
@@ -293,7 +257,7 @@ export default function PortfolioPage() {
             : liability
         );
         setLiabilitiesState(updated);
-        await setLiabilities(updated);
+        if (!await saveLiabilities(updated.filter(item => item.id === editingId), [], liabilities)) return;
         setEditingId(null);
         showToast('부채 정보가 수정되었습니다.');
       } else {
@@ -315,7 +279,10 @@ export default function PortfolioPage() {
         const allLiabilities = getLiabilities();
         const updated = [...allLiabilities, newLiability];
         setLiabilitiesState(updated);
-        await setLiabilities(updated);
+        if (!await saveLiabilities([newLiability], [], liabilities)) {
+          setEditingId(newLiability.id);
+          return;
+        }
         showToast('새로운 부채가 추가되었습니다.');
       }
     }
@@ -368,7 +335,7 @@ export default function PortfolioPage() {
     const allAssets = getAssets();
     const updated = allAssets.filter((asset) => asset.id !== id);
     setAssetsState(updated);
-    await setAssets(updated);
+    if (!await saveAssets([], [id], assets)) return;
     showToast('자산이 삭제되었습니다.');
   };
 
@@ -377,7 +344,7 @@ export default function PortfolioPage() {
     const allLiabilities = getLiabilities();
     const updated = allLiabilities.filter((liability) => liability.id !== id);
     setLiabilitiesState(updated);
-    await setLiabilities(updated);
+    if (!await saveLiabilities([], [id], liabilities)) return;
     showToast('부채가 삭제되었습니다.');
   };
 

@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import Table, { Column } from '@/components/Table';
 import { Income, DashboardState } from '@/types';
-import { getDashboardState, getIncome, setIncome, syncFromFirebase } from '@/lib/store';
+import { getDashboardState, getIncome, saveIncome, syncFromFirebase } from '@/lib/store';
 import { useAuth } from '@/hooks/useAuth';
 import { useModalDismiss } from '@/hooks/useModalDismiss';
 
@@ -89,7 +89,7 @@ export default function IncomePage() {
           : income
       );
       setIncomes(updated);
-      await setIncome(updated);
+      if (!await saveIncome(updated.filter(item => item.id === editingId), [], incomes)) return;
       setEditingId(null);
     } else {
       const newIncome: Income = {
@@ -103,7 +103,10 @@ export default function IncomePage() {
       const allIncomes = getIncome();
       const updated = [...allIncomes, newIncome];
       setIncomes(updated);
-      await setIncome(updated);
+      if (!await saveIncome([newIncome], [], incomes)) {
+        setEditingId(newIncome.id);
+        return;
+      }
     }
 
     setFormData({
@@ -135,7 +138,7 @@ export default function IncomePage() {
     const allIncomes = getIncome();
     const updated = allIncomes.filter((income) => income.id !== id);
     setIncomes(updated);
-    await setIncome(updated);
+    if (!await saveIncome([], [id], incomes)) return;
   };
 
   const handleCancel = () => {

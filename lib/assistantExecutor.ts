@@ -9,7 +9,7 @@ import {
   getLiabilities,
   getMonthlyPlanEntries,
   getStockHoldings,
-  setLedgerEntries,
+  saveLedgerEntries,
   upsertMonthlyPlanEntries,
 } from '@/lib/store';
 import type { LedgerEntry, MonthlyPlanEntry, PlanCategory, Scope } from '@/types';
@@ -230,7 +230,7 @@ export async function executeAssistantStep(step: AssistantStep): Promise<Assista
         as_of_date: new Date().toISOString().slice(0, 10),
         last_modified_by: state.scope === 'wife' ? 'wife' : 'husband',
       };
-      await upsertMonthlyPlanEntries([entry]);
+      if (!await upsertMonthlyPlanEntries([entry])) throw new Error('서버 저장에 실패했습니다. 미저장 변경 알림에서 재시도해주세요.');
       await refreshSummaryAfterMutation();
       return {
         message: `월간플랜에 ${entry.title}을 추가했습니다.`,
@@ -248,7 +248,7 @@ export async function executeAssistantStep(step: AssistantStep): Promise<Assista
         isCompleted: typeof step.payload.completed === 'boolean' ? step.payload.completed : entry.isCompleted,
         as_of_date: new Date().toISOString().slice(0, 10),
       };
-      await upsertMonthlyPlanEntries([updated]);
+      if (!await upsertMonthlyPlanEntries([updated])) throw new Error('서버 저장에 실패했습니다. 미저장 변경 알림에서 재시도해주세요.');
       await refreshSummaryAfterMutation();
       return {
         message: `${entry.title}을 수정했습니다.`,
@@ -269,7 +269,7 @@ export async function executeAssistantStep(step: AssistantStep): Promise<Assista
         return { ...entry, category: category as LedgerEntry['category'], as_of_date: new Date().toISOString().slice(0, 10) };
       });
       if (!found) throw new Error('거래를 찾지 못했습니다.');
-      await setLedgerEntries(next);
+      if (!await saveLedgerEntries(next.filter(entry => entry.id === id))) throw new Error('서버 저장에 실패했습니다. 미저장 변경 알림에서 재시도해주세요.');
       await refreshSummaryAfterMutation();
       return {
         message: `거래 카테고리를 ${category}로 변경했습니다.`,
@@ -353,7 +353,7 @@ export async function executeAssistantStep(step: AssistantStep): Promise<Assista
         return { ...entry, notes: memo, as_of_date: new Date().toISOString().slice(0, 10) };
       });
       if (!found) throw new Error('거래를 찾지 못했습니다.');
-      await setLedgerEntries(next);
+      if (!await saveLedgerEntries(next.filter(entry => entry.id === id))) throw new Error('서버 저장에 실패했습니다. 미저장 변경 알림에서 재시도해주세요.');
       await refreshSummaryAfterMutation();
       return {
         message: '거래 메모를 추가했습니다.',

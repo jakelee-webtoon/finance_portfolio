@@ -3,13 +3,14 @@
 import { useState, useEffect, useMemo } from 'react';
 import Table, { Column } from '@/components/Table';
 import { Apartment, DashboardState, Asset } from '@/types';
-import { getDashboardState, getApartments, setApartments, getAssets, setAssets, syncFromFirebase } from '@/lib/store';
+import { getDashboardState, getApartments, saveApartments, getAssets, saveAssets, saveApartmentAssets, syncFromFirebase, hasPendingSaves } from '@/lib/store';
 import { useAuth } from '@/hooks/useAuth';
 import { useModalDismiss } from '@/hooks/useModalDismiss';
 
 export default function ApartmentPage() {
   const isAuthenticated = useAuth();
   const [state, setState] = useState<DashboardState | null>(null);
+  const [serverLoaded, setServerLoaded] = useState(false);
   const [apartments, setApartmentsState] = useState<Apartment[]>([]);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -45,8 +46,9 @@ export default function ApartmentPage() {
 
     // Firebase에서 데이터 동기화 후 로컬 데이터 로드
     const loadData = async () => {
-      await syncFromFirebase();
+      const synced = await syncFromFirebase({ force: true });
       applyCachedData();
+      setServerLoaded(synced);
     };
     
     loadData();
@@ -70,34 +72,19 @@ export default function ApartmentPage() {
     };
   }, []);
 
-  // 아파트 목록이 로드되면 기존 자산명을 "아파트"로 업데이트 + 각 아파트를 자산에 동기화
+  // Cached apartments are display-only until the initial server read succeeds.
   useEffect(() => {
-    if (!state || apartments.length === 0) return;
-
+    if (!serverLoaded || hasPendingSaves()) return;
+    let active = true;
     const run = async () => {
-      const assets = getAssets();
-      let hasChanges = false;
-      const updatedAssets = assets.map((asset) => {
-        if (asset.category === 'real_estate' && asset.name.includes('(') && asset.name.includes('동')) {
-          const match = asset.name.match(/^(.+?)\s*\((\d+)동\s*(\d+)호\)$/);
-          if (match) {
-            hasChanges = true;
-            return { ...asset, name: '아파트' };
-          }
-        }
-        return asset;
-      });
-      if (hasChanges) {
-        await setAssets(updatedAssets);
-      }
       for (const apartment of apartments) {
-        await syncApartmentToAsset(apartment);
+        if (!active || hasPendingSaves()) return;
+        if (!await syncApartmentToAsset(apartment)) return;
       }
     };
-
-    run();
-  }, [apartments.length, state?.scope]); // 의존성을 최소화하여 무한 루프 방지
-
+    void run();
+    return () => { active = false; };
+  }, [serverLoaded]);
 
   const filteredApartments = useMemo(() => {
     if (!state) return [];
@@ -120,14 +107,18 @@ export default function ApartmentPage() {
                  (asset.name === oldAssetName && asset.category === 'real_estate')
     );
 
+    const existingAsset = assets[existingAssetIndex];
+    if (existingAsset && (existingAsset.name === assetName || existingAsset.name === oldAssetName) &&
+        existingAsset.amount === currentValue && existingAsset.owner === apartment.owner &&
+        existingAsset.currency === apartment.currency) return true;
+
     let updatedAssets: Asset[];
     if (existingAssetIndex >= 0) {
       updatedAssets = assets.map((asset, index) =>
         index === existingAssetIndex
           ? {
               ...asset,
-              id: apartmentId,
-              name: assetName,
+              name: existingAsset.id === apartmentId ? assetName : existingAsset.name,
               amount: currentValue,
               owner: apartment.owner,
               currency: apartment.currency,
@@ -150,7 +141,7 @@ export default function ApartmentPage() {
       };
       updatedAssets = [...assets, newAsset];
     }
-    await setAssets(updatedAssets);
+    return saveApartmentAssets(apartment, updatedAssets.filter(asset => asset.id === (existingAsset?.id || apartmentId)), assets);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -176,8 +167,9 @@ export default function ApartmentPage() {
         apt.id === editingId ? updatedApartment : apt
       );
       setApartmentsState(updated);
-      await setApartments(updated);
-      await syncApartmentToAsset(updatedApartment);
+      const saved = await saveApartments([updatedApartment], [], apartments);
+      const linked = await syncApartmentToAsset(updatedApartment);
+      if (!saved || !linked) return;
       setEditingId(null);
     } else {
       const newApartment: Apartment = {
@@ -195,8 +187,12 @@ export default function ApartmentPage() {
       const allApartments = getApartments();
       const updated = [...allApartments, newApartment];
       setApartmentsState(updated);
-      await setApartments(updated);
-      await syncApartmentToAsset(newApartment);
+      const saved = await saveApartments([newApartment], [], apartments);
+      const linked = await syncApartmentToAsset(newApartment);
+      if (!saved || !linked) {
+        setEditingId(newApartment.id);
+        return;
+      }
     }
 
     setFormData({
@@ -243,14 +239,14 @@ export default function ApartmentPage() {
     const apartment = allApartments.find((apt) => apt.id === id);
     const updated = allApartments.filter((apt) => apt.id !== id);
     setApartmentsState(updated);
-    await setApartments(updated);
+    const saved = await saveApartments([], [id], apartments);
     if (apartment) {
       const assets = getAssets();
-      const updatedAssets = assets.filter(
-        (asset) => asset.id !== `asset-apt-${apartment.id}`
-      );
-      await setAssets(updatedAssets);
+      const linked = assets.find(asset => asset.id === `asset-apt-${apartment.id}` ||
+        (asset.category === 'real_estate' && asset.name === `${apartment.apartmentName} (${apartment.dong}동 ${apartment.ho}호)`));
+      if (linked && !await saveAssets([], [linked.id], assets)) return;
     }
+    if (!saved) return;
   };
 
 

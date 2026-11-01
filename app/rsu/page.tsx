@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import Table, { Column } from '@/components/Table';
 import { StockHolding, DashboardState, Asset } from '@/types';
-import { getDashboardState, getStockHoldings, setStockHoldings, getAssets, setAssets, syncFromFirebase } from '@/lib/store';
+import { getDashboardState, getStockHoldings, saveStockHoldings, getAssets, saveAssets, syncFromFirebase, hasPendingSaves } from '@/lib/store';
 import { getStockPrice, detectExchangeAndCurrency } from '@/lib/stockApi';
 import { getExchangeRates } from '@/lib/exchangeRate';
 import { useAuth } from '@/hooks/useAuth';
@@ -60,11 +60,11 @@ export default function RSUPage() {
     applyCachedData();
 
     const loadData = async () => {
-      await syncFromFirebase();
+      const synced = await syncFromFirebase();
       applyCachedData();
       const rates = await getExchangeRates();
       setExchangeRates(rates);
-      setIsInitialLoaded(true);
+      setIsInitialLoaded(synced);
     };
     loadData();
   }, [isAuthenticated, isInitialLoaded]);
@@ -105,17 +105,24 @@ export default function RSUPage() {
     const today = new Date().toISOString().split('T')[0];
     const currentUser: 'husband' | 'wife' =
       state?.scope === 'husband' ? 'husband' : state?.scope === 'wife' ? 'wife' : 'husband';
-    const updatedAssets = buildRsuAssets(getAssets(), holdingsToSync, {
+    const originalAssets = getAssets();
+    const updatedAssets = buildRsuAssets(originalAssets, holdingsToSync, {
       asOfDate: today,
       modifiedBy: currentUser,
     });
-    await setAssets(updatedAssets);
+    const generated = updatedAssets.filter(asset => asset.id.startsWith('asset-rsu-'));
+    const changed = generated.filter(asset => {
+      const previous = originalAssets.find(item => item.id === asset.id);
+      return !previous || previous.amount !== asset.amount || previous.currency !== asset.currency || previous.category !== asset.category || previous.owner !== asset.owner;
+    });
+    const removedIds = originalAssets.filter(asset => asset.id.startsWith('asset-rsu-') && !generated.some(item => item.id === asset.id)).map(asset => asset.id);
+    return saveAssets(changed, removedIds);
   }, [state]);
 
   // 가격 업데이트 함수 (세션 최초 진입과 수동 새로고침에서 사용)
   // fromUserAction: true일 때만 "최신 주가입니다" 토스트 (자동/재마운트 시 스팸 방지)
   const updatePrices = useCallback(async (forceRefresh: boolean = false, fromUserAction: boolean = false) => {
-    if (priceUpdateInProgressRef.current) return;
+    if (priceUpdateInProgressRef.current || hasPendingSaves()) return;
     priceUpdateInProgressRef.current = true;
     setIsUpdatingPrices(true);
     try {
@@ -146,16 +153,13 @@ export default function RSUPage() {
       );
 
       if (hasChanges) {
-        const updatedAllHoldings = allHoldings.map((holding) => {
-          const updatedRsu = updatedRsuHoldings.find((rsu) => rsu.id === holding.id);
-          return updatedRsu || holding;
-        });
         setHoldings(updatedRsuHoldings);
-        await syncHoldingsToAsset(updatedRsuHoldings);
-        await setStockHoldings(updatedAllHoldings);
+        const saved = await saveStockHoldings(updatedRsuHoldings.filter((holding, index) => holding !== currentRsuHoldings[index]), [], allHoldings);
+        const linked = await syncHoldingsToAsset(updatedRsuHoldings);
+        if (!saved || !linked) return;
         showToast('주가가 업데이트되었습니다.');
       } else {
-        await syncHoldingsToAsset(currentRsuHoldings);
+        if (!await syncHoldingsToAsset(currentRsuHoldings)) return;
         if (forceRefresh && fromUserAction) showToast('최신 주가입니다.');
       }
     } finally {
@@ -166,7 +170,7 @@ export default function RSUPage() {
 
   // 세션마다 최초 진입 시 한 번만 자동 갱신한다.
   useEffect(() => {
-    if (!isInitialLoaded || !exchangeRates) return;
+    if (!isInitialLoaded || !exchangeRates || hasPendingSaves()) return;
     if (sessionStorage.getItem(RSU_PRICE_REFRESH_SESSION_KEY)) return;
 
     sessionStorage.setItem(RSU_PRICE_REFRESH_SESSION_KEY, 'true');
@@ -234,9 +238,10 @@ export default function RSUPage() {
       );
       const rsuHoldings = updatedAllHoldings.filter((h) => h.type === 'rsu' || h.type === 'option');
       setHoldings(rsuHoldings);
+      const saved = await saveStockHoldings([updatedHolding], [], holdings);
+      const linked = await syncHoldingsToAsset(rsuHoldings);
+      if (!saved || !linked) return;
       setEditingId(null);
-      await syncHoldingsToAsset(rsuHoldings);
-      await setStockHoldings(updatedAllHoldings);
       showToast('RSU 정보가 수정되었습니다.');
     } else {
       const newHolding: StockHolding = {
@@ -259,8 +264,12 @@ export default function RSUPage() {
       const updatedAllHoldings = [...allHoldings, newHolding];
       const rsuHoldings = updatedAllHoldings.filter((h) => h.type === 'rsu' || h.type === 'option');
       setHoldings(rsuHoldings);
-      await syncHoldingsToAsset(rsuHoldings);
-      await setStockHoldings(updatedAllHoldings);
+      const saved = await saveStockHoldings([newHolding], [], holdings);
+      const linked = await syncHoldingsToAsset(rsuHoldings);
+      if (!saved || !linked) {
+        setEditingId(newHolding.id);
+        return;
+      }
       showToast('새로운 RSU가 추가되었습니다.');
     }
 
@@ -292,8 +301,9 @@ export default function RSUPage() {
     const updatedAllHoldings = allHoldings.filter((holding) => holding.id !== id);
     const updatedRsuHoldings = updatedAllHoldings.filter((h) => h.type === 'rsu' || h.type === 'option');
     setHoldings(updatedRsuHoldings);
-    await syncHoldingsToAsset(updatedRsuHoldings);
-    await setStockHoldings(updatedAllHoldings);
+    const saved = await saveStockHoldings([], [id], holdings);
+    const linked = await syncHoldingsToAsset(updatedRsuHoldings);
+    if (!saved || !linked) return;
     showToast('항목이 삭제되었습니다.');
   };
 
@@ -327,8 +337,9 @@ export default function RSUPage() {
 
     const rsuHoldings = updatedAllHoldings.filter((h) => h.type === 'rsu' || h.type === 'option');
     setHoldings(rsuHoldings);
-    await syncHoldingsToAsset(rsuHoldings);
-    await setStockHoldings(updatedAllHoldings);
+    const saved = await saveStockHoldings(updatedAllHoldings.filter(item => item.id === id), [], holdings);
+    const linked = await syncHoldingsToAsset(rsuHoldings);
+    if (!saved || !linked) return;
     showToast(updatedAllHoldings.find(h => h.id === id)?.isRealized ? '실현 상태로 변경되었습니다.' : '미실현 상태로 변경되었습니다.');
   }, [syncHoldingsToAsset, state, showToast]);
 
@@ -355,7 +366,7 @@ export default function RSUPage() {
     const rsuHoldings = updatedAllHoldings.filter((h) => h.type === 'rsu' || h.type === 'option');
     setHoldings(rsuHoldings);
     setEditingNoteId(null);
-    await setStockHoldings(updatedAllHoldings);
+    if (!await saveStockHoldings(updatedAllHoldings.filter(item => item.id === id), [], holdings)) return;
     showToast('비고 내용이 저장되었습니다.');
   }, [state, showToast]);
 

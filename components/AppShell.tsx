@@ -3,6 +3,7 @@
 import { usePathname } from 'next/navigation';
 import Navigation from '@/components/Navigation';
 import PageTransition from '@/components/PageTransition';
+import SaveStatus from '@/components/SaveStatus';
 import TopBar from '@/components/TopBar';
 import { useFinanceAccess } from '@/hooks/useFinanceAccess';
 import AssistantPanel from '@/components/assistant/AssistantPanel';
@@ -32,6 +33,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       {hasAppChrome && (
         <>
           <TopBar />
+          <SaveStatus />
           <Navigation />
           <AssistantPanel />
         </>

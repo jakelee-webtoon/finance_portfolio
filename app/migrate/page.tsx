@@ -38,13 +38,13 @@ export default function MigratePage() {
           </h1>
           
           <p className="text-gray-600 mb-6">
-            localStorage에 저장된 데이터를 Firebase로 마이그레이션합니다.
-            기존 데이터는 유지되며, Firebase에도 복사됩니다.
+            데이터 보호를 위해 이 레거시 마이그레이션 기능은 비활성화되었습니다.
+            서버 데이터는 변경하지 않습니다.
           </p>
 
           <button
             onClick={handleMigrate}
-            disabled={isMigrating}
+            disabled={true}
             className={`w-full px-4 py-3 rounded-lg font-semibold transition-colors ${
               isMigrating
                 ? 'bg-gray-400 text-white cursor-not-allowed'

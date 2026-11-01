@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
 import Table, { Column } from '@/components/Table';
 import { DashboardState, StockHolding } from '@/types';
-import { getDashboardState, getStockHoldings, setStockHoldings, syncFromFirebase } from '@/lib/store';
+import { getDashboardState, getStockHoldings, saveStockHoldings, syncFromFirebase, hasPendingSaves } from '@/lib/store';
 import { getExchangeRates } from '@/lib/exchangeRate';
 import { EtfSearchResult, getStockPrice, getStockQuotes, searchEtfs } from '@/lib/stockApi';
 import { useAuth } from '@/hooks/useAuth';
@@ -135,7 +135,7 @@ export default function IsaPage() {
   }, []);
 
   const updateIsaPrices = useCallback(async (forceRefresh: boolean = false, fromUserAction: boolean = false) => {
-    if (priceUpdateInProgressRef.current) return;
+    if (priceUpdateInProgressRef.current || hasPendingSaves()) return;
     priceUpdateInProgressRef.current = true;
     setIsUpdatingPrices(true);
 
@@ -168,7 +168,7 @@ export default function IsaPage() {
       const hasChanges = updatedAllHoldings.some((holding, index) => holding.currentPrice !== allHoldings[index]?.currentPrice);
       if (hasChanges) {
         setHoldings(updatedAllHoldings);
-        await setStockHoldings(updatedAllHoldings);
+        if (!await saveStockHoldings(updatedAllHoldings.filter((holding, index) => holding !== allHoldings[index]), [], allHoldings)) return;
         if (fromUserAction) showToast('ISA ETF 가격이 업데이트되었습니다.');
       } else if (forceRefresh && fromUserAction) {
         showToast('최신 가격입니다.');
@@ -283,7 +283,10 @@ export default function IsaPage() {
         ];
 
     setHoldings(updatedAllHoldings);
-    await setStockHoldings(updatedAllHoldings);
+    if (!await saveStockHoldings(editingId ? updatedAllHoldings.filter(item => item.id === editingId) : updatedAllHoldings.slice(-1), [], holdings)) {
+      if (!editingId) setEditingId(updatedAllHoldings[updatedAllHoldings.length - 1].id);
+      return;
+    }
     setFormData(getInitialFormData());
     setEditingId(null);
     setIsFormOpen(false);
@@ -361,7 +364,7 @@ export default function IsaPage() {
     if (!confirm('정말 삭제하시겠습니까?')) return;
     const updatedAllHoldings = getStockHoldings().filter((holding) => holding.id !== id);
     setHoldings(updatedAllHoldings);
-    await setStockHoldings(updatedAllHoldings);
+    if (!await saveStockHoldings([], [id], holdings)) return;
   };
 
   const columns: Column<StockHolding>[] = useMemo(() => [

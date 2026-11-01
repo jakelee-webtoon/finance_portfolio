@@ -368,6 +368,6 @@ export function getCurrentAssistantSummary() {
 
 export async function refreshAssistantSummary() {
   const summary = buildAssistantSummary();
-  await upsertAssistantSummaries([summary]);
+  if (!await upsertAssistantSummaries([summary])) throw new Error('요약 서버 저장에 실패했습니다.');
   return summary;
 }
