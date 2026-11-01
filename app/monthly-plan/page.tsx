@@ -399,7 +399,7 @@ export default function MonthlyPlanPage() {
                         </Pie>
                         <Tooltip
                           contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 8px 28px rgba(0,0,0,0.10)' }}
-                          formatter={(value: number) => [formatKrw(value), '실적']}
+                          formatter={(value: number, name: string) => [formatKrw(value), name]}
                         />
                       </PieChart>
                     </ResponsiveContainer>
