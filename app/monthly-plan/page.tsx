@@ -71,7 +71,7 @@ const MANAGED_PLAN_ITEMS = [
   annualTarget: number;
 }>;
 
-const ANNUAL_ACTUAL_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#3b82f6', '#a855f7', '#f43f5e'];
+const ANNUAL_ACTUAL_COLORS = ['#0088fe', '#00bfa5', '#f59e0b', '#6366f1', '#a855f7', '#f43f5e'];
 
 const GOAL_PLAN_KEYS = new Set([
   'husband-investment',
@@ -376,39 +376,52 @@ export default function MonthlyPlanPage() {
               </div>
             </div>
             <section className="min-w-0 overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm" aria-labelledby="annual-actuals-title">
-              <div className="border-b border-gray-100 bg-gray-50/50 p-5">
+              <div className="flex flex-wrap items-center justify-between gap-2 px-5 pt-6">
                 <h2 id="annual-actuals-title" className="text-lg font-bold text-gray-900">{state.baseMonth.slice(0, 4)} 연간 실적</h2>
-                <p className="mt-1 text-xs text-gray-500">1월~12월에 입력한 실적의 항목별 금액과 비중</p>
+                <span className="text-xs font-medium text-gray-400">항목별 비중</span>
               </div>
+              <p className="mt-2 px-5 text-xs text-gray-400">1월~12월에 입력한 실적 기준</p>
               <div className="p-5">
-                <div className="text-xs text-gray-500">연간 누적 실적</div>
-                <div className="mt-1 text-2xl font-bold text-gray-900">{formatKrw(annualActualTotal)}</div>
                 {annualActualTotal > 0 ? (
-                  <div className="mt-3 h-60 w-full" role="img" aria-label="연간 실적 항목별 비중. 상세 금액과 비중은 아래 목록에 표시됩니다.">
+                  <div className="relative my-5 h-72 w-full" role="img" aria-label="연간 실적 항목별 비중. 상세 금액과 비중은 아래 목록에 표시됩니다.">
                     <ResponsiveContainer width="100%" height="100%">
                       <PieChart>
-                        <Pie data={annualActuals.filter((item) => item.actual > 0)} dataKey="actual" nameKey="name" cx="50%" cy="50%" outerRadius={100} stroke="#fff" strokeWidth={2}>
+                        <Pie data={annualActuals.filter((item) => item.actual > 0)} dataKey="actual" nameKey="name" cx="50%" cy="50%" innerRadius="53%" outerRadius="73%" paddingAngle={3} stroke="#fff" strokeWidth={2} labelLine={false}
+                          label={({ cx, cy, midAngle, outerRadius, percent, fill }) => {
+                            if (percent < 0.04) return null;
+                            const angle = -midAngle * Math.PI / 180;
+                            const radius = outerRadius + 16;
+                            return <text x={cx + radius * Math.cos(angle)} y={cy + radius * Math.sin(angle)} fill={fill} textAnchor={Math.cos(angle) >= 0 ? 'start' : 'end'} dominantBaseline="central" fontSize={12} fontWeight={600}>{(percent * 100).toFixed(0)}%</text>;
+                          }}>
                           {annualActuals.filter((item) => item.actual > 0).map((item) => (
                             <Cell key={item.key} fill={item.color} />
                           ))}
                         </Pie>
-                        <Tooltip formatter={(value: number) => [formatKrw(value), '실적']} />
+                        <Tooltip
+                          contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 8px 28px rgba(0,0,0,0.10)' }}
+                          formatter={(value: number) => [formatKrw(value), '실적']}
+                        />
                       </PieChart>
                     </ResponsiveContainer>
+                    <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                      <span className="text-xs font-medium text-gray-400">연간 총실적</span>
+                      <span className="mt-1 text-xl font-bold text-gray-900">
+                        {new Intl.NumberFormat('ko-KR', { notation: 'compact', maximumFractionDigits: 1 }).format(annualActualTotal)}원
+                      </span>
+                    </div>
                   </div>
                 ) : (
                   <div className="py-10 text-center text-sm text-gray-400">실적을 입력하면 연간 파이그래프가 표시됩니다.</div>
                 )}
-                <ul className="mt-3 space-y-3">
+                <ul className="mt-3 flex flex-wrap justify-center gap-x-5 gap-y-4">
                   {annualActuals.map((item) => (
-                    <li key={item.key} className="flex items-start justify-between gap-3 text-xs">
+                    <li key={item.key} className="flex min-w-0 items-start gap-2 text-xs">
                       <div className="flex min-w-0 items-start gap-2">
-                        <span className="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: item.color }} />
-                        <span className="text-gray-700">{item.name}</span>
-                      </div>
-                      <div className="shrink-0 text-right">
-                        <div className="font-semibold text-gray-900">{formatKrw(item.actual)}</div>
-                        <div className="mt-0.5 text-gray-500">{(annualActualTotal > 0 ? item.actual / annualActualTotal * 100 : 0).toFixed(1)}%</div>
+                        <span className="mt-0.5 h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: item.color }} />
+                        <div>
+                          <div className="font-medium" style={{ color: item.color }}>{item.name}</div>
+                          <div className="mt-1 text-gray-500">{formatKrw(item.actual)} · {(annualActualTotal > 0 ? item.actual / annualActualTotal * 100 : 0).toFixed(1)}%</div>
+                        </div>
                       </div>
                     </li>
                   ))}
