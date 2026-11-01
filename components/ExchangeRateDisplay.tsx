@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { getExchangeRates } from '@/lib/exchangeRate';
+import { getExchangeRates, getExchangeRateNotice } from '@/lib/exchangeRate';
 
 interface ExchangeRateDisplayProps {
   compact?: boolean;
@@ -9,6 +9,7 @@ interface ExchangeRateDisplayProps {
 
 export default function ExchangeRateDisplay({ compact = false }: ExchangeRateDisplayProps) {
   const [rates, setRates] = useState<Record<string, number> | null>(null);
+  const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -16,6 +17,7 @@ export default function ExchangeRateDisplay({ compact = false }: ExchangeRateDis
       try {
         const exchangeRates = await getExchangeRates();
         setRates(exchangeRates);
+        setNotice(getExchangeRateNotice());
       } catch (error) {
         // 에러 발생 시 무시
       } finally {
@@ -40,6 +42,7 @@ export default function ExchangeRateDisplay({ compact = false }: ExchangeRateDis
 
   return (
     <div className="text-xs text-gray-500 flex flex-wrap items-center gap-x-2 gap-y-0.5 tabular-nums">
+      {notice && <span className="text-amber-700">{notice}</span>}
       <span className="whitespace-nowrap">USD/KRW {rates.USD_TO_KRW?.toFixed(2)}</span>
       {!compact && (
         <>

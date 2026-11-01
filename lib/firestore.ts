@@ -1,3 +1,4 @@
+import { seoulDate } from '@/lib/calendar';
 // Firestore 데이터베이스 서비스 레이어
 import { 
   collection, 
@@ -132,7 +133,7 @@ export async function getDashboardState(): Promise<DashboardState> {
   if (typeof window === 'undefined') {
     return {
       householdName: '우리집',
-      baseMonth: new Date().toISOString().slice(0, 7),
+      baseMonth: seoulDate().slice(0, 7),
       scope: 'combined',
     };
   }
@@ -153,7 +154,7 @@ export async function getDashboardState(): Promise<DashboardState> {
     // 기본값 생성
     const defaultState: DashboardState = {
       householdName: '우리집',
-      baseMonth: new Date().toISOString().slice(0, 7),
+      baseMonth: seoulDate().slice(0, 7),
       scope: 'combined',
     };
     return defaultState;

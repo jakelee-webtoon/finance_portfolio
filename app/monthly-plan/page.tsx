@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
+import { MANAGED_PLAN_ITEMS, getPlanMonthlyTarget, getPlanAnnualTarget, getManagedPlanItem, getPlanActualAmount, defaultPlanId } from '@/lib/monthlyPlans';
+import { seoulDate } from '@/lib/calendar';
 import MobileHelp from '@/components/MobileHelp';
 import { DashboardState, MonthlyPlanEntry, PlanCategory } from '@/types';
 import {
@@ -13,64 +15,6 @@ import {
 import { useAuth } from '@/hooks/useAuth';
 import { formatKrw } from '@/lib/investments';
 
-const MANAGED_PLAN_ITEMS = [
-  {
-    key: 'husband-investment',
-    owner: 'husband',
-    category: 'investment',
-    title: '투자',
-    monthlyTarget: 1_000_000,
-    annualTarget: 5_000_000,
-  },
-  {
-    key: 'husband-cash',
-    owner: 'husband',
-    category: 'cash_reserve',
-    title: '현금 모으기',
-    monthlyTarget: 300_000,
-    annualTarget: 1_500_000,
-  },
-  {
-    key: 'husband-mortgage',
-    owner: 'husband',
-    category: 'fixed_expense',
-    title: '주담대 원리금',
-    monthlyTarget: 3_000_000,
-    annualTarget: 15_000_000,
-  },
-  {
-    key: 'wife-saving',
-    owner: 'wife',
-    category: 'saving',
-    title: '저축(마통상환)',
-    monthlyTarget: 1_500_000,
-    annualTarget: 7_500_000,
-  },
-  {
-    key: 'wife-irregular',
-    owner: 'wife',
-    category: 'irregular_expense',
-    title: '비정기 지출 모으기',
-    monthlyTarget: 500_000,
-    annualTarget: 2_500_000,
-  },
-  {
-    key: 'wife-living-cost',
-    owner: 'wife',
-    category: 'fixed_expense',
-    title: '생활비',
-    monthlyTarget: 2_000_000,
-    annualTarget: 10_000_000,
-  },
-] as const satisfies ReadonlyArray<{
-  key: string;
-  owner: 'husband' | 'wife';
-  category: PlanCategory;
-  title: string;
-  monthlyTarget: number;
-  annualTarget: number;
-}>;
-
 const ANNUAL_ACTUAL_COLORS = ['#0088fe', '#00bfa5', '#f59e0b', '#6366f1', '#a855f7', '#f43f5e'];
 
 const GOAL_PLAN_KEYS = new Set([
@@ -79,18 +23,6 @@ const GOAL_PLAN_KEYS = new Set([
   'wife-saving',
   'wife-irregular',
 ]);
-
-function getPlanMonthlyTarget(item: (typeof MANAGED_PLAN_ITEMS)[number], month: string): number {
-  if (item.key === 'husband-cash' && month >= '2026-09') return 600_000;
-  if (item.key === 'wife-saving' && month === '2026-08') return 1_300_000;
-  return item.monthlyTarget;
-}
-
-function getPlanAnnualTarget(item: (typeof MANAGED_PLAN_ITEMS)[number], year: string): number {
-  if (year !== '2026') return item.annualTarget;
-  const targetMonths = ['2026-08', '2026-09', '2026-10', '2026-11', '2026-12'];
-  return targetMonths.reduce((sum, month) => sum + getPlanMonthlyTarget(item, month), 0);
-}
 
 export default function MonthlyPlanPage() {
   const isAuthenticated = useAuth();
@@ -137,7 +69,7 @@ export default function MonthlyPlanPage() {
 
   const planSummary = useMemo(() => {
     const target = currentMonthPlans.reduce((sum, entry) => sum + entry.targetAmount, 0);
-    const actual = currentMonthPlans.reduce((sum, entry) => sum + (entry.actualAmount ?? 0), 0);
+    const actual = currentMonthPlans.reduce((sum, entry) => sum + getPlanActualAmount(entry), 0);
     const completed = currentMonthPlans.filter((entry) => entry.isCompleted).length;
     const completionRate = currentMonthPlans.length > 0 ? (completed / currentMonthPlans.length) * 100 : 0;
 
@@ -153,20 +85,11 @@ export default function MonthlyPlanPage() {
     );
 
     return visibleItems.map((item) => {
-      const matchingEntries = monthlyPlans.filter((entry) =>
-        entry.month.startsWith(year) &&
-        (entry.planKey === item.key ||
-          (
-            entry.owner === item.owner &&
-            entry.category === item.category &&
-            entry.title === item.title
-          ))
+      const matchingEntries = monthlyPlans.filter(entry =>
+        entry.month.startsWith(`${year}-`) && getManagedPlanItem(entry)?.key === item.key
       );
       const annualTarget = getPlanAnnualTarget(item, year);
-      const actual = matchingEntries.reduce((sum, entry) => {
-        if ((entry.actualAmount ?? 0) > 0) return sum + (entry.actualAmount ?? 0);
-        return sum + (entry.isCompleted ? entry.targetAmount : 0);
-      }, 0);
+      const actual = matchingEntries.reduce((sum, entry) => sum + getPlanActualAmount(entry), 0);
       const pct = annualTarget > 0 ? Math.min(100, (actual / annualTarget) * 100) : 0;
       const currentEntry = matchingEntries.find((entry) => entry.month === state.baseMonth);
       return {
@@ -191,7 +114,7 @@ export default function MonthlyPlanPage() {
         key: item.key,
         owner: item.owner,
         name: `${getOwnerLabel(item.owner)} · ${entries.find((entry) => entry.month === state.baseMonth)?.title || item.title}`,
-        actual: entries.reduce((sum, entry) => sum + Math.max(0, entry.actualAmount ?? 0), 0),
+        actual: entries.reduce((sum, entry) => sum + getPlanActualAmount(entry), 0),
         color: ANNUAL_ACTUAL_COLORS[index],
       };
     }).filter((item) => state.scope === 'combined' || item.owner === state.scope);
@@ -200,7 +123,7 @@ export default function MonthlyPlanPage() {
 
   const createDefaultMonthlyPlan = useCallback(async () => {
     if (!hasLoadedMonthlyPlans || !state?.baseMonth) return;
-    const today = new Date().toISOString().split('T')[0];
+    const today = seoulDate();
     const currentUser: 'husband' | 'wife' = state.scope === 'wife' ? 'wife' : 'husband';
     const missingEntries: MonthlyPlanEntry[] = MANAGED_PLAN_ITEMS
       .filter(item => !monthlyPlans.some(entry =>
@@ -208,14 +131,14 @@ export default function MonthlyPlanPage() {
         (entry.planKey === item.key || (
           entry.owner === item.owner &&
           entry.category === item.category &&
-          (entry.title === item.title || isLegacyManagedPlanEntry(entry, item))
+          getManagedPlanItem(entry)?.key === item.key
         ))
       ))
-      .map((entry, index) => {
+      .map((entry) => {
         const { owner, category, title } = entry;
         const monthlyTarget = getPlanMonthlyTarget(entry, state.baseMonth);
         return {
-          id: `plan-${state.baseMonth}-${index}-${Date.now()}`,
+          id: defaultPlanId(state.baseMonth, entry.key),
           planKey: entry.key,
           owner,
           category,
@@ -239,7 +162,7 @@ export default function MonthlyPlanPage() {
 
   const updateMonthlyPlanEntry = useCallback(async (id: string, patch: Partial<MonthlyPlanEntry>) => {
     if (!hasLoadedMonthlyPlans) return;
-    const today = new Date().toISOString().split('T')[0];
+    const today = seoulDate();
     const currentUser: 'husband' | 'wife' = state?.scope === 'wife' ? 'wife' : 'husband';
     let updatedEntry: MonthlyPlanEntry | undefined;
     const nextEntries = monthlyPlans.map((entry) => {
@@ -346,8 +269,8 @@ export default function MonthlyPlanPage() {
             <div className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
               <div className="p-5 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
                 <div>
-                  <h2 className="text-lg font-bold text-gray-900">2026 목표 진행</h2>
-                  <p className="text-xs text-gray-500 mt-1">8월부터 12월까지 항목별 달성률</p>
+                  <h2 className="text-lg font-bold text-gray-900">{state.baseMonth.slice(0, 4)} 목표 진행</h2>
+                  <p className="text-xs text-gray-500 mt-1">{state.baseMonth.startsWith('2026-') ? '8~12월' : '1~12월'} 목표 기준 · 선택 연도 실적 합산</p>
                 </div>
               </div>
               <div className="p-5">
@@ -453,7 +376,7 @@ function MonthlyOwnerPlanCard({
 }) {
   const ownerEntries = [...entries].sort((a, b) => getPlanCategoryOrder(a.category) - getPlanCategoryOrder(b.category));
   const target = ownerEntries.reduce((sum, entry) => sum + entry.targetAmount, 0);
-  const actual = ownerEntries.reduce((sum, entry) => sum + (entry.actualAmount ?? 0), 0);
+  const actual = ownerEntries.reduce((sum, entry) => sum + getPlanActualAmount(entry), 0);
   const completed = ownerEntries.filter((entry) => entry.isCompleted).length;
   const completionRate = ownerEntries.length > 0 ? (completed / ownerEntries.length) * 100 : 0;
 
@@ -506,7 +429,7 @@ function MonthlyOwnerPlanCard({
                   />
                   <AmountInput
                     label="실적"
-                    value={entry.actualAmount ?? 0}
+                    value={getPlanActualAmount(entry)}
                     onCommit={(amount) => onAmountChange(entry, 'actualAmount', amount)}
                   />
                 </div>
@@ -615,24 +538,6 @@ function getPlanCategoryOrder(category: PlanCategory): number {
 
 function isManagedPlanEntry(entry: MonthlyPlanEntry): boolean {
   return getManagedPlanItem(entry) != null;
-}
-
-function getManagedPlanItem(entry: MonthlyPlanEntry) {
-  return MANAGED_PLAN_ITEMS.find((item) =>
-    entry.planKey === item.key ||
-    (
-      item.owner === entry.owner &&
-      item.category === entry.category &&
-      item.title === entry.title
-    )
-  );
-}
-
-function isLegacyManagedPlanEntry(entry: MonthlyPlanEntry, item: (typeof MANAGED_PLAN_ITEMS)[number]): boolean {
-  return (
-    (item.key === 'wife-saving' && entry.owner === 'wife' && entry.category === 'saving' && entry.title === '저축/상환') ||
-    (item.key === 'wife-irregular' && entry.owner === 'wife' && entry.category === 'irregular_expense' && entry.title === '비정기지출 준비')
-  );
 }
 
 function getOwnerLabel(owner: string): string {

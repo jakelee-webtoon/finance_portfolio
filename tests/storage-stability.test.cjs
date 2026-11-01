@@ -232,7 +232,7 @@ test('dashboard preference failures are visible and retryable', async () => {
 
 // Execute the actual apartment page effects with a tiny isolated hook host.
 // This tests the page's write timing, not a second implementation of its policy.
-function apartmentPage(a) {
+function apartmentPage(a, page = 'apartment') {
   const slots = []; let cursor = 0; let effects = [];
   const react = {
     createElement: (type, props, ...children) => ({ type, props: { ...props, children } }),
@@ -250,18 +250,26 @@ function apartmentPage(a) {
       }
     },
     useMemo: calculate => calculate(),
+    useCallback: callback => callback,
+    useRef: initial => {
+      const index = cursor++;
+      if (!(index in slots)) slots[index] = { current: initial };
+      return slots[index];
+    },
   };
   const mod = { exports: {} };
-  const filename = path.join(root, 'app/apartment/page.tsx');
+  const filename = path.join(root, `app/${page}/page.tsx`);
   const source = transform(fs.readFileSync(filename, 'utf8'), { transforms: ['typescript', 'jsx', 'imports'], filePath: filename }).code;
   vm.runInNewContext(source, {
     module: mod, exports: mod.exports, React: react,
     require: request => {
       if (request === 'react') return react;
+      if (request === 'recharts') return {};
+      if (request.startsWith('@/lib/') && request !== '@/lib/store') return a.load(path.join(root, request.slice(2)) + '.ts');
       if (request === '@/lib/store') return a.store;
       if (request === '@/hooks/useAuth') return { useAuth: () => true };
       if (request === '@/hooks/useModalDismiss') return { useModalDismiss() {} };
-      if (request === '@/components/Table') return { default: () => null };
+      if (request === '@/components/Table' || request === '@/components/MobileHelp') return { default: () => null };
       throw new Error(`Unexpected page dependency ${request}`);
     },
     window: { addEventListener() {}, removeEventListener() {} }, Date, console,
@@ -409,4 +417,57 @@ test('reverse apartment link verifies its asset source and preserves unknown leg
   seed(server, 'assets', { ...asset, amount: 500 });
   assert.equal(await a.store.saveAssetApartment(asset, { ...apartment, currentPrice: 300 }, [{ ...apartment, currentPrice: 200 }]), false);
   assert.equal(server.get(documentPath('apartments', 'apt')).currentPrice, 200);
+});
+
+test('actual ledger page waits for the server and preserves an edited recurring bill', async () => {
+  const server = new Map();
+  const previous = { ...row('fixed-source'), date: '2026-10-01', month: '2026-10', type: 'expense_fixed', category: 'insurance', is_fixed: true, payment_method: 'transfer' };
+  const current = { ...previous, id: 'ledger-fixed-2026-11-fixed-source', month: '2026-11', date: '2026-11-01', amount: 200 };
+  seed(server, 'ledgerEntries', previous); seed(server, 'ledgerEntries', current);
+  server.set('users/default/settings/dashboard', { baseMonth: '2026-11', scope: 'combined', householdName: '우리집' });
+  const a = device(server, new Map([['finance-ledger-entries', JSON.stringify([previous])]]));
+  let release;
+  a.control.readGate = new Promise(resolve => { release = resolve; });
+  const render = apartmentPage(a, 'ledger');
+  await render(); await render();
+  assert.equal(a.control.writes, 0);
+  release();
+  await new Promise(resolve => setImmediate(resolve));
+  await render(); await render();
+  assert.equal(a.control.writes, 0);
+  assert.equal(a.store.getLedgerEntries().length, 2);
+  assert.equal(server.get(documentPath('ledgerEntries', current.id)).amount, 200);
+});
+
+test('actual ledger page creates a missing recurring bill once with stable ID', async () => {
+  const server = new Map();
+  const previous = { ...row('fixed-source'), date: '2026-10-01', month: '2026-10', type: 'expense_fixed', category: 'insurance', is_fixed: true, payment_method: 'transfer' };
+  seed(server, 'ledgerEntries', previous);
+  server.set('users/default/settings/dashboard', { baseMonth: '2026-11', scope: 'combined', householdName: '우리집' });
+  const a = device(server); const render = apartmentPage(a, 'ledger');
+  await render(); await render(); await render(); await render();
+  assert.equal(server.has(documentPath('ledgerEntries', 'ledger-fixed-2026-11-fixed-source')), true);
+  assert.equal(a.control.writes, 1);
+});
+
+test('two actual monthly-plan pages create the same defaults without duplicate documents', async () => {
+  const server = new Map();
+  server.set('users/default/settings/dashboard', { baseMonth: '2026-11', scope: 'combined', householdName: '우리집' });
+  const a = device(server); const b = device(server);
+  const renderA = apartmentPage(a, 'monthly-plan'); const renderB = apartmentPage(b, 'monthly-plan');
+  await renderA(); const treeA = await renderA();
+  await renderB(); const treeB = await renderB();
+  function findCreate(node) {
+    if (!node || typeof node !== 'object') return null;
+    if (Array.isArray(node)) return node.map(findCreate).find(Boolean);
+    if (node.type === 'button' && node.props.children.some(child => typeof child === 'string' && child.includes('월간 플랜 만들기'))) return node;
+    return findCreate(node.props?.children);
+  }
+  const buttonA = findCreate(treeA); const buttonB = findCreate(treeB);
+  assert.ok(buttonA); assert.ok(buttonB);
+  await buttonA.props.onClick();
+  await buttonB.props.onClick(); // B still displays the stale empty month.
+  const ids = [...server.keys()].filter(key => key.includes('/monthlyPlanEntries/'));
+  assert.equal(ids.length, 6);
+  assert.equal(ids.filter(key => key.endsWith('/plan-2026-11-husband-cash')).length, 1);
 });

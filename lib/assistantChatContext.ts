@@ -1,6 +1,10 @@
-import { calculateFinancialSummary } from '@/lib/financialSummary';
+import { getCachedExchangeRates, getExchangeRateNotice } from '@/lib/exchangeRate';
+import { seoulDate } from '@/lib/calendar';
+import { toKrwAmount } from '@/lib/investments';
+import { getPlanActualAmount } from '@/lib/monthlyPlans';
+import { calculateFinancialSummary, belongsToScope } from '@/lib/financialSummary';
 import { buildFinanceSnapshot } from '@/lib/assistantSnapshot';
-import { buildAssistantSummary, getCurrentAssistantSummary } from '@/lib/assistantSummary';
+import { buildAssistantSummaryFromData } from '@/lib/assistantSummary';
 import { getAssets, getDashboardState, getIncome, getLedgerEntries, getLiabilities, getMonthlyPlanEntries, getStockHoldings, getTransactions } from '@/lib/store';
 import type { Asset, DashboardState, Income, LedgerEntry, Liability, MonthlyPlanEntry, StockHolding, Transaction } from '@/types';
 
@@ -16,17 +20,12 @@ export type FinanceAssistantData = {
 };
 
 const MAX_CHARACTERS = 3600;
-const ASSISTANT_EXCHANGE_RATES = {
-  USD_TO_KRW: 1300,
-  EUR_TO_KRW: 1300 / 0.92,
-};
-
 function krw(value: number) {
   return `${new Intl.NumberFormat('ko-KR').format(Math.round(value))}원`;
 }
 
 function monthOf(date = new Date()) {
-  return date.toISOString().slice(0, 7);
+  return seoulDate(date).slice(0, 7);
 }
 
 function byAmountDesc<T extends { amount: number }>(a: T, b: T) {
@@ -64,22 +63,31 @@ export function collectFinanceAssistantData(): FinanceAssistantData {
   };
 }
 
-export function buildFinanceChatContext(data = collectFinanceAssistantData(), now = new Date(), userMessage = '') {
+export function buildFinanceChatContext(data = collectFinanceAssistantData(), now = new Date(), userMessage = '', exchangeRates = getCachedExchangeRates()) {
   const baseMonth = data.state.baseMonth || monthOf(now);
   const scope = data.state.scope;
+  data = { ...data,
+    assets: data.assets.filter(entry => belongsToScope(entry.owner, scope)),
+    liabilities: data.liabilities.filter(entry => belongsToScope(entry.owner, scope)),
+    holdings: data.holdings.filter(entry => belongsToScope(entry.owner, scope)),
+    income: data.income.filter(entry => belongsToScope(entry.owner, scope)),
+    ledgerEntries: data.ledgerEntries.filter(entry => belongsToScope(entry.owner, scope)),
+    monthlyPlans: data.monthlyPlans.filter(entry => belongsToScope(entry.owner, scope)),
+  };
   const snapshot = buildFinanceSnapshot({
     month: baseMonth,
     ledgerEntries: data.ledgerEntries,
     monthlyPlans: data.monthlyPlans,
+    now,
   });
   const summary = calculateFinancialSummary({
     assets: data.assets,
     liabilities: data.liabilities,
     holdings: data.holdings,
     scope,
-    exchangeRates: ASSISTANT_EXCHANGE_RATES,
+    exchangeRates,
   });
-  const assistantSummary = getCurrentAssistantSummary() ?? buildAssistantSummary(now);
+  const assistantSummary = buildAssistantSummaryFromData({ ...data, now, exchangeRates });
   const focus = focusSections(userMessage);
   const ledgerThisMonth = data.ledgerEntries.filter((entry) => entry.month === baseMonth);
   const expenses = ledgerThisMonth.filter((entry) => entry.type === 'expense_fixed' || entry.type === 'expense_variable');
@@ -87,10 +95,10 @@ export function buildFinanceChatContext(data = collectFinanceAssistantData(), no
   const savings = ledgerThisMonth.filter((entry) => entry.type === 'savings');
   const spendingByCategory = new Map<string, number>();
   for (const entry of expenses) spendingByCategory.set(entry.category, (spendingByCategory.get(entry.category) ?? 0) + entry.amount);
-  const plans = data.monthlyPlans.filter((entry) => entry.month === baseMonth && (scope === 'combined' || entry.owner === scope));
+  const plans = data.monthlyPlans.filter((entry) => entry.month === baseMonth && belongsToScope(entry.owner, scope));
   const overBudget = plans
-    .filter((entry) => (entry.actualAmount ?? 0) > entry.targetAmount)
-    .sort((a, b) => ((b.actualAmount ?? 0) - b.targetAmount) - ((a.actualAmount ?? 0) - a.targetAmount));
+    .filter((entry) => getPlanActualAmount(entry) > entry.targetAmount)
+    .sort((a, b) => (getPlanActualAmount(b) - b.targetAmount) - (getPlanActualAmount(a) - a.targetAmount));
   const recurring = data.ledgerEntries.filter((entry) => entry.is_fixed).slice(0, 8);
   const briefingLines = [
     ...(focus.assets ? assistantSummary.briefings.assets : []),
@@ -119,6 +127,7 @@ export function buildFinanceChatContext(data = collectFinanceAssistantData(), no
   };
 
   const lines = [
+    getExchangeRateNotice(),
     `현재: ${new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', dateStyle: 'medium', timeStyle: 'short' }).format(now)} · 기준월 ${baseMonth} · 범위 ${scope}`,
     '[assistantDataMart · Firestore/local · 코드 계산 aggregate/summary]',
     JSON.stringify(assistantSummaryForContext),
@@ -138,13 +147,13 @@ export function buildFinanceChatContext(data = collectFinanceAssistantData(), no
     `- 수입 ${krw(income.reduce((sum, entry) => sum + entry.amount, 0))} · 지출 ${krw(expenses.reduce((sum, entry) => sum + entry.amount, 0))} · 저축 ${krw(savings.reduce((sum, entry) => sum + entry.amount, 0))}`,
     ...[...spendingByCategory.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([category, amount]) => `- 지출 ${category}: ${krw(amount)}`),
     '[월간플랜]',
-    `- 항목 ${plans.length}개 · 완료 ${plans.filter((entry) => entry.isCompleted).length}개 · 목표 ${krw(plans.reduce((sum, entry) => sum + entry.targetAmount, 0))} · 실적 ${krw(plans.reduce((sum, entry) => sum + (entry.actualAmount ?? 0), 0))}`,
-    ...overBudget.slice(0, 5).map((entry) => `- 초과 ${entry.id} ${entry.title}: ${krw((entry.actualAmount ?? 0) - entry.targetAmount)} 초과`),
+    `- 항목 ${plans.length}개 · 완료 ${plans.filter((entry) => entry.isCompleted).length}개 · 목표 ${krw(plans.reduce((sum, entry) => sum + entry.targetAmount, 0))} · 실적 ${krw(plans.reduce((sum, entry) => sum + getPlanActualAmount(entry), 0))}`,
+    ...overBudget.slice(0, 5).map((entry) => `- 초과 ${entry.id} ${entry.title}: ${krw(getPlanActualAmount(entry) - entry.targetAmount)} 초과`),
     '[반복/고정 항목]',
     ...recurring.map((entry) => `- ${entry.date} ${entry.category} ${krw(entry.amount)}${entry.notes ? ` · ${entry.notes.slice(0, 40)}` : ''}`),
     '[계정 요약 · 원문명 제외]',
-    ...[...data.assets].sort(byAmountDesc).slice(0, 6).map((asset) => `- 자산 ${asset.category} ${asset.owner} ${asset.currency} ${krw(asset.amount)}`),
-    ...[...data.liabilities].sort(byAmountDesc).slice(0, 6).map((liability) => `- 부채 ${liability.category} ${liability.owner} ${liability.currency} ${krw(liability.amount)}`),
+    ...[...data.assets].sort(byAmountDesc).slice(0, 6).map((asset) => `- 자산 ${asset.category} ${asset.owner} ${asset.currency} ${krw(toKrwAmount(asset.amount, asset.currency, exchangeRates))}`),
+    ...[...data.liabilities].sort(byAmountDesc).slice(0, 6).map((liability) => `- 부채 ${liability.category} ${liability.owner} ${liability.currency} ${krw(toKrwAmount(liability.amount, liability.currency, exchangeRates))}`),
     `- 주식/ETF/RSU 보유 ${data.holdings.length}개 (상세 원문·계좌번호·토큰은 제공하지 않음)`,
   ];
 

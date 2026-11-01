@@ -1,5 +1,8 @@
+import { getCachedExchangeRates, getExchangeRates } from '@/lib/exchangeRate';
+import { weekStartKey, addDays, seoulDate } from '@/lib/calendar';
+import { getPlanActualAmount } from '@/lib/monthlyPlans';
 import { buildFinanceSnapshot } from '@/lib/assistantSnapshot';
-import { calculateFinancialSummary } from '@/lib/financialSummary';
+import { calculateFinancialSummary, belongsToScope } from '@/lib/financialSummary';
 import {
   getAssets,
   getAssistantSummaries,
@@ -12,11 +15,6 @@ import {
   upsertAssistantSummaries,
 } from '@/lib/store';
 import type { Asset, AssistantSummary, DashboardState, Income, LedgerEntry, Liability, MonthlyPlanEntry, StockHolding } from '@/types';
-
-const ASSISTANT_EXCHANGE_RATES = {
-  USD_TO_KRW: 1300,
-  EUR_TO_KRW: 1300 / 0.92,
-};
 
 const CATEGORY_LABELS: Record<string, string> = {
   cash: '현금성',
@@ -73,19 +71,6 @@ function linePercent(label: string, amount: number, total: number) {
 
 function monthKey(date: string) {
   return date.slice(0, 7);
-}
-
-function weekStartKey(date: string) {
-  const value = new Date(`${date}T00:00:00+09:00`);
-  const day = value.getDay();
-  value.setDate(value.getDate() - ((day + 6) % 7));
-  return value.toISOString().slice(0, 10);
-}
-
-function addDays(date: string, days: number) {
-  const value = new Date(`${date}T00:00:00+09:00`);
-  value.setDate(value.getDate() + days);
-  return value.toISOString().slice(0, 10);
 }
 
 function cashflowTotals(entries: LedgerEntry[]) {
@@ -176,7 +161,7 @@ function buildAggregates(
     };
   });
   const targetTotal = plans.reduce((sum, entry) => sum + entry.targetAmount, 0);
-  const actualTotal = plans.reduce((sum, entry) => sum + (entry.actualAmount ?? 0), 0);
+  const actualTotal = plans.reduce((sum, entry) => sum + getPlanActualAmount(entry), 0);
   const fixedEntries = ledgerEntries.filter((entry) => entry.month === month && entry.is_fixed && (entry.type === 'expense_fixed' || entry.type === 'savings'));
   const fixedAmount = fixedEntries.reduce((sum, entry) => sum + entry.amount, 0);
 
@@ -202,8 +187,8 @@ function buildAggregates(
       completedCount: plans.filter((entry) => entry.isCompleted).length,
       totalCount: plans.length,
       overBudget: plans
-        .filter((entry) => (entry.actualAmount ?? 0) > entry.targetAmount)
-        .map((entry) => ({ title: entry.title, category: CATEGORY_LABELS[entry.category] ?? entry.category, amount: entry.actualAmount ?? 0, budget: entry.targetAmount, overBy: (entry.actualAmount ?? 0) - entry.targetAmount }))
+        .filter((entry) => getPlanActualAmount(entry) > entry.targetAmount)
+        .map((entry) => ({ title: entry.title, category: CATEGORY_LABELS[entry.category] ?? entry.category, amount: getPlanActualAmount(entry), budget: entry.targetAmount, overBy: getPlanActualAmount(entry) - entry.targetAmount }))
         .sort((a, b) => b.overBy - a.overBy)
         .slice(0, 8),
     },
@@ -279,6 +264,7 @@ export function buildAssistantSummaryFromData({
   ledgerEntries,
   monthlyPlans,
   now = new Date(),
+  exchangeRates = getCachedExchangeRates(),
 }: {
   state: DashboardState;
   assets: Asset[];
@@ -288,16 +274,23 @@ export function buildAssistantSummaryFromData({
   ledgerEntries: LedgerEntry[];
   monthlyPlans: MonthlyPlanEntry[];
   now?: Date;
+  exchangeRates?: Record<string, number>;
 }): AssistantSummary {
-  const month = state.baseMonth || now.toISOString().slice(0, 7);
+  assets = assets.filter(entry => belongsToScope(entry.owner, state.scope));
+  liabilities = liabilities.filter(entry => belongsToScope(entry.owner, state.scope));
+  holdings = holdings.filter(entry => belongsToScope(entry.owner, state.scope));
+  income = income?.filter(entry => belongsToScope(entry.owner, state.scope));
+  ledgerEntries = ledgerEntries.filter(entry => belongsToScope(entry.owner, state.scope));
+  monthlyPlans = monthlyPlans.filter(entry => belongsToScope(entry.owner, state.scope));
+  const month = state.baseMonth || seoulDate(now).slice(0, 7);
   const summary = calculateFinancialSummary({
     assets,
     liabilities,
     holdings,
     scope: state.scope,
-    exchangeRates: ASSISTANT_EXCHANGE_RATES,
+    exchangeRates,
   });
-  const cashflow = buildFinanceSnapshot({ month, ledgerEntries, monthlyPlans });
+  const cashflow = buildFinanceSnapshot({ month, ledgerEntries, monthlyPlans, now });
   const aggregates = buildAggregates(month, ledgerEntries, monthlyPlans, cashflow, {
     assetCount: assets.length,
     cashAssetCount: assets.filter((asset) => asset.category === 'cash').length,
@@ -346,7 +339,7 @@ export function buildAssistantSummaryFromData({
   };
 }
 
-export function buildAssistantSummary(now = new Date()): AssistantSummary {
+export function buildAssistantSummary(now = new Date(), exchangeRates = getCachedExchangeRates()): AssistantSummary {
   return buildAssistantSummaryFromData({
     state: getDashboardState(),
     assets: getAssets(),
@@ -356,18 +349,19 @@ export function buildAssistantSummary(now = new Date()): AssistantSummary {
     ledgerEntries: getLedgerEntries(),
     monthlyPlans: getMonthlyPlanEntries(),
     now,
+    exchangeRates,
   });
 }
 
 export function getCurrentAssistantSummary() {
   const state = getDashboardState();
-  const month = state.baseMonth || new Date().toISOString().slice(0, 7);
+  const month = state.baseMonth || seoulDate().slice(0, 7);
   const id = `finance-summary-${month}-${state.scope}`;
   return getAssistantSummaries().find((summary) => summary.id === id);
 }
 
 export async function refreshAssistantSummary() {
-  const summary = buildAssistantSummary();
+  const summary = buildAssistantSummary(new Date(), await getExchangeRates());
   if (!await upsertAssistantSummaries([summary])) throw new Error('요약 서버 저장에 실패했습니다.');
   return summary;
 }

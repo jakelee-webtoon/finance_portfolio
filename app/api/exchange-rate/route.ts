@@ -69,29 +69,16 @@ async function fetchFallbackRates(): Promise<Record<string, number> | null> {
 }
 
 export async function GET() {
+  const headers = { 'Cache-Control': 'no-store, max-age=0' };
   try {
     const yahooUsdToKrw = await fetchUsdKrwFromYahoo();
+    if (yahooUsdToKrw) return NextResponse.json(buildRates(yahooUsdToKrw), { headers });
+  } catch { /* try the independent fallback provider */ }
 
-    if (yahooUsdToKrw) {
-      return NextResponse.json(buildRates(yahooUsdToKrw), {
-        headers: {
-          'Cache-Control': 'no-store, max-age=0',
-        },
-      });
-    }
-
+  try {
     const fallbackRates = await fetchFallbackRates();
+    if (fallbackRates) return NextResponse.json(fallbackRates, { headers });
+  } catch { /* the client will clearly identify its cached/fallback rates */ }
 
-    if (fallbackRates) {
-      return NextResponse.json(fallbackRates, {
-        headers: {
-          'Cache-Control': 'no-store, max-age=0',
-        },
-      });
-    }
-
-    return NextResponse.json(buildRates(1300), { status: 502 });
-  } catch (error) {
-    return NextResponse.json(buildRates(1300), { status: 500 });
-  }
+  return NextResponse.json(buildRates(1300), { status: 502, headers });
 }

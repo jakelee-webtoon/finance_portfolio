@@ -1,3 +1,4 @@
+import { getExchangeRates } from '@/lib/exchangeRate';
 import { calculateFinancialSummary } from '@/lib/financialSummary';
 import { buildFinanceSnapshot } from '@/lib/assistantSnapshot';
 import { buildAssistantSummary, refreshAssistantSummary } from '@/lib/assistantSummary';
@@ -41,11 +42,6 @@ const PLAN_CATEGORIES = new Set<PlanCategory>([
   'allowance',
   'debt_repayment',
 ]);
-
-const ASSISTANT_EXCHANGE_RATES = {
-  USD_TO_KRW: 1300,
-  EUR_TO_KRW: 1300 / 0.92,
-};
 
 function krw(value: number) {
   return `${new Intl.NumberFormat('ko-KR').format(Math.round(value))}원`;
@@ -284,7 +280,7 @@ export async function executeAssistantStep(step: AssistantStep): Promise<Assista
         liabilities: getLiabilities(),
         holdings: getStockHoldings(),
         scope: owner === 'joint' ? state.scope : owner,
-        exchangeRates: ASSISTANT_EXCHANGE_RATES,
+        exchangeRates: await getExchangeRates(),
       });
       return {
         message: `계정 요약을 조회했습니다.`,

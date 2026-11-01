@@ -1,3 +1,4 @@
+import { monthEnd, previousMonth, seoulDate } from './calendar';
 import type { LedgerEntry, MonthlyPlanEntry } from '@/types';
 
 export type FinanceSnapshot = {
@@ -37,18 +38,8 @@ export type FinanceSnapshot = {
   alerts: Array<{ level: 'info' | 'warning' | 'critical'; code: string; message: string }>;
 };
 
-function monthEnd(month: string) {
-  const [year, value] = month.split('-').map(Number);
-  return new Date(year, value, 0).toISOString().slice(0, 10);
-}
-
 function compactMerchant(entry: LedgerEntry) {
   return (entry.subcategory || entry.notes || entry.category).replace(/\s+/g, ' ').trim().slice(0, 40) || entry.category;
-}
-
-function previousMonth(month: string) {
-  const [year, value] = month.split('-').map(Number);
-  return new Date(year, value - 2, 1).toISOString().slice(0, 7);
 }
 
 function pct(part: number, whole: number) {
@@ -60,10 +51,12 @@ export function buildFinanceSnapshot({
   month,
   ledgerEntries,
   monthlyPlans,
+  now = new Date(),
 }: {
   month: string;
   ledgerEntries: LedgerEntry[];
   monthlyPlans: MonthlyPlanEntry[];
+  now?: Date;
 }): FinanceSnapshot {
   const monthLedger = ledgerEntries.filter((entry) => entry.month === month);
   const previousLedger = ledgerEntries.filter((entry) => entry.month === previousMonth(month));
@@ -111,7 +104,7 @@ export function buildFinanceSnapshot({
     .sort((a, b) => b.amount - a.amount)
     .slice(0, 12);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = seoulDate(now);
   const upcomingBills = monthLedger
     .filter((entry) => entry.is_fixed && entry.date >= today && (entry.type === 'expense_fixed' || entry.type === 'savings'))
     .sort((a, b) => a.date.localeCompare(b.date))

@@ -1,3 +1,4 @@
+import { seoulDate } from '@/lib/calendar';
 import { DashboardState, Asset, Income, Transaction, Portfolio, Liability, StockHolding, Apartment, Salary, Scope, LedgerEntry, MonthlyPlanEntry, AssistantSummary } from '@/types';
 import { mockTransactions, mockPortfolios } from '@/data/mockData';
 import { FIRESTORE_COLLECTIONS, applyItemChanges, stableData, type ItemChange, type FirestoreCollectionKey } from '@/lib/persistenceConfig';
@@ -259,7 +260,7 @@ export function getDashboardState(): DashboardState {
   if (typeof window === 'undefined') {
     return {
       householdName: '우리집',
-      baseMonth: new Date().toISOString().slice(0, 7),
+      baseMonth: seoulDate().slice(0, 7),
       scope: 'combined',
     };
   }
@@ -268,14 +269,14 @@ export function getDashboardState(): DashboardState {
   if (stored) {
     return readLocalJson(STORAGE_KEY, {
       householdName: '우리집',
-      baseMonth: new Date().toISOString().slice(0, 7),
+      baseMonth: seoulDate().slice(0, 7),
       scope: 'combined',
     });
   }
 
   const defaultState: DashboardState = {
     householdName: '우리집',
-    baseMonth: new Date().toISOString().slice(0, 7),
+    baseMonth: seoulDate().slice(0, 7),
     scope: 'combined',
   };
 

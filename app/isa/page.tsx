@@ -205,8 +205,6 @@ export default function IsaPage() {
         currentValue: 0,
         purchaseValue: 0,
         gainLoss: 0,
-        remainingAnnualContribution: annualContributionLimit,
-        remainingTotalContribution: totalContributionLimit,
         taxableProfit: 0,
         estimatedTax: 0,
       };
@@ -221,12 +219,10 @@ export default function IsaPage() {
       currentValue,
       purchaseValue,
       gainLoss,
-      remainingAnnualContribution: Math.max(0, annualContributionLimit - purchaseValue),
-      remainingTotalContribution: Math.max(0, totalContributionLimit - purchaseValue),
       taxableProfit,
       estimatedTax: taxableProfit * ISA_SEPARATE_TAX_RATE,
     };
-  }, [annualContributionLimit, filteredEtfs, exchangeRates, taxFreeLimit, totalContributionLimit]);
+  }, [filteredEtfs, exchangeRates, taxFreeLimit]);
 
   const categoryRows = useMemo(() => {
     return getEtfCategoryPerformance(filteredEtfs, exchangeRates);
@@ -626,9 +622,11 @@ export default function IsaPage() {
               badge={summary.gainLoss >= 0 ? 'PROFIT' : 'LOSS'}
               tone={summary.gainLoss >= 0 ? 'green' : 'rose'}
             />
-            <SummaryCard label="올해 남은 납입한도" value={formatKrw(summary.remainingAnnualContribution)} badge="2026" tone="indigo" />
-            <SummaryCard label="총 한도 잔여" value={formatKrw(summary.remainingTotalContribution)} badge="LIMIT" tone="amber" />
+            <SummaryCard label="보유 ETF 매수금액" value={formatKrw(summary.purchaseValue)} badge="COST" tone="indigo" />
+            <SummaryCard label="실제 잔여 납입한도" value="납입내역 확인 필요" badge="LIMIT" tone="amber" />
           </div>
+
+          <p className="-mt-5 mb-8 text-xs text-gray-500">보유 ETF 매수금액은 실제 계좌 납입액과 다릅니다. 잔여 납입한도는 증권사의 납입내역에서 확인해주세요.</p>
 
           <div className="grid grid-cols-12 gap-6 mb-8 items-stretch">
             <div className="col-span-12 h-full lg:col-span-4 bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
@@ -643,7 +641,7 @@ export default function IsaPage() {
                 <MetricRow label="예상 세금" value={formatKrw(summary.estimatedTax)} />
               </div>
               <p className="text-xs text-gray-400 mt-4 leading-relaxed">
-                실제 과세는 만기/해지 시 계좌 순이익 기준으로 정산됩니다.
+                보유 ETF 평가손익만 반영한 참고값입니다. 실현손익과 계좌별 정산은 반영하지 않습니다.
               </p>
             </div>
 

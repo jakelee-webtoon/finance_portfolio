@@ -1,9 +1,11 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts';
 import { LedgerEntry, LedgerType, LedgerCategory, DashboardState } from '@/types';
-import { getDashboardState, getLedgerEntries, saveLedgerEntries, syncFromFirebase } from '@/lib/store';
+import { getDashboardState, getLedgerEntries, saveLedgerEntries, syncFromFirebase, hasPendingSaves } from '@/lib/store';
+import { buildMissingFixedEntries } from '@/lib/recurringLedger';
+import { seoulDate } from '@/lib/calendar';
 import { useAuth } from '@/hooks/useAuth';
 import { useModalDismiss } from '@/hooks/useModalDismiss';
 
@@ -61,6 +63,8 @@ const COLORS = ['#3B82F6', '#EC4899', '#10B981', '#F59E0B', '#8B5CF6', '#EF4444'
 export default function LedgerPage() {
   const isAuthenticated = useAuth();
   const [state, setState] = useState<DashboardState | null>(null);
+  const [serverLoaded, setServerLoaded] = useState(false);
+  const repeating = useRef(false);
   const [entries, setEntriesState] = useState<LedgerEntry[]>([]);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -92,13 +96,9 @@ export default function LedgerPage() {
 
     // Firebase에서 데이터 동기화 후 로컬 데이터 로드
     const loadData = async () => {
-      await syncFromFirebase();
-
-      const dashboardState = getDashboardState();
+      const synced = await syncFromFirebase({ force: true });
       applyCachedData();
-
-      // 기준월 변경 시 고정비 자동 반복 로직 실행
-      checkAndCreateFixedEntries(dashboardState.baseMonth);
+      setServerLoaded(synced);
     };
     
     loadData();
@@ -109,11 +109,7 @@ export default function LedgerPage() {
     const handleStateChange = () => {
       const newState = getDashboardState();
       setState(newState);
-      
-      // 기준월이 변경되면 고정비 자동 반복 로직 실행
-      if (newState) {
-        checkAndCreateFixedEntries(newState.baseMonth);
-      }
+
     };
 
     window.addEventListener('dashboardStateChanged', handleStateChange);
@@ -125,67 +121,18 @@ export default function LedgerPage() {
     };
   }, []);
 
-  // 고정비 자동 반복 로직
-  const checkAndCreateFixedEntries = async (targetMonth: string) => {
-    if (!targetMonth) return;
-    
-    const allEntries = getLedgerEntries();
-    const targetYear = parseInt(targetMonth.split('-')[0]);
-    const targetMonthNum = parseInt(targetMonth.split('-')[1]);
-    
-    // 해당 월의 기존 항목들
-    const existingEntries = allEntries.filter(e => e.month === targetMonth);
-    const existingFixedIds = new Set(existingEntries.filter(e => e.is_fixed).map(e => e.id));
-    
-    // 이전 달의 고정비 항목들 찾기
-    const prevMonth = new Date(targetYear, targetMonthNum - 2, 1);
-    const prevMonthStr = `${prevMonth.getFullYear()}-${String(prevMonth.getMonth() + 1).padStart(2, '0')}`;
-    const prevMonthEntries = allEntries.filter(e => e.month === prevMonthStr && e.is_fixed);
-    
-    // 이전 달 고정비를 현재 달로 복사 (아직 없는 경우만)
-    const newEntries: LedgerEntry[] = [];
-    prevMonthEntries.forEach(prevEntry => {
-      // 이미 존재하는지 확인 (같은 카테고리, 같은 금액, 같은 소유자)
-      const exists = existingEntries.some(e => 
-        e.is_fixed && 
-        e.category === prevEntry.category &&
-        e.amount === prevEntry.amount &&
-        e.owner === prevEntry.owner &&
-        e.subcategory === prevEntry.subcategory
-      );
-      
-      if (!exists) {
-        const currentUser: 'husband' | 'wife' = state?.scope === 'husband' ? 'husband' : state?.scope === 'wife' ? 'wife' : 'husband';
-        const today = new Date().toISOString().split('T')[0];
-        
-        // 날짜를 해당 월의 첫째 날로 설정
-        const entryDate = `${targetMonth}-01`;
-        
-        const newEntry: LedgerEntry = {
-          ...prevEntry,
-          id: `ledger-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-          date: entryDate,
-          month: targetMonth,
-          as_of_date: today,
-          last_modified_by: currentUser,
-        };
-        newEntries.push(newEntry);
-      }
-    });
-    
-    if (newEntries.length > 0) {
-      const updated = [...allEntries, ...newEntries];
-      setEntriesState(updated);
-      if (!await saveLedgerEntries(newEntries)) return;
-    }
-  };
-
-  // 기준월 변경 시 고정비 자동 반복
+  // Repeat only after a successful server read. Stable IDs and a captured
+  // baseline keep repeated effects/devices from recreating edited rows.
   useEffect(() => {
-    if (state?.baseMonth) {
-      checkAndCreateFixedEntries(state.baseMonth);
-    }
-  }, [state?.baseMonth]);
+    if (!serverLoaded || !state?.baseMonth || repeating.current || hasPendingSaves()) return;
+    const allEntries = getLedgerEntries();
+    const modifiedBy = state.scope === 'wife' ? 'wife' : 'husband';
+    const newEntries = buildMissingFixedEntries(allEntries, state.baseMonth, seoulDate(), modifiedBy);
+    if (!newEntries.length) return;
+    repeating.current = true;
+    setEntriesState([...allEntries, ...newEntries]);
+    void saveLedgerEntries(newEntries, [], allEntries).finally(() => { repeating.current = false; });
+  }, [serverLoaded, state?.baseMonth]);
 
   // 현재 기준월의 항목들 필터링
   const currentMonthEntries = useMemo(() => {
