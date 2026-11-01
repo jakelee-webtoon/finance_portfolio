@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
 import MobileHelp from '@/components/MobileHelp';
 import { DashboardState, MonthlyPlanEntry, PlanCategory } from '@/types';
 import {
@@ -69,6 +70,8 @@ const MANAGED_PLAN_ITEMS = [
   monthlyTarget: number;
   annualTarget: number;
 }>;
+
+const ANNUAL_ACTUAL_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#3b82f6', '#a855f7', '#f43f5e'];
 
 const GOAL_PLAN_KEYS = new Set([
   'husband-investment',
@@ -176,6 +179,24 @@ export default function MonthlyPlanPage() {
       };
     });
   }, [monthlyPlans, state]);
+
+  const annualActuals = useMemo(() => {
+    if (!state?.baseMonth) return [];
+    const year = state.baseMonth.slice(0, 4);
+    return MANAGED_PLAN_ITEMS.map((item, index) => {
+      const entries = monthlyPlans.filter((entry) =>
+        entry.month.startsWith(`${year}-`) && getManagedPlanItem(entry)?.key === item.key
+      );
+      return {
+        key: item.key,
+        owner: item.owner,
+        name: `${getOwnerLabel(item.owner)} · ${entries.find((entry) => entry.month === state.baseMonth)?.title || item.title}`,
+        actual: entries.reduce((sum, entry) => sum + Math.max(0, entry.actualAmount ?? 0), 0),
+        color: ANNUAL_ACTUAL_COLORS[index],
+      };
+    }).filter((item) => state.scope === 'combined' || item.owner === state.scope);
+  }, [monthlyPlans, state]);
+  const annualActualTotal = annualActuals.reduce((sum, item) => sum + item.actual, 0);
 
   const createDefaultMonthlyPlan = useCallback(async () => {
     if (!hasLoadedMonthlyPlans || !state?.baseMonth) return;
@@ -321,7 +342,8 @@ export default function MonthlyPlanPage() {
               )}
             </div>
 
-            <div className="col-span-12 min-w-0 max-w-full overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm lg:col-span-4">
+            <div className="col-span-12 min-w-0 space-y-6 lg:col-span-4">
+            <div className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
               <div className="p-5 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
                 <div>
                   <h2 className="text-lg font-bold text-gray-900">2026 목표 진행</h2>
@@ -352,6 +374,47 @@ export default function MonthlyPlanPage() {
                   </div>
                 )}
               </div>
+            </div>
+            <section className="min-w-0 overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm" aria-labelledby="annual-actuals-title">
+              <div className="border-b border-gray-100 bg-gray-50/50 p-5">
+                <h2 id="annual-actuals-title" className="text-lg font-bold text-gray-900">{state.baseMonth.slice(0, 4)} 연간 실적</h2>
+                <p className="mt-1 text-xs text-gray-500">1월~12월에 입력한 실적의 항목별 금액과 비중</p>
+              </div>
+              <div className="p-5">
+                <div className="text-xs text-gray-500">연간 누적 실적</div>
+                <div className="mt-1 text-2xl font-bold text-gray-900">{formatKrw(annualActualTotal)}</div>
+                {annualActualTotal > 0 ? (
+                  <div className="mt-3 h-60 w-full" role="img" aria-label="연간 실적 항목별 비중. 상세 금액과 비중은 아래 목록에 표시됩니다.">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie data={annualActuals.filter((item) => item.actual > 0)} dataKey="actual" nameKey="name" cx="50%" cy="50%" outerRadius={100} stroke="#fff" strokeWidth={2}>
+                          {annualActuals.filter((item) => item.actual > 0).map((item) => (
+                            <Cell key={item.key} fill={item.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip formatter={(value: number) => [formatKrw(value), '실적']} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                ) : (
+                  <div className="py-10 text-center text-sm text-gray-400">실적을 입력하면 연간 파이그래프가 표시됩니다.</div>
+                )}
+                <ul className="mt-3 space-y-3">
+                  {annualActuals.map((item) => (
+                    <li key={item.key} className="flex items-start justify-between gap-3 text-xs">
+                      <div className="flex min-w-0 items-start gap-2">
+                        <span className="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: item.color }} />
+                        <span className="text-gray-700">{item.name}</span>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <div className="font-semibold text-gray-900">{formatKrw(item.actual)}</div>
+                        <div className="mt-0.5 text-gray-500">{(annualActualTotal > 0 ? item.actual / annualActualTotal * 100 : 0).toFixed(1)}%</div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </section>
             </div>
           </div>
         </div>
