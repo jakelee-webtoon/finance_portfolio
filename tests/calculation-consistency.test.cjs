@@ -205,3 +205,21 @@ test('rate API reports failure if both providers fail, instead of labelling fall
   assert.equal(requests, 2);
   assert.equal(response.status, 502);
 });
+
+test('successful Yahoo rate uses observed EUR rather than a fixed cross rate', async () => {
+  const response = await rateRoute(async url => ({ ok: true, json: async () =>
+    url.includes('yahoo') ? { chart: { result: [{ meta: { regularMarketPrice: 1600 } }] } } : { rates: { KRW: 1590, EUR: 0.8 } }
+  })).GET();
+  assert.equal(response.status, 200);
+  assert.equal(response.body.USD_TO_KRW, 1600);
+  assert.equal(response.body.USD_TO_EUR, 0.8);
+  assert.equal(response.body.EUR_TO_KRW, 2000);
+});
+
+test('Yahoo alone cannot label an unavailable EUR rate as live', async () => {
+  const response = await rateRoute(async url => {
+    if (!url.includes('yahoo')) throw new Error('EUR unavailable');
+    return { ok: true, json: async () => ({ chart: { result: [{ meta: { regularMarketPrice: 1600 } }] } }) };
+  }).GET();
+  assert.equal(response.status, 502);
+});

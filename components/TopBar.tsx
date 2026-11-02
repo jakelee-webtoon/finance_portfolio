@@ -451,6 +451,11 @@ export default function TopBar() {
                 </div>
               </section>
 
+              <button className="rounded-lg border border-gray-200 px-4 py-3 text-sm font-semibold text-gray-700" onClick={() => {
+                setIsSettingsOpen(false);
+                window.dispatchEvent(new Event('financeRestoreBackup'));
+              }}>미저장 변경 백업 불러오기</button>
+
               <section className="border-t border-gray-100 pt-5" aria-labelledby="display-settings-title">
                 <div className="mb-4">
                   <h3 id="display-settings-title" className="text-base font-extrabold text-gray-900">앱 설정</h3>

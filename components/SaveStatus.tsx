@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { discardPendingSaves, getPendingSaveBackup, hasPendingSaves, retryPendingSaves, syncFromFirebase } from '@/lib/store';
+import { useEffect, useRef, useState } from 'react';
+import { discardPendingSaves, getPendingSaveBackup, hasPendingSaves, restorePendingSaveBackup, retryPendingSaves, syncFromFirebase } from '@/lib/store';
 
 export default function SaveStatus() {
+  const backupInput = useRef<HTMLInputElement>(null);
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
@@ -13,17 +14,33 @@ export default function SaveStatus() {
       setPending(hasPendingSaves());
       if (event instanceof CustomEvent) setMessage(String(event.detail || ''));
     };
+    const warnBeforeClose = (event: BeforeUnloadEvent) => {
+      if (hasPendingSaves()) { event.preventDefault(); event.returnValue = ''; }
+    };
+    const openBackup = () => backupInput.current?.click();
+    window.addEventListener('beforeunload', warnBeforeClose);
+    window.addEventListener('financeRestoreBackup', openBackup);
     update();
     window.addEventListener('financeSaveStatus', update);
     window.addEventListener('storage', update);
     return () => {
+      window.removeEventListener('beforeunload', warnBeforeClose);
+      window.removeEventListener('financeRestoreBackup', openBackup);
       window.removeEventListener('financeSaveStatus', update);
       window.removeEventListener('storage', update);
     };
   }, []);
 
-  if (!pending && !message) return null;
-  return (
+  return (<>
+    <input ref={backupInput} type="file" accept="application/json,.json" className="hidden" aria-label="미저장 변경 백업 선택" onChange={async event => {
+      const file = event.target.files?.[0];
+      event.target.value = '';
+      if (!file) return;
+      try {
+        if (await restorePendingSaveBackup(JSON.parse(await file.text()))) window.location.reload();
+      } catch { setMessage('백업 파일을 읽지 못했습니다. JSON 백업 파일을 선택해 주세요.'); }
+    }} />
+    {(pending || message) && (
     <div role="alert" className="fixed bottom-24 left-3 right-3 z-[9998] mx-auto max-w-xl rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 shadow-lg">
       <p className="font-semibold">{pending ? '서버 저장이 완료되지 않은 변경이 있습니다.' : '저장하지 못했습니다.'}</p>
       <p className="mt-1 text-xs">{message || '변경은 이 브라우저에 보관됩니다. 저장 완료 전에는 다른 기기에 반영되지 않습니다.'}</p>
@@ -54,6 +71,6 @@ export default function SaveStatus() {
         }}>서버 자료로 되돌리기</button>}
         {!pending && <button onClick={() => setMessage('')}>닫기</button>}
       </div>
-    </div>
-  );
+    </div>)}
+  </>);
 }

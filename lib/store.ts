@@ -1,3 +1,4 @@
+import { buildRsuAssets, getRsuAssetIds } from '@/lib/rsuAssets';
 import { seoulDate } from '@/lib/calendar';
 import { DashboardState, Asset, Income, Transaction, Portfolio, Liability, StockHolding, Apartment, Salary, Scope, LedgerEntry, MonthlyPlanEntry, AssistantSummary } from '@/types';
 import { mockTransactions, mockPortfolios } from '@/data/mockData';
@@ -47,6 +48,41 @@ export function getPendingSaves(): PendingSaves {
 export function getPendingSaveBackup() {
   return { collections: getPendingSaves(), dashboard: readLocalJson(PENDING_DASHBOARD_KEY, null) };
 }
+// Restore only the local journal. Upload still requires the explicit retry action.
+export function restorePendingSaveBackup(value: unknown): Promise<boolean> {
+  return serializeSave(async () => {
+    try {
+      const backup = value as ReturnType<typeof getPendingSaveBackup>;
+      if (!backup || !backup.collections || typeof backup.collections !== 'object' || Array.isArray(backup.collections)) throw new Error('올바른 미저장 변경 백업이 아닙니다.');
+      if (hasPendingSaves()) throw new Error('현재 미저장 변경을 먼저 저장하거나 내려받아 주세요.');
+      const views = new Map<string, any[]>();
+      for (const [key, changes] of Object.entries(backup.collections)) {
+        if (!Object.prototype.hasOwnProperty.call(FIRESTORE_COLLECTIONS, key) || !Array.isArray(changes)) throw new Error('알 수 없는 백업 항목입니다.');
+        for (const change of changes) {
+          if (!change || typeof change.id !== 'string' || !change.id || change.id.includes('/') ||
+              !['before', 'after'].every(field => {
+                const item = change[field as 'before' | 'after'];
+                return item === null || (typeof item === 'object' && !Array.isArray(item) && item.id === change.id);
+              }) || (change.verifyOnly !== undefined && typeof change.verifyOnly !== 'boolean')) throw new Error('손상된 백업 항목입니다.');
+          if (change.verifyOnly && stableData(change.before) !== stableData(change.after)) throw new Error('손상된 확인 항목입니다.');
+        }
+        const storageKey = FIRESTORE_COLLECTIONS[key as FirestoreCollectionKey].storageKey;
+        views.set(storageKey, applyItemChanges(readLocalJson<any[]>(storageKey, []), changes.filter(change => !change.verifyOnly)));
+      }
+      const dashboard = backup.dashboard as DashboardState | null;
+      if (dashboard && (typeof dashboard.householdName !== 'string' || !/^\d{4}-(0[1-9]|1[0-2])$/.test(dashboard.baseMonth) || !['combined', 'husband', 'wife'].includes(dashboard.scope))) throw new Error('손상된 설정 백업입니다.');
+      writeLocalJson(PENDING_KEY, backup.collections);
+      if (dashboard) writeLocalJson(PENDING_DASHBOARD_KEY, dashboard);
+      for (const [key, items] of views) writeLocalJson(key, items);
+      if (dashboard) writeLocalJson(STORAGE_KEY, dashboard);
+      notifySaveStatus();
+      return true;
+    } catch (error) {
+      notifySaveStatus(error instanceof Error ? error.message : '백업을 불러오지 못했습니다.');
+      return false;
+    }
+  });
+}
 export function hasPendingSaves(): boolean {
   return !!localStorage.getItem(PENDING_DASHBOARD_KEY) || Object.values(getPendingSaves()).some(items => items && items.length > 0);
 }
@@ -81,43 +117,103 @@ async function flushPending(): Promise<boolean> {
   }
 }
 
-export function saveCollectionItems<T extends { id: string }>(key: FirestoreCollectionKey, items: T[], deletedIds: string[] = [], expectedItems?: T[], check?: { key: FirestoreCollectionKey; items: { id: string }[] }): Promise<boolean> {
+type CollectionUpdate = {
+  key: FirestoreCollectionKey;
+  items: any[];
+  deletedIds?: string[];
+  expectedItems?: any[];
+  verifyItems?: any[];
+};
+
+// Stage every linked record in one durable journal before the first request.
+// A closed tab can then retry the entire operation, never just its second half.
+export function saveCollectionGroup(updates: CollectionUpdate[] | (() => CollectionUpdate[])): Promise<boolean> {
   return serializeSave(async () => {
     if (typeof window === 'undefined') return false;
     try {
-      const config = FIRESTORE_COLLECTIONS[key];
-      const existing = readLocalJson<T[]>(config.storageKey, []);
-      const previous = new Map(existing.map(item => [item.id, item]));
-      const expected = expectedItems ? new Map(expectedItems.map(item => [item.id, item])) : previous;
       const pending = getPendingSaves();
-      const changes = new Map((pending[key] || []).map(change => [change.id, change]));
-      const record = (id: string, after: T | null) => {
-        const queued = changes.get(id);
-        const before = queued ? queued.before : expected.get(id) || null;
-        changes.set(id, { id, before, after });
-      };
-      items.forEach(item => record(item.id, item));
-      deletedIds.forEach(id => record(id, null));
-      pending[key] = [...changes.values()];
-      if (check) {
-        const checks = new Map((pending[check.key] || []).map(change => [change.id, change]));
-        check.items.forEach(item => {
-          if (!checks.has(item.id)) checks.set(item.id, { id: item.id, before: item, after: item, verifyOnly: true });
+      const views = new Map<FirestoreCollectionKey, any[]>();
+      for (const update of typeof updates === 'function' ? updates() : updates) {
+        const { key, items, deletedIds = [], expectedItems, verifyItems = [] } = update;
+        const existing = views.get(key) || readLocalJson<any[]>(FIRESTORE_COLLECTIONS[key].storageKey, []);
+        const expected = new Map((expectedItems || existing).map(item => [item.id, item]));
+        const changes = new Map((pending[key] || []).map(change => [change.id, change]));
+        const record = (id: string, after: any) => {
+          const queued = changes.get(id);
+          changes.set(id, { id, before: queued ? queued.before : expected.get(id) || null, after });
+        };
+        items.forEach(item => record(item.id, item));
+        deletedIds.forEach(id => record(id, null));
+        verifyItems.forEach(item => {
+          if (!changes.has(item.id)) changes.set(item.id, { id: item.id, before: item, after: item, verifyOnly: true });
         });
-        pending[check.key] = [...checks.values()];
+        pending[key] = [...changes.values()];
+        views.set(key, applyItemChanges(existing, [
+          ...items.map(item => ({ id: item.id, before: null, after: item })),
+          ...deletedIds.map(id => ({ id, before: null, after: null })),
+        ]));
       }
-      // Persist retry intent before changing the display cache.
       writeLocalJson(PENDING_KEY, pending);
-      writeLocalJson(config.storageKey, applyItemChanges(existing, [
-        ...items.map(item => ({ id: item.id, before: previous.get(item.id) || null, after: item })),
-        ...deletedIds.map(id => ({ id, before: previous.get(id) || null, after: null })),
-      ]));
+      for (const [key, items] of views) writeLocalJson(FIRESTORE_COLLECTIONS[key].storageKey, items);
       notifySaveStatus();
       return await flushPending();
     } catch (error) {
       notifySaveStatus(error instanceof Error ? error.message : '로컬 저장에 실패했습니다.');
       return false;
     }
+  });
+}
+
+export function saveCollectionItems<T extends { id: string }>(key: FirestoreCollectionKey, items: T[], deletedIds: string[] = [], expectedItems?: T[], check?: { key: FirestoreCollectionKey; items: { id: string }[] }): Promise<boolean> {
+  const updates: CollectionUpdate[] = [{ key, items, deletedIds, expectedItems }];
+  if (check) updates.push({ key: check.key, items: [], verifyItems: check.items });
+  return saveCollectionGroup(updates);
+}
+
+export function saveApartmentWithAssets(apartment: Apartment, items: Asset[], expectedApartments: Apartment[], expectedAssets: Asset[]): Promise<boolean> {
+  return saveCollectionGroup([
+    { key: 'apartments', items: [apartment], expectedItems: expectedApartments },
+    { key: 'assets', items, expectedItems: expectedAssets },
+  ]);
+}
+
+export function saveAssetWithApartment(asset: Asset, apartment: Apartment, expectedAssets: Asset[], expectedApartments: Apartment[]): Promise<boolean> {
+  return saveCollectionGroup([
+    { key: 'assets', items: [asset], expectedItems: expectedAssets },
+    { key: 'apartments', items: [apartment], expectedItems: expectedApartments },
+  ]);
+}
+
+export function deleteApartmentWithAssets(id: string, assetIds: string[], expectedApartments: Apartment[], expectedAssets: Asset[]): Promise<boolean> {
+  return saveCollectionGroup([
+    { key: 'apartments', items: [], deletedIds: [id], expectedItems: expectedApartments },
+    { key: 'assets', items: [], deletedIds: assetIds, expectedItems: expectedAssets },
+  ]);
+}
+
+export function saveRsuHoldings(items: StockHolding[], deletedIds: string[], expectedHoldings: StockHolding[] | undefined, modifiedBy: 'husband' | 'wife'): Promise<boolean> {
+  return saveCollectionGroup(() => {
+    const holdings = getStockHoldings();
+    const assets = getAssets();
+    const next = applyItemChanges(holdings, [
+      ...items.map(item => ({ id: item.id, before: null, after: item })),
+      ...deletedIds.map(id => ({ id, before: null, after: null })),
+    ]);
+    const generated = buildRsuAssets([], next, { asOfDate: seoulDate(), modifiedBy });
+    const changed = generated.flatMap(asset => {
+      const previous = assets.find(item => item.id === asset.id);
+      if (previous && previous.amount === asset.amount && previous.category === asset.category && previous.currency === asset.currency && previous.owner === asset.owner) return [];
+      return [{ ...previous, ...asset }];
+    });
+    // Never prune an unrelated group merely because its source is absent from a
+    // stale cache. Only groups represented by known sources may be replaced.
+    const knownIds = new Set(getRsuAssetIds([...holdings, ...(expectedHoldings || [])]));
+    const removed = assets.filter(asset => knownIds.has(asset.id) && !generated.some(item => item.id === asset.id)).map(asset => asset.id);
+    return [
+      { key: 'stockHoldings', items, deletedIds, expectedItems: expectedHoldings,
+        verifyItems: holdings.filter(item => item.type === 'rsu' || item.type === 'option') },
+      { key: 'assets', items: changed, deletedIds: removed, expectedItems: assets },
+    ];
   });
 }
 
@@ -388,8 +484,8 @@ export function getMonthlyPlanEntries(): MonthlyPlanEntry[] {
   return readLocalJson<MonthlyPlanEntry[]>(FIRESTORE_COLLECTIONS.monthlyPlanEntries.storageKey, []);
 }
 
-export function upsertMonthlyPlanEntries(entries: MonthlyPlanEntry[]): Promise<boolean> {
-  return saveCollectionItems('monthlyPlanEntries', entries);
+export function upsertMonthlyPlanEntries(entries: MonthlyPlanEntry[], expectedEntries?: MonthlyPlanEntry[]): Promise<boolean> {
+  return saveCollectionItems('monthlyPlanEntries', entries, [], expectedEntries);
 }
 
 export function getAssistantSummaries(): AssistantSummary[] {

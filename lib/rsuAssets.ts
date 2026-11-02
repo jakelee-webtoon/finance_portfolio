@@ -9,6 +9,14 @@ function idSegment(value: string): string {
   return value.trim().replace(/[^a-zA-Z0-9가-힣_-]+/g, '-');
 }
 
+export function getRsuAssetIds(holdings: StockHolding[]): string[] {
+  return holdings.filter(holding => holding.type === 'rsu' || holding.type === 'option').flatMap(holding => {
+    const currency = holding.currency || (holding.exchange === 'NASDAQ' || holding.exchange === 'NYSE' ? 'USD' : 'KRW');
+    const base = `asset-rsu-${idSegment(holding.name || holding.symbol)}-${holding.owner}-${currency}`;
+    return [`${base}-vested`, `${base}-unvested`];
+  });
+}
+
 /**
  * Rebuilds auto-generated RSU assets from the holdings source of truth.
  * Existing generated rows are removed first, so deleting the last holding

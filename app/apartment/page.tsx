@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import Table, { Column } from '@/components/Table';
 import { Apartment, DashboardState, Asset } from '@/types';
-import { getDashboardState, getApartments, saveApartments, getAssets, saveAssets, saveApartmentAssets, syncFromFirebase, hasPendingSaves } from '@/lib/store';
+import { getDashboardState, getApartments, getAssets, saveApartmentAssets, saveApartmentWithAssets, deleteApartmentWithAssets, syncFromFirebase, hasPendingSaves } from '@/lib/store';
 import { useAuth } from '@/hooks/useAuth';
 import { useModalDismiss } from '@/hooks/useModalDismiss';
 
@@ -93,7 +93,7 @@ export default function ApartmentPage() {
   }, [apartments, state]);
 
   // 아파트를 포트폴리오 자산으로 동기화 (async — Firestore까지 저장)
-  const syncApartmentToAsset = async (apartment: Apartment) => {
+  const syncApartmentToAsset = async (apartment: Apartment, saveSource = false) => {
     const assets = getAssets();
     const assetName = '아파트';
     const currentValue = apartment.currentPrice ?? apartment.purchasePrice;
@@ -110,7 +110,7 @@ export default function ApartmentPage() {
     const existingAsset = assets[existingAssetIndex];
     if (existingAsset && (existingAsset.name === assetName || existingAsset.name === oldAssetName) &&
         existingAsset.amount === currentValue && existingAsset.owner === apartment.owner &&
-        existingAsset.currency === apartment.currency) return true;
+        existingAsset.currency === apartment.currency) return saveSource ? saveApartmentWithAssets(apartment, [], apartments, assets) : true;
 
     let updatedAssets: Asset[];
     if (existingAssetIndex >= 0) {
@@ -141,7 +141,8 @@ export default function ApartmentPage() {
       };
       updatedAssets = [...assets, newAsset];
     }
-    return saveApartmentAssets(apartment, updatedAssets.filter(asset => asset.id === (existingAsset?.id || apartmentId)), assets);
+    const linkedAssets = updatedAssets.filter(asset => asset.id === (existingAsset?.id || apartmentId));
+    return saveSource ? saveApartmentWithAssets(apartment, linkedAssets, apartments, assets) : saveApartmentAssets(apartment, linkedAssets, assets);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -167,9 +168,7 @@ export default function ApartmentPage() {
         apt.id === editingId ? updatedApartment : apt
       );
       setApartmentsState(updated);
-      const saved = await saveApartments([updatedApartment], [], apartments);
-      const linked = await syncApartmentToAsset(updatedApartment);
-      if (!saved || !linked) return;
+      if (!await syncApartmentToAsset(updatedApartment, true)) return;
       setEditingId(null);
     } else {
       const newApartment: Apartment = {
@@ -187,9 +186,7 @@ export default function ApartmentPage() {
       const allApartments = getApartments();
       const updated = [...allApartments, newApartment];
       setApartmentsState(updated);
-      const saved = await saveApartments([newApartment], [], apartments);
-      const linked = await syncApartmentToAsset(newApartment);
-      if (!saved || !linked) {
+      if (!await syncApartmentToAsset(newApartment, true)) {
         setEditingId(newApartment.id);
         return;
       }
@@ -239,14 +236,10 @@ export default function ApartmentPage() {
     const apartment = allApartments.find((apt) => apt.id === id);
     const updated = allApartments.filter((apt) => apt.id !== id);
     setApartmentsState(updated);
-    const saved = await saveApartments([], [id], apartments);
-    if (apartment) {
-      const assets = getAssets();
-      const linked = assets.find(asset => asset.id === `asset-apt-${apartment.id}` ||
-        (asset.category === 'real_estate' && asset.name === `${apartment.apartmentName} (${apartment.dong}동 ${apartment.ho}호)`));
-      if (linked && !await saveAssets([], [linked.id], assets)) return;
-    }
-    if (!saved) return;
+    const assets = getAssets();
+    const linked = apartment && assets.find(asset => asset.id === `asset-apt-${apartment.id}` ||
+      (asset.category === 'real_estate' && asset.name === `${apartment.apartmentName} (${apartment.dong}동 ${apartment.ho}호)`));
+    if (!await deleteApartmentWithAssets(id, linked ? [linked.id] : [], apartments, assets)) return;
   };
 
 

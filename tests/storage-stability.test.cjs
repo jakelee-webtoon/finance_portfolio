@@ -232,8 +232,9 @@ test('dashboard preference failures are visible and retryable', async () => {
 
 // Execute the actual apartment page effects with a tiny isolated hook host.
 // This tests the page's write timing, not a second implementation of its policy.
-function apartmentPage(a, page = 'apartment') {
+function apartmentPage(a, page = 'apartment', overrides = {}) {
   const slots = []; let cursor = 0; let effects = [];
+  const session = new Map();
   const react = {
     createElement: (type, props, ...children) => ({ type, props: { ...props, children } }),
     useState: initial => {
@@ -263,6 +264,7 @@ function apartmentPage(a, page = 'apartment') {
   vm.runInNewContext(source, {
     module: mod, exports: mod.exports, React: react,
     require: request => {
+      if (overrides[request]) return overrides[request];
       if (request === 'react') return react;
       if (request === 'recharts') return {};
       if (request.startsWith('@/lib/') && request !== '@/lib/store') return a.load(path.join(root, request.slice(2)) + '.ts');
@@ -272,7 +274,9 @@ function apartmentPage(a, page = 'apartment') {
       if (request === '@/components/Table' || request === '@/components/MobileHelp') return { default: () => null };
       throw new Error(`Unexpected page dependency ${request}`);
     },
-    window: { addEventListener() {}, removeEventListener() {} }, Date, console,
+    window: { addEventListener() {}, removeEventListener() {} },
+    sessionStorage: { getItem: key => session.get(key) ?? null, setItem: (key, value) => session.set(key, value) },
+    Date, console,
   }, { filename });
   return async function render() {
     cursor = 0; effects = [];
@@ -470,4 +474,144 @@ test('two actual monthly-plan pages create the same defaults without duplicate d
   const ids = [...server.keys()].filter(key => key.includes('/monthlyPlanEntries/'));
   assert.equal(ids.length, 6);
   assert.equal(ids.filter(key => key.endsWith('/plan-2026-11-husband-cash')).length, 1);
+});
+
+test('RSU quote completion cannot delete an asset added by another tab during the request', async () => {
+  const server = new Map();
+  const holding = { ...row('h1'), name: 'AAA', symbol: 'AAA', type: 'rsu', quantity: 1, totalQuantity: 1, purchasePrice: 0, currentPrice: 10, vestingDate: '2020-01-01' };
+  seed(server, 'stockHoldings', holding);
+  server.set('users/default/settings/dashboard', { baseMonth: '2026-11', scope: 'combined', householdName: '우리집' });
+  const a = device(server);
+  const { buildRsuAssets } = a.load(path.join(root, 'lib/rsuAssets.ts'));
+  const options = { asOfDate: '2026-11-01', modifiedBy: 'husband' };
+  seed(server, 'assets', buildRsuAssets([], [holding], options)[0]);
+  let release;
+  const render = apartmentPage(a, 'rsu', {
+    '@/components/Toast': { useToast: () => ({ showToast() {} }) },
+    '@/lib/stockApi': { getStockPrice: () => new Promise(resolve => { release = resolve; }) },
+  });
+  await render(); await render();
+  assert.ok(release, 'automatic quote request should be waiting');
+  const b = device(server); await b.store.syncFromFirebase({ force: true });
+  const partnerHolding = { ...holding, id: 'h2', name: 'BBB', symbol: 'BBB' };
+  assert.equal(await b.store.saveStockHoldings([partnerHolding]), true);
+  const partnerAsset = buildRsuAssets([], [partnerHolding], options)[0];
+  assert.equal(await b.store.saveAssets([partnerAsset]), true);
+  // Same-origin tabs share localStorage, even while the old callback is waiting.
+  for (const key of ['finance-assets', 'finance-stock-holdings']) a.storage.set(key, b.storage.get(key));
+  release(10);
+  await new Promise(resolve => setImmediate(resolve));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(server.has(documentPath('stockHoldings', 'h2')), true);
+  assert.equal(server.has(documentPath('assets', partnerAsset.id)), true);
+  assert.equal(server.get(documentPath('assets', partnerAsset.id)).amount, 10);
+  assert.equal(a.store.hasPendingSaves(), false);
+});
+
+test('stale monthly-plan note edit cannot roll back another tab actual amount', async () => {
+  const server = new Map();
+  const entry = { ...row('plan-cash'), planKey: 'husband-cash', month: '2026-11', category: 'cash_reserve', title: '현금 모으기', targetAmount: 600, actualAmount: 100, isCompleted: false };
+  seed(server, 'monthlyPlanEntries', entry);
+  server.set('users/default/settings/dashboard', { baseMonth: '2026-11', scope: 'combined', householdName: '우리집' });
+  const a = device(server); const b = device(server);
+  const render = apartmentPage(b, 'monthly-plan');
+  await render(); const tree = await render();
+  const findOwner = node => {
+    if (!node || typeof node !== 'object') return null;
+    if (Array.isArray(node)) return node.map(findOwner).find(Boolean);
+    if (node.type?.name === 'MonthlyOwnerPlanCard' && node.props.owner === 'husband') return node;
+    return findOwner(node.props?.children);
+  };
+  const owner = findOwner(tree); assert.ok(owner);
+  await a.store.syncFromFirebase({ force: true });
+  assert.equal(await a.store.upsertMonthlyPlanEntries([{ ...entry, actualAmount: 200 }]), true);
+  b.storage.set('finance-monthly-plan-entries', a.storage.get('finance-monthly-plan-entries'));
+  await owner.props.onNotesChange(owner.props.entries[0], '새 메모');
+  const saved = server.get(documentPath('monthlyPlanEntries', entry.id));
+  assert.equal(saved.actualAmount, 200);
+  assert.equal(saved.notes, undefined);
+  assert.equal(b.store.hasPendingSaves(), true);
+  assert.match(b.events.at(-1).detail, /다른 기기/);
+  assert.equal(b.store.getPendingSaves().monthlyPlanEntries[0].after.notes, '새 메모');
+});
+
+test('linked apartment and asset changes fail and retry as one operation', async () => {
+  const server = new Map(); const a = device(server);
+  const apartment = { ...row('apt-atomic'), name: '우리집' };
+  const asset = row('asset-atomic');
+  a.control.failWrite = true;
+  assert.equal(await a.store.saveApartmentWithAssets(apartment, [asset], [], []), false);
+  assert.equal(server.size, 0);
+  assert.equal(a.store.getPendingSaves().apartments.length, 1);
+  assert.equal(a.store.getPendingSaves().assets.length, 1);
+  a.control.failWrite = false;
+  assert.equal(await a.store.retryPendingSaves(), true);
+  assert.ok(server.has(documentPath('apartments', apartment.id)));
+  assert.ok(server.has(documentPath('assets', asset.id)));
+  assert.equal(await a.store.deleteApartmentWithAssets(apartment.id, [asset.id], [apartment], [asset]), true);
+  assert.equal(server.size, 0);
+});
+
+test('backup restores locally without writes and retains conflict checks on retry', async () => {
+  const server = new Map(); const a = device(server);
+  a.control.failWrite = true;
+  assert.equal(await a.store.saveAssets([row('backup-asset')]), false);
+  const backup = JSON.parse(JSON.stringify(a.store.getPendingSaveBackup()));
+  const b = device(server);
+  assert.equal(await b.store.restorePendingSaveBackup(backup), true);
+  assert.equal(b.control.writes, 0);
+  assert.equal(b.store.hasPendingSaves(), true);
+  assert.equal(await b.store.restorePendingSaveBackup(backup), false, 'existing unsaved changes must not be replaced');
+  assert.equal(await b.store.retryPendingSaves(), true);
+  assert.ok(server.has(documentPath('assets', 'backup-asset')));
+});
+
+test('invalid backup and oversized atomic operation never partially write', async () => {
+  const server = new Map(); const a = device(server);
+  assert.equal(await a.store.restorePendingSaveBackup({ collections: { assets: [{ id: 'bad', before: null, after: { id: 'different' } }] } }), false);
+  assert.equal(a.store.hasPendingSaves(), false);
+  assert.equal(await a.store.saveAssets(Array.from({ length: 451 }, (_, index) => row(`large-${index}`))), false);
+  assert.equal(server.size, 0);
+  assert.equal(a.store.getPendingSaves().assets.length, 451);
+});
+
+test('income-only assistant respects scope, currency and excludes one-time recurring income', async () => {
+  const server = new Map(); const a = device(server);
+  const incomes = [
+    { ...row('monthly-usd'), amount: 10, currency: 'USD', period: 'monthly' },
+    { ...row('yearly'), amount: 1200, owner: 'joint', period: 'yearly' },
+    { ...row('spouse'), amount: 999999, owner: 'wife', period: 'monthly' },
+    { ...row('one-time'), amount: 500, period: 'one-time' },
+  ];
+  a.storage.set('finance-income', JSON.stringify(incomes));
+  a.storage.set('finance-dashboard-state', JSON.stringify({ householdName: '우리집', baseMonth: '2026-11', scope: 'husband' }));
+  const rates = a.load(path.join(root, 'lib/exchangeRate.ts')).getFallbackRates();
+  a.storage.set('exchange-rate-cache', JSON.stringify({ rates: { ...rates, USD_TO_KRW: 1600 }, version: 2, timestamp: Date.now() }));
+  const outcome = await a.load(path.join(root, 'lib/assistantExecutor.ts')).executeAssistantStep({ action: 'query_cashflow', payload: {} });
+  assert.match(JSON.stringify(outcome), /16,100/);
+  assert.match(JSON.stringify(outcome), /500원/);
+  assert.doesNotMatch(JSON.stringify(outcome), /999,999/);
+});
+
+test('linked source conflict aborts all asset writes', async () => {
+  const server = new Map(); const apartment = row('apt-conflict'); const asset = row('asset-conflict');
+  seed(server, 'apartments', apartment); seed(server, 'assets', asset);
+  const a = device(server); await a.store.syncFromFirebase({ force: true });
+  const expectedApartments = a.store.getApartments(); const expectedAssets = a.store.getAssets();
+  const b = device(server); await b.store.syncFromFirebase({ force: true });
+  assert.equal(await b.store.saveApartments([{ ...b.store.getApartments()[0], name: '다른 기기 수정' }]), true);
+  assert.equal(await a.store.saveApartmentWithAssets({ ...expectedApartments[0], name: '오래된 수정' }, [{ ...expectedAssets[0], amount: 300 }], expectedApartments, expectedAssets), false);
+  assert.equal(server.get(documentPath('assets', asset.id)).amount, 100);
+  assert.equal(server.get(documentPath('apartments', apartment.id)).name, '다른 기기 수정');
+});
+
+test('linked operation retries safely after server commit but lost acknowledgement', async () => {
+  const server = new Map(); const a = device(server);
+  a.control.failAfterCommit = true;
+  assert.equal(await a.store.saveApartmentWithAssets(row('apt-ack'), [row('asset-ack')], [], []), false);
+  assert.equal(server.size, 2);
+  a.control.failAfterCommit = false;
+  assert.equal(await a.store.retryPendingSaves(), true);
+  assert.equal(server.size, 2);
+  assert.equal(a.store.hasPendingSaves(), false);
 });

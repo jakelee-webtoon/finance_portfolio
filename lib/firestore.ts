@@ -468,8 +468,9 @@ export async function savePendingChanges(pending: Partial<Record<FirestoreCollec
   const changes = (Object.keys(pending) as FirestoreCollectionKey[]).flatMap(key =>
     (pending[key] || []).map(change => ({ key, change }))
   );
-  for (let offset = 0; offset < changes.length; offset += 450) {
-    const chunk = changes.slice(offset, offset + 450);
+  if (changes.length > 450) throw new Error('미저장 항목이 450개를 초과해 저장을 중단했습니다. 변경을 백업한 뒤 항목을 나누어 확인해주세요.');
+  if (changes.length > 0) {
+    const chunk = changes;
     await runTransaction(firestore, async transaction => {
       const refs = chunk.map(({ key, change }) => doc(firestore, getCollectionPath(FIRESTORE_COLLECTIONS[key].collectionName), change.id));
       const snapshots = await Promise.all(refs.map(ref => transaction.get(ref)));

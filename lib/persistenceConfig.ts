@@ -75,7 +75,9 @@ export function removeUndefinedDeep<T>(value: T): T {
   }
   if (!value || typeof value !== 'object') return value;
   if (value instanceof Date) return value;
-  if ((value as { constructor?: { name?: string } }).constructor?.name === 'Timestamp') return value;
+  // Production minification renames SDK classes; keep Timestamp values native.
+  const timestamp = value as { toDate?: unknown; toMillis?: unknown };
+  if (typeof timestamp.toDate === 'function' && typeof timestamp.toMillis === 'function') return value;
   return Object.fromEntries(
     Object.entries(value as Record<string, unknown>)
       .filter(([, item]) => item !== undefined)

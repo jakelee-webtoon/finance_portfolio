@@ -5,7 +5,7 @@ export const revalidate = 0;
 
 const FALLBACK_API_URL = 'https://api.exchangerate-api.com/v4/latest/USD';
 
-function buildRates(usdToKrw: number, usdToEur: number = 0.92): Record<string, number> {
+function buildRates(usdToKrw: number, usdToEur: number): Record<string, number> {
   return {
     USD: 1,
     KRW: usdToKrw,
@@ -45,7 +45,7 @@ async function fetchUsdKrwFromYahoo(): Promise<number | null> {
     : null;
 
   const price = typeof metaPrice === 'number' && metaPrice > 0 ? metaPrice : latestClose;
-  return typeof price === 'number' && price > 0 ? price : null;
+  return typeof price === 'number' && Number.isFinite(price) && price > 0 ? price : null;
 }
 
 async function fetchFallbackRates(): Promise<Record<string, number> | null> {
@@ -65,20 +65,17 @@ async function fetchFallbackRates(): Promise<Record<string, number> | null> {
     return null;
   }
 
-  return buildRates(usdToKrw, Number.isFinite(usdToEur) && usdToEur > 0 ? usdToEur : 0.92);
+  if (!Number.isFinite(usdToEur) || usdToEur <= 0) return null;
+  return buildRates(usdToKrw, usdToEur);
 }
 
 export async function GET() {
   const headers = { 'Cache-Control': 'no-store, max-age=0' };
-  try {
-    const yahooUsdToKrw = await fetchUsdKrwFromYahoo();
-    if (yahooUsdToKrw) return NextResponse.json(buildRates(yahooUsdToKrw), { headers });
-  } catch { /* try the independent fallback provider */ }
-
-  try {
-    const fallbackRates = await fetchFallbackRates();
-    if (fallbackRates) return NextResponse.json(fallbackRates, { headers });
-  } catch { /* the client will clearly identify its cached/fallback rates */ }
-
-  return NextResponse.json(buildRates(1300), { status: 502, headers });
+  const [yahoo, provider] = await Promise.allSettled([fetchUsdKrwFromYahoo(), fetchFallbackRates()]);
+  const usdToKrw = yahoo.status === 'fulfilled' ? yahoo.value : null;
+  const rates = provider.status === 'fulfilled' ? provider.value : null;
+  // Publish a successful response only when both currency legs were observed.
+  // A fixed EUR cross-rate must never be presented as a fresh market quote.
+  if (rates) return NextResponse.json(buildRates(usdToKrw || rates.USD_TO_KRW, rates.USD_TO_EUR), { headers });
+  return NextResponse.json(buildRates(1300, 0.92), { status: 502, headers });
 }

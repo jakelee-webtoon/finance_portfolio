@@ -133,3 +133,16 @@ test('Firestore serialization removes nested undefined values before writes', ()
     }
   );
 });
+
+test('Firestore serialization preserves timestamps when production renames their class', () => {
+  class t {
+    constructor() { this.seconds = 1793491200; this.nanoseconds = 0; }
+    toMillis() { return this.seconds * 1000; }
+    toDate() { return new Date(this.toMillis()); }
+  }
+  const timestamp = new t();
+  const prepared = removeUndefinedDeep({ date: timestamp, nested: { date: timestamp, omitted: undefined } });
+  assert.equal(prepared.date, timestamp);
+  assert.equal(prepared.nested.date, timestamp);
+  assert.equal('omitted' in prepared.nested, false);
+});

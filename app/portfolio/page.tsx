@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import Table, { Column } from '@/components/Table';
 import { Asset, Liability, DashboardState, StockHolding } from '@/types';
-import { getDashboardState, getAssets, saveAssets, getLiabilities, saveLiabilities, getApartments, saveAssetApartment, getStockHoldings, syncFromFirebase } from '@/lib/store';
+import { getDashboardState, getAssets, saveAssets, getLiabilities, saveLiabilities, getApartments, saveAssetWithApartment, deleteApartmentWithAssets, getStockHoldings, syncFromFirebase } from '@/lib/store';
 import { getExchangeRates, convertCurrency } from '@/lib/exchangeRate';
 import { useAuth } from '@/hooks/useAuth';
 import { useModalDismiss } from '@/hooks/useModalDismiss';
@@ -130,8 +130,8 @@ export default function PortfolioPage() {
   } = financialSummary;
 
   // 포트폴리오 자산을 아파트로 동기화
-  const syncAssetToApartment = async (asset: Asset) => {
-    if (asset.category !== 'real_estate') return;
+  const saveAssetAndLinkedApartment = async (asset: Asset) => {
+    if (asset.category !== 'real_estate') return saveAssets([asset], [], assets);
     const apartments = getApartments();
     const apartmentIndex = apartments.findIndex(apt =>
       asset.id === `asset-apt-${apt.id}` ||
@@ -140,7 +140,7 @@ export default function PortfolioPage() {
 
     if (apartmentIndex >= 0) {
       const apartment = apartments[apartmentIndex];
-      if (apartment.currentPrice === asset.amount && apartment.owner === asset.owner && apartment.currency === asset.currency) return true;
+      if (apartment.currentPrice === asset.amount && apartment.owner === asset.owner && apartment.currency === asset.currency) return saveAssets([asset], [], assets);
       const today = new Date().toISOString().split('T')[0];
       const currentUser: 'husband' | 'wife' = state?.scope === 'husband' ? 'husband' : state?.scope === 'wife' ? 'wife' : 'husband';
       
@@ -158,8 +158,9 @@ export default function PortfolioPage() {
             }
           : apt
       );
-      return saveAssetApartment(asset, updatedApartments[apartmentIndex], apartments);
+      return saveAssetWithApartment(asset, updatedApartments[apartmentIndex], assets, apartments);
     }
+    return saveAssets([asset], [], assets);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -198,12 +199,7 @@ export default function PortfolioPage() {
           asset.id === editingId ? updatedAsset : asset
         );
         setAssetsState(updated);
-        if (!await saveAssets([updatedAsset], [], assets)) return;
-
-        // 아파트도 동기화 (real_estate 카테고리이고 아파트명 형식인 경우)
-        if (updatedAsset.category === 'real_estate') {
-          if (await syncAssetToApartment(updatedAsset) === false) return;
-        }
+        if (!await saveAssetAndLinkedApartment(updatedAsset)) return;
         
         setEditingId(null);
         showToast('정보가 수정되었습니다.');
@@ -224,15 +220,11 @@ export default function PortfolioPage() {
         const allAssets = getAssets();
         const updated = [...allAssets, newAsset];
         setAssetsState(updated);
-        if (!await saveAssets([newAsset], [], assets)) {
+        if (!await saveAssetAndLinkedApartment(newAsset)) {
           setEditingId(newAsset.id);
           return;
         }
 
-        // 아파트도 동기화 (real_estate 카테고리인 경우)
-        if (newAsset.category === 'real_estate') {
-          if (await syncAssetToApartment(newAsset) === false) return;
-        }
         showToast('새로운 자산이 추가되었습니다.');
       }
     } else {
@@ -331,11 +323,14 @@ export default function PortfolioPage() {
   };
 
   const handleDeleteAsset = async (id: string) => {
-    if (!confirm('정말 삭제하시겠습니까?')) return;
     const allAssets = getAssets();
-    const updated = allAssets.filter((asset) => asset.id !== id);
-    setAssetsState(updated);
-    if (!await saveAssets([], [id], assets)) return;
+    const asset = allAssets.find(item => item.id === id);
+    const apartments = getApartments();
+    const linked = asset?.category === 'real_estate' && apartments.find(apt => asset.id === `asset-apt-${apt.id}` || asset.name === `${apt.apartmentName} (${apt.dong}동 ${apt.ho}호)`);
+    if (!confirm(linked ? '연결된 아파트 정보와 자산을 함께 삭제하시겠습니까?' : '정말 삭제하시겠습니까?')) return;
+    setAssetsState(allAssets.filter(item => item.id !== id));
+    const saved = linked ? await deleteApartmentWithAssets(linked.id, [id], apartments, assets) : await saveAssets([], [id], assets);
+    if (!saved) return;
     showToast('자산이 삭제되었습니다.');
   };
 

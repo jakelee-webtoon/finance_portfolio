@@ -157,7 +157,7 @@ export default function MonthlyPlanPage() {
     if (missingEntries.length === 0) return;
     const nextEntries = [...monthlyPlans, ...missingEntries];
     setMonthlyPlans(nextEntries);
-    await upsertMonthlyPlanEntries(missingEntries);
+    await upsertMonthlyPlanEntries(missingEntries, monthlyPlans);
   }, [hasLoadedMonthlyPlans, monthlyPlans, state]);
 
   const updateMonthlyPlanEntry = useCallback(async (id: string, patch: Partial<MonthlyPlanEntry>) => {
@@ -172,7 +172,7 @@ export default function MonthlyPlanPage() {
     });
     if (!updatedEntry) return;
     setMonthlyPlans(nextEntries);
-    await upsertMonthlyPlanEntries([updatedEntry]);
+    await upsertMonthlyPlanEntries([updatedEntry], monthlyPlans);
   }, [hasLoadedMonthlyPlans, monthlyPlans, state?.scope]);
 
   if (isAuthenticated !== true) {

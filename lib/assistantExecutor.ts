@@ -1,5 +1,6 @@
+import { toKrwAmount } from '@/lib/investments';
 import { getExchangeRates } from '@/lib/exchangeRate';
-import { calculateFinancialSummary } from '@/lib/financialSummary';
+import { calculateFinancialSummary, belongsToScope } from '@/lib/financialSummary';
 import { buildFinanceSnapshot } from '@/lib/assistantSnapshot';
 import { buildAssistantSummary, refreshAssistantSummary } from '@/lib/assistantSummary';
 import {
@@ -226,7 +227,7 @@ export async function executeAssistantStep(step: AssistantStep): Promise<Assista
         as_of_date: new Date().toISOString().slice(0, 10),
         last_modified_by: state.scope === 'wife' ? 'wife' : 'husband',
       };
-      if (!await upsertMonthlyPlanEntries([entry])) throw new Error('서버 저장에 실패했습니다. 미저장 변경 알림에서 재시도해주세요.');
+      if (!await upsertMonthlyPlanEntries([entry], [])) throw new Error('서버 저장에 실패했습니다. 미저장 변경 알림에서 재시도해주세요.');
       await refreshSummaryAfterMutation();
       return {
         message: `월간플랜에 ${entry.title}을 추가했습니다.`,
@@ -244,7 +245,7 @@ export async function executeAssistantStep(step: AssistantStep): Promise<Assista
         isCompleted: typeof step.payload.completed === 'boolean' ? step.payload.completed : entry.isCompleted,
         as_of_date: new Date().toISOString().slice(0, 10),
       };
-      if (!await upsertMonthlyPlanEntries([updated])) throw new Error('서버 저장에 실패했습니다. 미저장 변경 알림에서 재시도해주세요.');
+      if (!await upsertMonthlyPlanEntries([updated], plans)) throw new Error('서버 저장에 실패했습니다. 미저장 변경 알림에서 재시도해주세요.');
       await refreshSummaryAfterMutation();
       return {
         message: `${entry.title}을 수정했습니다.`,
@@ -298,14 +299,21 @@ export async function executeAssistantStep(step: AssistantStep): Promise<Assista
         return unavailableTabResult('현금흐름 데이터 없음', '현금/수입/가계부 탭을 아직 사용하지 않아 현금흐름은 답하지 않겠습니다.', 'cash');
       }
       if (dataQuality.currentMonthLedgerEntryCount === 0 && dataQuality.incomeCount > 0) {
-        const monthlyIncome = getIncome().reduce((sum, entry) => {
-          if (entry.period === 'monthly') return sum + entry.amount;
-          if (entry.period === 'yearly') return sum + Math.round(entry.amount / 12);
-          return sum + entry.amount;
+        const scope = getDashboardState().scope;
+        const rates = await getExchangeRates();
+        const incomes = getIncome().filter(entry => belongsToScope(entry.owner, scope));
+        const monthlyIncome = incomes.reduce((sum, entry) => {
+          const amount = toKrwAmount(entry.amount, entry.currency, rates);
+          if (entry.period === 'monthly') return sum + amount;
+          if (entry.period === 'yearly') return sum + amount / 12;
+          return sum;
         }, 0);
+        const oneTimeIncome = incomes.filter(entry => entry.period === 'one-time')
+          .reduce((sum, entry) => sum + toKrwAmount(entry.amount, entry.currency, rates), 0);
         return {
           message: '수입 탭 기준으로만 확인했습니다.',
-          results: [result('cashflow', '수입 데이터만 있음', `월 환산 수입 ${krw(monthlyIncome)}`, [
+          results: [result('cashflow', '수입 데이터만 있음', `월 환산 정기 수입 ${krw(monthlyIncome)}`, [
+            ...(oneTimeIncome > 0 ? [{ title: '등록된 일회성 수입', detail: `${krw(oneTimeIncome)} · 정기 월 환산에서 제외` }] : []),
             { title: '주의', detail: '가계부 지출/저축 데이터가 없어 순현금흐름과 저축률은 계산하지 않았습니다.' },
             { title: '자동 응답 조건', detail: '가계부에 지출/저축을 입력하면 현금흐름, 저축률, 고정비 비율까지 자동 계산합니다.' },
           ], 'income')],
